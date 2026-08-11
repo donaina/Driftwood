@@ -48,20 +48,20 @@ go build -o apidiff cmd/apidiff/main.go
 #### Run directly via `npx`:
 
 ```bash
-npx apidiff-cli --port 8787 --target http://localhost:3000
+npx apidiff-proxy --port 8787 --target http://localhost:3000
 ```
 
 ### Global Installation via NPM
 
 ```bash
-npm install -g apidiff-cli
+npm install -g apidiff-proxy
 apidiff --port 8787 --target http://localhost:3000
 ```
 
 ### Programmable Integration in Node.js / Express
 
 ```ts
-import APIDiff from "apidiff-cli";
+import APIDiff from "apidiff-proxy";
 
 const apidiff = new APIDiff({
   port: 8787,
