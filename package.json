@@ -1,15 +1,34 @@
 {
-  "name": "apidiff",
+  "name": "@callmidavid/apidiff",
   "version": "1.0.0",
   "description": "Real-time API contract drift detector & sniffing proxy for JavaScript/TypeScript and Node.js applications",
   "main": "index.js",
   "bin": {
-    "apidiff": "./bin/apidiff.js"
+    "apidiff": "bin/apidiff.js"
   },
   "scripts": {
     "start": "node ./bin/apidiff.js",
     "test": "echo \"APIDiff Go tests pass via 'go test ./...'\" && exit 0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/callmidavid/apidiff.git"
+  },
+  "bugs": {
+    "url": "https://github.com/callmidavid/apidiff/issues"
+  },
+  "homepage": "https://github.com/callmidavid/apidiff#readme",
+  "files": [
+    "bin",
+    "cmd",
+    "internal",
+    "web",
+    "index.js",
+    "index.d.ts",
+    "go.mod",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "apidiff",
     "api-contract",
