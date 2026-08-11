@@ -1,4 +1,4 @@
-# ⚡ APIDiff
+# APIDiff
 
 > **Real-time API contract drift detector & lightweight sniffing proxy.**
 > Protect your frontend from silent backend database type changes, breaking schema shifts, and field removals the millisecond they happen.
@@ -48,18 +48,20 @@ go build -o apidiff cmd/apidiff/main.go
 #### Run directly via `npx`:
 
 ```bash
-npx @callmidavid/apidiff --port 8787 --target http://localhost:3000
+npx apidiff-cli --port 8787 --target http://localhost:3000
 ```
 
 ### Global Installation via NPM
+
 ```bash
-npm install -g @callmidavid/apidiff
+npm install -g apidiff-cli
 apidiff --port 8787 --target http://localhost:3000
 ```
 
 ### Programmable Integration in Node.js / Express
+
 ```ts
-import APIDiff from "@callmidavid/apidiff";
+import APIDiff from "apidiff-cli";
 
 const apidiff = new APIDiff({
   port: 8787,
