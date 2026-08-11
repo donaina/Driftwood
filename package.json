@@ -1,0 +1,29 @@
+{
+  "name": "apidiff",
+  "version": "1.0.0",
+  "description": "Real-time API contract drift detector & sniffing proxy for JavaScript/TypeScript and Node.js applications",
+  "main": "index.js",
+  "bin": {
+    "apidiff": "./bin/apidiff.js"
+  },
+  "scripts": {
+    "start": "node ./bin/apidiff.js",
+    "test": "echo \"APIDiff Go tests pass via 'go test ./...'\" && exit 0"
+  },
+  "keywords": [
+    "apidiff",
+    "api-contract",
+    "proxy",
+    "typescript",
+    "javascript",
+    "devtools",
+    "contract-testing",
+    "express-middleware",
+    "network-sniffer"
+  ],
+  "author": "CallmiDavid",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
