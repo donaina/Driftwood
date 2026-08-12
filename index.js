@@ -3,8 +3,8 @@
  */
 
 const { spawn } = require('child_process');
-const http = require('http');
 const path = require('path');
+const fs = require('fs');
 
 class APIDiff {
   constructor(options = {}) {
@@ -15,10 +15,16 @@ class APIDiff {
 
   start() {
     return new Promise((resolve, reject) => {
-      const mainGoPath = path.join(__dirname, 'cmd', 'apidiff', 'main.go');
-      this.process = spawn('go', ['run', mainGoPath, '--port', String(this.port), '--target', this.target], {
-        stdio: 'pipe'
-      });
+      const ext = process.platform === 'win32' ? '.exe' : '';
+      const prebuiltBinPath = path.join(__dirname, 'bin', `apidiff-bin${ext}`);
+      const args = ['--port', String(this.port), '--target', this.target];
+
+      if (fs.existsSync(prebuiltBinPath)) {
+        this.process = spawn(prebuiltBinPath, args, { stdio: 'pipe' });
+      } else {
+        const mainGoPath = path.join(__dirname, 'cmd', 'apidiff', 'main.go');
+        this.process = spawn('go', ['run', mainGoPath, ...args], { stdio: 'pipe' });
+      }
 
       this.process.stdout.on('data', (data) => {
         const str = data.toString();
@@ -49,7 +55,6 @@ class APIDiff {
    */
   middleware() {
     return (req, res, next) => {
-      // Forward headers or flag requests
       req.headers['x-apidiff-sniffed'] = 'true';
       next();
     };

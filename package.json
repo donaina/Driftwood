@@ -8,6 +8,7 @@
     "apidiff-proxy": "bin/apidiff.js"
   },
   "scripts": {
+    "postinstall": "node ./bin/install.js",
     "start": "node ./bin/apidiff.js",
     "test": "echo \"APIDiff Go tests pass via 'go test ./...'\" && exit 0"
   },
