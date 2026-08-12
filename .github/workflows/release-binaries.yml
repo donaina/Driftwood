@@ -27,8 +27,9 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -o dist/apidiff-windows-amd64.exe cmd/apidiff/main.go
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.0' }}
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
