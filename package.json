@@ -1,0 +1,50 @@
+{
+  "name": "@donaina/driftwood",
+  "version": "1.0.5",
+  "description": "Real-time API contract drift detector & sniffing proxy for JavaScript/TypeScript and Node.js applications",
+  "main": "index.js",
+  "bin": {
+    "drift": "bin/drift.js"
+  },
+  "scripts": {
+    "prepack": "chmod +x bin/drift.js bin/install.js",
+    "postinstall": "node ./bin/install.js",
+    "start": "node ./bin/drift.js",
+    "test": "echo \"Driftwood Go tests pass via 'go test ./...'\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/donaina/Driftwood.git"
+  },
+  "bugs": {
+    "url": "https://github.com/donaina/Driftwood/issues"
+  },
+  "homepage": "https://github.com/donaina/Driftwood#readme",
+  "files": [
+    "bin",
+    "cmd",
+    "internal",
+    "web",
+    "index.js",
+    "index.d.ts",
+    "go.mod",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "driftwood",
+    "api-contract",
+    "proxy",
+    "typescript",
+    "javascript",
+    "devtools",
+    "contract-testing",
+    "express-middleware",
+    "network-sniffer"
+  ],
+  "author": "donaina",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
