@@ -34,7 +34,7 @@ The backend team changes a database column type or schema payload without notify
 
 ## Quick Start
 
-### 1. For Go Engineers
+### 1. Go Lang
 
 ```bash
 git clone https://github.com/callmidavid/apidiff.git
@@ -43,7 +43,7 @@ go build -o apidiff cmd/apidiff/main.go
 ./apidiff --port 8787 --target http://localhost:3000
 ```
 
-### 2. For JavaScript & TypeScript Engineers
+### 2. JavaScript & TypeScript
 
 #### Run directly via `npx`:
 
