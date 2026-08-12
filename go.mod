@@ -1,3 +1,3 @@
-module github.com/callmidavid/apidiff
+module github.com/donaina/driftwood
 
 go 1.25.0

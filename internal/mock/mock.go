@@ -49,9 +49,9 @@ func (m *MockController) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	switch r.URL.Path {
-	case "/_apidiff/mock/users", "/api/users":
+	case "/_driftwood/mock/users", "/api/users":
 		m.serveUsersPayload(w, mode)
-	case "/_apidiff/mock/products", "/api/products":
+	case "/_driftwood/mock/products", "/api/products":
 		m.serveProductsPayload(w, mode)
 	default:
 		m.serveUsersPayload(w, mode)

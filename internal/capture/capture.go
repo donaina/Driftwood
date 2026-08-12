@@ -3,7 +3,7 @@ package capture
 import (
 	"strings"
 
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 // SanitizeTraffic removes sensitive header tokens (Bearer, Authorization) before storage

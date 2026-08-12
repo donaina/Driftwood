@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 // LoadConfigFile loads proxy configuration from a JSON file

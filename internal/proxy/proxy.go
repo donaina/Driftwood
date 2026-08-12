@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/callmidavid/apidiff/internal/diff"
-	"github.com/callmidavid/apidiff/internal/events"
-	"github.com/callmidavid/apidiff/internal/mock"
-	"github.com/callmidavid/apidiff/internal/storage"
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/internal/diff"
+	"github.com/donaina/driftwood/internal/events"
+	"github.com/donaina/driftwood/internal/mock"
+	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 type Proxy struct {
@@ -62,7 +62,7 @@ func (p *Proxy) Handler() http.HandlerFunc {
 		}
 
 		// Handle built-in mock endpoint target fallback if specified or target offline
-		if strings.HasPrefix(r.URL.Path, "/_apidiff/mock/") {
+		if strings.HasPrefix(r.URL.Path, "/_driftwood/mock/") {
 			p.serveMockResponse(w, r, start, reqBodyBytes, reqHeaders)
 			return
 		}
@@ -100,10 +100,10 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 	}
 
 	revProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("[APIDiff Proxy Error] %v", err)
+		log.Printf("[Driftwood Proxy Error] %v", err)
 
 		// Fallback to internal Mock backend if configured target server is unreachable
-		log.Printf("[APIDiff Proxy] Target unreachable (%s). Serving Mock Backend response.", p.targetURL.String())
+		log.Printf("[Driftwood Proxy] Target unreachable (%s). Serving Mock Backend response.", p.targetURL.String())
 		p.serveMockResponse(w, r, start, reqBodyBytes, reqHeaders)
 	}
 

@@ -1,6 +1,6 @@
-# Contributing to APIDiff
+# Contributing to Driftwood
 
-Thank you for your interest in improving APIDiff! We welcome contributions from engineers and developers.
+Thank you for your interest in improving Driftwood! We welcome contributions from engineers and developers.
 
 ## How to Contribute
 
@@ -11,8 +11,8 @@ Thank you for your interest in improving APIDiff! We welcome contributions from 
 ### 2. Local Setup & Testing
 1. Clone the repository:
    ```bash
-   git clone https://github.com/callmidavid/apidiff.git
-   cd apidiff
+   git clone https://github.com/donaina/Driftwood.git
+   cd Driftwood
    ```
 2. Run the test suite:
    ```bash
@@ -20,7 +20,7 @@ Thank you for your interest in improving APIDiff! We welcome contributions from 
    ```
 3. Build and test locally:
    ```bash
-   go run cmd/apidiff/main.go --port 8787
+   go run cmd/drift/main.go --port 8787
    ```
 
 ### 3. Submission Guidelines
@@ -31,11 +31,11 @@ Thank you for your interest in improving APIDiff! We welcome contributions from 
 
 ## Development Architecture Overview
 
-- **`cmd/apidiff/`**: CLI entrypoint.
+- **`cmd/drift/`**: CLI entrypoint.
 - **`internal/proxy/`**: HTTP reverse proxy with traffic sniffing interceptor.
 - **`internal/schema/`**: Recursive JSON schema inference engine.
 - **`internal/diff/`**: Structural diffing engine & contract violation rules.
-- **`internal/storage/`**: Thread-safe memory buffer & `.apidiff/baselines.json` persistence.
+- **`internal/storage/`**: Thread-safe memory buffer & `.driftwood/baselines.json` persistence.
 - **`internal/events/`**: Real-time SSE broadcasting hub.
 - **`internal/mock/`**: Interactive mock backend simulator for testing contract drift.
 - **`web/`**: Single-page Web Dashboard embedded via `go:embed`.

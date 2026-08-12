@@ -1,12 +1,12 @@
-# APIDiff Schema & Contract Diffing Specifications
+# Driftwood Schema & Contract Diffing Specifications
 
-This document outlines the exact structural rules APIDiff uses to infer JSON schemas and evaluate breaking vs non-breaking contract changes.
+This document outlines the exact structural rules Driftwood uses to infer JSON schemas and evaluate breaking vs non-breaking contract changes.
 
 ## 1. Schema Inference Rules
 
-APIDiff recursively parses JSON payloads into a schema tree of `JSONSchemaNode`:
+Driftwood recursively parses JSON payloads into a schema tree of `JSONSchemaNode`:
 
-| Primitive JSON Type | Inferred APIDiff Type | Notes |
+| Primitive JSON Type | Inferred Driftwood Type | Notes |
 | :--- | :--- | :--- |
 | `"hello"` | `string` | UTF-8 String |
 | `1024` | `integer` | Disambiguated from float using integer check |

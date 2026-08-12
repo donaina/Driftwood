@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>APIDiff - Real-Time API Contract Drift Sniffer</title>
+  <title>Driftwood - Real-Time API Contract Drift Sniffer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -602,7 +602,7 @@
   <!-- Top Navbar -->
   <header>
     <div class="brand">
-      <div class="brand-title">Apidiff</div>
+      <div class="brand-title">Driftwood</div>
       <div class="status-pill" id="sse-status">
         <div class="status-dot"></div>
         <span id="status-text">Sniffer Active</span>
@@ -700,7 +700,7 @@
       <div class="view-panel" id="view-baselines">
         <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
           <h3 style="font-size: 1rem;">Cached API Contract Baselines</h3>
-          <a href="/_apidiff/api/export/typescript" download="apidiff-contracts.d.ts" class="btn btn-primary"
+          <a href="/_driftwood/api/export/typescript" download="driftwood-contracts.d.ts" class="btn btn-primary"
             style="font-size: 0.8rem; text-decoration: none;">
             🔷 Export TypeScript Types (.d.ts)
           </a>
@@ -789,7 +789,7 @@
     });
 
     function initSSE() {
-      eventSource = new EventSource('/_apidiff/events');
+      eventSource = new EventSource('/_driftwood/events');
 
       eventSource.onopen = () => {
         document.getElementById('status-text').innerText = 'Sniffer Active';
@@ -821,7 +821,7 @@
 
     async function loadTraffic() {
       try {
-        const res = await fetch('/_apidiff/api/traffic');
+        const res = await fetch('/_driftwood/api/traffic');
         trafficHistory = await res.json() || [];
         renderTrafficTable();
       } catch (err) { console.error(err); }
@@ -829,7 +829,7 @@
 
     async function loadBaselines() {
       try {
-        const res = await fetch('/_apidiff/api/baselines');
+        const res = await fetch('/_driftwood/api/baselines');
         baselinesList = await res.json() || [];
         renderBaselines();
       } catch (err) { console.error(err); }
@@ -837,7 +837,7 @@
 
     async function loadAlerts() {
       try {
-        const res = await fetch('/_apidiff/api/alerts');
+        const res = await fetch('/_driftwood/api/alerts');
         alertsHistory = await res.json() || [];
         renderAlerts();
         updateAlertCount();
@@ -846,7 +846,7 @@
 
     async function loadConfig() {
       try {
-        const res = await fetch('/_apidiff/api/config');
+        const res = await fetch('/_driftwood/api/config');
         const cfg = await res.json();
         document.getElementById('target-url-input').value = cfg.target_url || '';
         document.getElementById('auto-baseline-check').checked = cfg.auto_save_baseline;
@@ -992,7 +992,7 @@
 
     async function setAsBaselineFromDrawer() {
       if (!selectedTraffic) return;
-      await fetch('/_apidiff/api/baselines', {
+      await fetch('/_driftwood/api/baselines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1010,7 +1010,7 @@
       document.querySelectorAll('.demo-btn').forEach(btn => btn.classList.remove('active-mode'));
       document.getElementById(`mode-${mode}`).classList.add('active-mode');
 
-      await fetch('/_apidiff/api/mock/mode', {
+      await fetch('/_driftwood/api/mock/mode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode })
@@ -1021,18 +1021,18 @@
 
     async function triggerTestRequest() {
       try {
-        await fetch('/_apidiff/mock/users');
+        await fetch('/_driftwood/mock/users');
       } catch (err) { console.error(err); }
     }
 
     async function clearTrafficHistory() {
-      await fetch('/_apidiff/api/traffic/clear', { method: 'POST' });
+      await fetch('/_driftwood/api/traffic/clear', { method: 'POST' });
       trafficHistory = [];
       renderTrafficTable();
     }
 
     async function deleteBaseline(method, path) {
-      await fetch('/_apidiff/api/baselines/delete', {
+      await fetch('/_driftwood/api/baselines/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ method, path })
@@ -1044,7 +1044,7 @@
       const target_url = document.getElementById('target-url-input').value;
       const auto_save_baseline = document.getElementById('auto-baseline-check').checked;
 
-      await fetch('/_apidiff/api/config', {
+      await fetch('/_driftwood/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_url, auto_save_baseline, proxy_port: "8787", intercept_json: true })

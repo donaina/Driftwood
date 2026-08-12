@@ -3,8 +3,8 @@ package diff
 import (
 	"fmt"
 
-	"github.com/callmidavid/apidiff/internal/schema"
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/internal/schema"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 // CompareJSON compares raw baseline JSON with current raw JSON

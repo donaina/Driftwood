@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/callmidavid/apidiff/internal/schema"
+	"github.com/donaina/driftwood/internal/schema"
 )
 
 func TestTypeScriptGeneration(t *testing.T) {

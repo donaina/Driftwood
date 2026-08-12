@@ -4,7 +4,7 @@ const https = require('https');
 const { execSync } = require('child_process');
 
 const VERSION = require('../package.json').version;
-const REPO = 'callmidavid/apidiff';
+const REPO = 'donaina/Driftwood';
 
 const platformMap = {
   darwin: 'darwin',
@@ -25,8 +25,8 @@ function getBinaryName() {
   }
   const ext = process.platform === 'win32' ? '.exe' : '';
   return {
-    remoteName: `apidiff-${platform}-${arch}${ext}`,
-    localName: `apidiff-bin${ext}`
+    remoteName: `drift-${platform}-${arch}${ext}`,
+    localName: `drift-bin${ext}`
   };
 }
 
@@ -54,7 +54,7 @@ async function download(url, destPath) {
 async function install() {
   const binary = getBinaryName();
   if (!binary) {
-    console.log('[apidiff] Unsupported OS/architecture for prebuilt binary. Falling back to local Go toolchain if available.');
+    console.log('[driftwood] Unsupported OS/architecture for prebuilt binary. Falling back to local Go toolchain if available.');
     return tryBuildFromSource();
   }
 
@@ -62,21 +62,21 @@ async function install() {
   const localBinaryPath = path.join(binDir, binary.localName);
 
   if (fs.existsSync(localBinaryPath)) {
-    console.log('[apidiff] Prebuilt binary already exists at:', localBinaryPath);
+    console.log('[driftwood] Prebuilt binary already exists at:', localBinaryPath);
     return;
   }
 
   const downloadUrl = `https://github.com/${REPO}/releases/download/v${VERSION}/${binary.remoteName}`;
-  console.log(`[apidiff] Downloading prebuilt binary for ${process.platform}-${process.arch}...`);
+  console.log(`[driftwood] Downloading prebuilt binary for ${process.platform}-${process.arch}...`);
 
   try {
     await download(downloadUrl, localBinaryPath);
     if (process.platform !== 'win32') {
       fs.chmodSync(localBinaryPath, 0o755);
     }
-    console.log('[apidiff] Prebuilt binary installed successfully!');
+    console.log('[driftwood] Prebuilt binary installed successfully!');
   } catch (err) {
-    console.warn(`[apidiff] Could not download prebuilt binary (${err.message}). Attempting fallback to local Go build...`);
+    console.warn(`[driftwood] Could not download prebuilt binary (${err.message}). Attempting fallback to local Go build...`);
     tryBuildFromSource();
   }
 }
@@ -84,16 +84,16 @@ async function install() {
 function tryBuildFromSource() {
   try {
     const ext = process.platform === 'win32' ? '.exe' : '';
-    const targetPath = path.join(__dirname, `apidiff-bin${ext}`);
-    const mainGoPath = path.join(__dirname, '..', 'cmd', 'apidiff', 'main.go');
+    const targetPath = path.join(__dirname, `drift-bin${ext}`);
+    const mainGoPath = path.join(__dirname, '..', 'cmd', 'drift', 'main.go');
     
     execSync(`go build -o "${targetPath}" "${mainGoPath}"`, { stdio: 'inherit' });
     if (process.platform !== 'win32') {
       try { fs.chmodSync(targetPath, 0o755); } catch (e) {}
     }
-    console.log('[apidiff] Built binary locally using system Go toolchain.');
+    console.log('[driftwood] Built binary locally using system Go toolchain.');
   } catch (e) {
-    console.log('[apidiff] Go is not installed on this system. APIDiff will download prebuilt binaries on release or run via Go if installed.');
+    console.log('[driftwood] Go is not installed on this system. Driftwood will download prebuilt binaries on release or run via Go if installed.');
   }
 }
 

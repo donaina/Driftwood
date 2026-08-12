@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/callmidavid/apidiff/internal/schema"
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/internal/schema"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 type Store struct {
@@ -24,7 +24,7 @@ type Store struct {
 
 func NewStore(targetURL, proxyPort string) *Store {
 	homeDir, _ := os.UserHomeDir()
-	persistDir := filepath.Join(homeDir, ".apidiff")
+	persistDir := filepath.Join(homeDir, ".driftwood")
 	_ = os.MkdirAll(persistDir, 0755)
 
 	s := &Store{

@@ -3,7 +3,7 @@ package diff
 import (
 	"testing"
 
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 func TestTypeMismatchDetection(t *testing.T) {

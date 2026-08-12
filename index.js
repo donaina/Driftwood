@@ -1,12 +1,12 @@
 /**
- * APIDiff - JavaScript & TypeScript Integration Module
+ * Driftwood - JavaScript & TypeScript Integration Module
  */
 
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-class APIDiff {
+class Driftwood {
   constructor(options = {}) {
     this.port = options.port || 8787;
     this.target = options.target || 'http://localhost:3000';
@@ -16,7 +16,7 @@ class APIDiff {
   start() {
     return new Promise((resolve, reject) => {
       const ext = process.platform === 'win32' ? '.exe' : '';
-      const prebuiltBinPath = path.join(__dirname, 'bin', `apidiff-bin${ext}`);
+      const prebuiltBinPath = path.join(__dirname, 'bin', `drift-bin${ext}`);
       const args = ['--port', String(this.port), '--target', this.target];
 
       if (fs.existsSync(prebuiltBinPath)) {
@@ -25,7 +25,7 @@ class APIDiff {
         }
         this.process = spawn(prebuiltBinPath, args, { stdio: 'pipe' });
       } else {
-        const mainGoPath = path.join(__dirname, 'cmd', 'apidiff', 'main.go');
+        const mainGoPath = path.join(__dirname, 'cmd', 'drift', 'main.go');
         this.process = spawn('go', ['run', mainGoPath, ...args], { stdio: 'pipe' });
       }
 
@@ -37,7 +37,7 @@ class APIDiff {
       });
 
       this.process.stderr.on('data', (data) => {
-        console.error('[APIDiff]', data.toString());
+        console.error('[Driftwood]', data.toString());
       });
 
       this.process.on('error', (err) => {
@@ -58,10 +58,10 @@ class APIDiff {
    */
   middleware() {
     return (req, res, next) => {
-      req.headers['x-apidiff-sniffed'] = 'true';
+      req.headers['x-driftwood-sniffed'] = 'true';
       next();
     };
   }
 }
 
-module.exports = APIDiff;
+module.exports = Driftwood;

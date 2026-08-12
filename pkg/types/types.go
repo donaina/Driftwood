@@ -94,7 +94,7 @@ type CapturedTraffic struct {
 	Diff            *ContractDiff     `json:"diff,omitempty"`
 }
 
-// ProxyConfig represents runtime configuration for APIDiff proxy
+// ProxyConfig represents runtime configuration for Driftwood proxy
 type ProxyConfig struct {
 	TargetURL        string `json:"target_url"`
 	ProxyPort        string `json:"proxy_port"`

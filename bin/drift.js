@@ -4,10 +4,10 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-console.log('⚡ Starting APIDiff proxy...');
+console.log('⚡ Starting Driftwood proxy...');
 
 const ext = process.platform === 'win32' ? '.exe' : '';
-const prebuiltBinPath = path.join(__dirname, `apidiff-bin${ext}`);
+const prebuiltBinPath = path.join(__dirname, `drift-bin${ext}`);
 const userArgs = process.argv.slice(2);
 
 let child;
@@ -23,7 +23,7 @@ if (fs.existsSync(prebuiltBinPath)) {
   });
 } else {
   // Fallback to local Go runtime if prebuilt binary isn't present
-  const mainGoPath = path.join(__dirname, '..', 'cmd', 'apidiff', 'main.go');
+  const mainGoPath = path.join(__dirname, '..', 'cmd', 'drift', 'main.go');
   const args = ['run', mainGoPath, ...userArgs];
 
   child = spawn('go', args, {
@@ -33,8 +33,8 @@ if (fs.existsSync(prebuiltBinPath)) {
 }
 
 child.on('error', (err) => {
-  console.error('Failed to start APIDiff:', err.message);
-  console.error('If prebuilt binary download failed, please ensure Go 1.20+ is installed on your system.');
+  console.error('Failed to start Driftwood:', err.message);
+  console.error('If prebuilt binary download failed, please ensure Go 1.25+ is installed on your system.');
   process.exit(1);
 });
 

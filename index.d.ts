@@ -1,13 +1,13 @@
-export interface APIDiffOptions {
+export interface DriftwoodOptions {
   port?: number;
   target?: string;
 }
 
-export class APIDiff {
-  constructor(options?: APIDiffOptions);
-  start(): Promise<APIDiff>;
+export class Driftwood {
+  constructor(options?: DriftwoodOptions);
+  start(): Promise<Driftwood>;
   stop(): void;
   middleware(): (req: any, res: any, next: () => void) => void;
 }
 
-export default APIDiff;
+export default Driftwood;

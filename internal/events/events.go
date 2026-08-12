@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 type Hub struct {

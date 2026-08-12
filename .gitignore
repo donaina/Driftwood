@@ -5,7 +5,7 @@
 *.so
 *.so.*
 *.dylib
-bin/apidiff-bin*
+bin/drift-bin*
 
 # Test binary, built with `go test -c`
 *.test

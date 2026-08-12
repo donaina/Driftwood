@@ -5,11 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/callmidavid/apidiff/internal/events"
-	"github.com/callmidavid/apidiff/internal/mock"
-	"github.com/callmidavid/apidiff/internal/proxy"
-	"github.com/callmidavid/apidiff/internal/server"
-	"github.com/callmidavid/apidiff/internal/storage"
+	"github.com/donaina/driftwood/internal/events"
+	"github.com/donaina/driftwood/internal/mock"
+	"github.com/donaina/driftwood/internal/proxy"
+	"github.com/donaina/driftwood/internal/server"
+	"github.com/donaina/driftwood/internal/storage"
 )
 
 func TestEndToEndProxyAndDiff(t *testing.T) {
@@ -20,7 +20,7 @@ func TestEndToEndProxyAndDiff(t *testing.T) {
 	}))
 	defer targetServer.Close()
 
-	// Initialize APIDiff components
+	// Initialize Driftwood components
 	store := storage.NewStore(targetServer.URL, "8787")
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()

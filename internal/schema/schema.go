@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 // InferFromJSON parses a JSON string and builds its JSONSchemaNode tree

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/callmidavid/apidiff/pkg/types"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 // Dynamic noise key patterns (e.g. request IDs, trace IDs, timestamps)
