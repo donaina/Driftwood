@@ -105,6 +105,9 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 	if base.Type == types.TypeObject && curr.Type == types.TypeObject {
 		// Check for missing keys or modified keys in current
 		for key, baseProp := range base.Properties {
+			if IsNoiseKey(key) {
+				continue
+			}
 			childPath := path + "." + key
 			currProp, exists := curr.Properties[key]
 			if !exists {
@@ -123,6 +126,9 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 
 		// Check for newly added keys in current
 		for key, currProp := range curr.Properties {
+			if IsNoiseKey(key) {
+				continue
+			}
 			childPath := path + "." + key
 			if _, exists := base.Properties[key]; !exists {
 				diff.Deltas = append(diff.Deltas, types.DiffDelta{

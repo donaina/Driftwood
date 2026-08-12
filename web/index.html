@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>APIDiff - Real-Time API Contract Drift Sniffer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
   <style>
     :root {
       --bg-main: #0b0f19;
@@ -105,9 +108,17 @@
     }
 
     @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.4; }
-      100% { opacity: 1; }
+      0% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+
+      100% {
+        opacity: 1;
+      }
     }
 
     .header-actions {
@@ -365,10 +376,25 @@
       text-transform: uppercase;
     }
 
-    .method-get { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-    .method-post { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-    .method-put { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-    .method-delete { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    .method-get {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+    }
+
+    .method-post {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+    }
+
+    .method-put {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+    }
+
+    .method-delete {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+    }
 
     .contract-badge {
       display: inline-flex;
@@ -406,8 +432,13 @@
     }
 
     @keyframes flash-red {
-      0% { box-shadow: 0 0 0px rgba(239, 68, 68, 0); }
-      100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.5); }
+      0% {
+        box-shadow: 0 0 0px rgba(239, 68, 68, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+      }
     }
 
     /* Detail Modal Drawer */
@@ -553,20 +584,25 @@
     }
 
     @keyframes slideIn {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
   </style>
 </head>
+
 <body>
 
   <!-- Top Navbar -->
   <header>
     <div class="brand">
-      <div class="brand-logo">⚡</div>
-      <div>
-        <div class="brand-title">APIDiff</div>
-      </div>
+      <div class="brand-title">Apidiff</div>
       <div class="status-pill" id="sse-status">
         <div class="status-dot"></div>
         <span id="status-text">Sniffer Active</span>
@@ -664,7 +700,8 @@
       <div class="view-panel" id="view-baselines">
         <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
           <h3 style="font-size: 1rem;">Cached API Contract Baselines</h3>
-          <a href="/_apidiff/api/export/typescript" download="apidiff-contracts.d.ts" class="btn btn-primary" style="font-size: 0.8rem; text-decoration: none;">
+          <a href="/_apidiff/api/export/typescript" download="apidiff-contracts.d.ts" class="btn btn-primary"
+            style="font-size: 0.8rem; text-decoration: none;">
             🔷 Export TypeScript Types (.d.ts)
           </a>
         </div>
@@ -683,14 +720,18 @@
 
       <!-- View 4: Settings -->
       <div class="view-panel" id="view-settings">
-        <div style="background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-color); max-width: 550px;">
+        <div
+          style="background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-color); max-width: 550px;">
           <h3 style="font-size: 1rem; margin-bottom: 1rem;">Proxy Configuration</h3>
           <div style="margin-bottom: 1rem;">
-            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Target API Backend URL</label>
-            <input type="text" id="target-url-input" class="search-bar" style="width: 100%;" value="http://localhost:3000" />
+            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Target
+              API Backend URL</label>
+            <input type="text" id="target-url-input" class="search-bar" style="width: 100%;"
+              value="http://localhost:3000" />
           </div>
           <div style="margin-bottom: 1.5rem;">
-            <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <label
+              style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
               <input type="checkbox" id="auto-baseline-check" checked /> Auto-lock initial payload as Baseline Contract
             </label>
           </div>
@@ -749,7 +790,7 @@
 
     function initSSE() {
       eventSource = new EventSource('/_apidiff/events');
-      
+
       eventSource.onopen = () => {
         document.getElementById('status-text').innerText = 'Sniffer Active';
         document.getElementById('sse-status').className = 'status-pill';
@@ -1041,4 +1082,5 @@
     }
   </script>
 </body>
+
 </html>
