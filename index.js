@@ -20,6 +20,9 @@ class APIDiff {
       const args = ['--port', String(this.port), '--target', this.target];
 
       if (fs.existsSync(prebuiltBinPath)) {
+        if (process.platform !== 'win32') {
+          try { fs.chmodSync(prebuiltBinPath, 0o755); } catch (e) {}
+        }
         this.process = spawn(prebuiltBinPath, args, { stdio: 'pipe' });
       } else {
         const mainGoPath = path.join(__dirname, 'cmd', 'apidiff', 'main.go');

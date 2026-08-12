@@ -13,6 +13,9 @@ const userArgs = process.argv.slice(2);
 let child;
 
 if (fs.existsSync(prebuiltBinPath)) {
+  if (process.platform !== 'win32') {
+    try { fs.chmodSync(prebuiltBinPath, 0o755); } catch (e) {}
+  }
   // Use prebuilt standalone binary (No Go installation needed)
   child = spawn(prebuiltBinPath, userArgs, {
     stdio: 'inherit',

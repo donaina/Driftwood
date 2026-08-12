@@ -88,6 +88,9 @@ function tryBuildFromSource() {
     const mainGoPath = path.join(__dirname, '..', 'cmd', 'apidiff', 'main.go');
     
     execSync(`go build -o "${targetPath}" "${mainGoPath}"`, { stdio: 'inherit' });
+    if (process.platform !== 'win32') {
+      try { fs.chmodSync(targetPath, 0o755); } catch (e) {}
+    }
     console.log('[apidiff] Built binary locally using system Go toolchain.');
   } catch (e) {
     console.log('[apidiff] Go is not installed on this system. APIDiff will download prebuilt binaries on release or run via Go if installed.');
