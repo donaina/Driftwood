@@ -1,6 +1,6 @@
 {
   "name": "apidiff-proxy",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Real-time API contract drift detector & sniffing proxy for JavaScript/TypeScript and Node.js applications",
   "main": "index.js",
   "bin": {
@@ -8,6 +8,7 @@
     "apidiff-proxy": "bin/apidiff.js"
   },
   "scripts": {
+    "prepack": "chmod +x bin/apidiff.js bin/install.js",
     "postinstall": "node ./bin/install.js",
     "start": "node ./bin/apidiff.js",
     "test": "echo \"APIDiff Go tests pass via 'go test ./...'\" && exit 0"
