@@ -8,17 +8,25 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/donaina/driftwood/internal/events"
 	"github.com/donaina/driftwood/internal/mock"
+	"github.com/donaina/driftwood/internal/openapi"
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/server"
 	"github.com/donaina/driftwood/internal/storage"
 )
 
 func main() {
+	// Handle subcommands
+	if len(os.Args) > 1 && os.Args[1] == "import" {
+		handleImport(os.Args[2:])
+		return
+	}
+
 	target := flag.String("target", "http://localhost:3000", "Target API URL to proxy")
 	port := flag.String("port", "8787", "Driftwood Proxy & Web Server Port")
 	flag.Parse()
@@ -95,4 +103,54 @@ func main() {
 
 	<-serverCtx.Done()
 	fmt.Println("Driftwood server stopped.")
+}
+
+func handleImport(args []string) {
+	importFlag := flag.NewFlagSet("import", flag.ExitOnError)
+	specPath := importFlag.String("spec", "", "Path or URL to OpenAPI spec (required)")
+	help := importFlag.Bool("help", false, "Show help")
+	importFlag.Parse(args)
+
+	if *help || *specPath == "" {
+		fmt.Println("Usage: drift import -spec <file|url>")
+		fmt.Println("  -spec    Path or URL to OpenAPI 3.x specification (required)")
+		fmt.Println("  -help    Show this help")
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  drift import -spec ./openapi.json")
+		fmt.Println("  drift import -spec https://api.example.com/openapi.json")
+		os.Exit(1)
+	}
+
+	// Load OpenAPI spec
+	var spec *openapi.OpenAPISpec
+	var err error
+
+	if strings.HasPrefix(*specPath, "http://") || strings.HasPrefix(*specPath, "https://") {
+		log.Printf("[Driftwood] Loading OpenAPI spec from URL: %s", *specPath)
+		spec, err = openapi.LoadFromURL(*specPath)
+	} else {
+		log.Printf("[Driftwood] Loading OpenAPI spec from file: %s", *specPath)
+		spec, err = openapi.LoadFromFile(*specPath)
+	}
+	if err != nil {
+		log.Fatalf("Failed to load OpenAPI spec: %v", err)
+	}
+
+	log.Printf("[Driftwood] OpenAPI spec loaded: %s v%s", spec.Info.Title, spec.Info.Version)
+
+	// Initialize storage with dummy target (we just need it for baseline storage)
+	store := storage.NewStore("http://localhost:3000", "8787")
+
+	// Import contracts
+	err = spec.ImportToStorage(store)
+	if err != nil {
+		log.Fatalf("Failed to import contracts: %v", err)
+	}
+
+	log.Println("[Driftwood] OpenAPI contracts imported successfully!")
+	contracts, _ := spec.ExtractContracts()
+	for _, c := range contracts {
+		log.Printf("  %s %s (operation: %s)", c.Method, c.Path, c.OperationID)
+	}
 }
