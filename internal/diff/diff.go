@@ -2,6 +2,8 @@ package diff
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/donaina/driftwood/internal/schema"
 	"github.com/donaina/driftwood/pkg/types"
@@ -42,6 +44,42 @@ func CompareSchemas(baseline, current *types.JSONSchemaNode) *types.ContractDiff
 	return diffResult
 }
 
+func isValidJSONIdentifier(key string) bool {
+	if key == "" {
+		return false
+	}
+	// First char: letter, underscore
+	first := key[0]
+	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_') {
+		return false
+	}
+	// Rest: alphanumeric, underscore
+	for i := 1; i < len(key); i++ {
+		c := key[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func formatPath(path, key string) string {
+	if path == "$" {
+		if isValidJSONIdentifier(key) {
+			return "$." + key
+		}
+		return "$['" + escapeSingleQuote(key) + "']"
+	}
+	if isValidJSONIdentifier(key) {
+		return path + "." + key
+	}
+	return path + "['" + escapeSingleQuote(key) + "']"
+}
+
+func escapeSingleQuote(s string) string {
+	return strings.ReplaceAll(s, "'", "\\'")
+}
+
 func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types.ContractDiff) {
 	if base == nil && curr == nil {
 		return
@@ -53,8 +91,8 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 			JSONPath: path,
 			Kind:     types.KindAddedField,
 			Severity: types.SeverityInfo,
-			Message:  fmt.Sprintf("New field added: %s (type %s)", path, curr.Type),
-			Expected: "<non-existent>",
+			Message:  "added",
+			Expected: "<absent>",
 			Actual:   string(curr.Type),
 		})
 		return
@@ -66,9 +104,9 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 			JSONPath: path,
 			Kind:     types.KindRemovedField,
 			Severity: types.SeverityBreaking,
-			Message:  fmt.Sprintf("🚨 Removed field: '%s' expected type '%s' but field is missing", path, base.Type),
+			Message:  "removed",
 			Expected: string(base.Type),
-			Actual:   "<missing>",
+			Actual:   "<absent>",
 		})
 		return
 	}
@@ -80,65 +118,86 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 				JSONPath: path,
 				Kind:     types.KindNullabilityChange,
 				Severity: types.SeverityBreaking,
-				Message:  fmt.Sprintf("🚨 Nullability contract violation: '%s' expected non-null '%s' but received null", path, base.Type),
+				Message:  "nullability violation",
 				Expected: string(base.Type),
 				Actual:   "null",
 			})
-			return
+			return // Early return only for actual violation
 		}
+		// If base.Nullable == true, fall through to type checking
 	}
 
 	// Type comparison
 	if !isCompatibleType(base.Type, curr.Type) {
+		// Determine severity: type widen (integer<->number) = WARNING, null->typed = INFO (refinement), else BREAKING
+		severity := types.SeverityBreaking
+		if (base.Type == types.TypeInteger && curr.Type == types.TypeNumber) ||
+			(base.Type == types.TypeNumber && curr.Type == types.TypeInteger) {
+			severity = types.SeverityWarning
+		}
+		if base.Type == types.TypeNull && curr.Type != types.TypeNull {
+			severity = types.SeverityInfo
+		}
+
 		diff.Deltas = append(diff.Deltas, types.DiffDelta{
 			JSONPath: path,
 			Kind:     types.KindTypeMismatch,
-			Severity: types.SeverityBreaking,
-			Message:  fmt.Sprintf("🚨 TYPE MISMATCH at '%s': expected '%s', got '%s'", path, base.Type, curr.Type),
+			Severity: severity,
+			Message:  "type mismatch",
 			Expected: string(base.Type),
 			Actual:   string(curr.Type),
 		})
-		return
+		return // After type mismatch, stop recursing
 	}
 
-	// Recurse for Objects
+	// Recurse for Objects - deterministic ordering via sorted keys
 	if base.Type == types.TypeObject && curr.Type == types.TypeObject {
-		// Check for missing keys or modified keys in current
-		for key, baseProp := range base.Properties {
+		// Collect all keys, sort for deterministic ordering
+		allKeys := make(map[string]bool)
+		for k := range base.Properties {
+			allKeys[k] = true
+		}
+		for k := range curr.Properties {
+			allKeys[k] = true
+		}
+
+		keys := make([]string, 0, len(allKeys))
+		for k := range allKeys {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for _, key := range keys {
 			if IsNoiseKey(key) {
 				continue
 			}
-			childPath := path + "." + key
-			currProp, exists := curr.Properties[key]
-			if !exists {
+			childPath := formatPath(path, key)
+			baseProp, inBase := base.Properties[key]
+			currProp, inCurr := curr.Properties[key]
+
+			if inBase && !inCurr {
+				// Removed field
 				diff.Deltas = append(diff.Deltas, types.DiffDelta{
 					JSONPath: childPath,
 					Kind:     types.KindRemovedField,
 					Severity: types.SeverityBreaking,
-					Message:  fmt.Sprintf("🚨 Missing property '%s' (expected type '%s')", childPath, baseProp.Type),
+					Message:  "removed",
 					Expected: string(baseProp.Type),
-					Actual:   "<missing>",
+					Actual:   "<absent>",
 				})
-			} else {
-				compareRecursive(baseProp, currProp, childPath, diff)
-			}
-		}
-
-		// Check for newly added keys in current
-		for key, currProp := range curr.Properties {
-			if IsNoiseKey(key) {
-				continue
-			}
-			childPath := path + "." + key
-			if _, exists := base.Properties[key]; !exists {
+			} else if !inBase && inCurr {
+				// Added field
 				diff.Deltas = append(diff.Deltas, types.DiffDelta{
 					JSONPath: childPath,
 					Kind:     types.KindAddedField,
 					Severity: types.SeverityInfo,
-					Message:  fmt.Sprintf("✨ Added new field '%s' of type '%s'", childPath, currProp.Type),
+					Message:  "added",
 					Expected: "<absent>",
 					Actual:   string(currProp.Type),
 				})
+			} else if inBase && inCurr {
+				// Modified field - recurse
+				compareRecursive(baseProp, currProp, childPath, diff)
 			}
 		}
 	}
@@ -146,12 +205,29 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 	// Recurse for Arrays
 	if base.Type == types.TypeArray && curr.Type == types.TypeArray {
 		if base.ItemSchema != nil && curr.ItemSchema != nil {
+			// Check for empty-array unknown item case
+			isEmptyArrayUnknown := base.ItemSchema.Type == types.TypeUnknown &&
+				base.ItemSchema.SampleValue == nil &&
+				curr.ItemSchema.Type != types.TypeUnknown
+
+			if isEmptyArrayUnknown {
+				diff.Deltas = append(diff.Deltas, types.DiffDelta{
+					JSONPath: path + "[*]",
+					Kind:     types.KindArrayTypeMismatch,
+					Severity: types.SeverityBreaking,
+					Message:  "array item type mismatch",
+					Expected: "unknown (empty array)",
+					Actual:   string(curr.ItemSchema.Type),
+				})
+				return
+			}
+
 			compareRecursive(base.ItemSchema, curr.ItemSchema, path+"[*]", diff)
 		}
 	}
 }
 
-// isCompatibleType returns true if types match or are compatible (e.g. integer can match number)
+// isCompatibleType returns true if types match or are compatible (e.g. integer↔number both directions)
 func isCompatibleType(base, curr types.JSONNodeType) bool {
 	if base == curr {
 		return true
@@ -159,8 +235,9 @@ func isCompatibleType(base, curr types.JSONNodeType) bool {
 	if base == types.TypeUnknown || curr == types.TypeUnknown {
 		return true
 	}
-	// Integer to float can be compatible in loose JSON contexts, but integer to string is NOT!
-	if base == types.TypeInteger && curr == types.TypeNumber {
+	// Integer to float can be compatible in loose JSON contexts (BOTH directions)
+	if (base == types.TypeInteger && curr == types.TypeNumber) ||
+		(base == types.TypeNumber && curr == types.TypeInteger) {
 		return true
 	}
 	return false
