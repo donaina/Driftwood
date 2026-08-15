@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -24,13 +25,14 @@ import (
 )
 
 type Proxy struct {
-	targetURL    atomic.Pointer[url.URL]
-	store        *storage.Store
-	hub          *events.Hub
-	mockCtrl     *mock.MockController
-	transport    *http.Transport
-	server       *http.Server
-	allowPrivate bool // for testing/dev - bypass SSRF for private IPs
+	targetURL       atomic.Pointer[url.URL]
+	store           *storage.Store
+	hub             *events.Hub
+	mockCtrl        *mock.MockController
+	transport       *http.Transport
+	server          *http.Server
+	allowPrivate    bool // for testing/dev - bypass SSRF for private IPs
+	droppedAlerts   int64 // counter for dropped breaking alerts
 }
 
 func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
@@ -40,10 +42,10 @@ func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mo
 	}
 
 	p := &Proxy{
-		store:     store,
-		hub:       hub,
-		mockCtrl:  mockCtrl,
-		transport: newTransport(),
+		store:        store,
+		hub:          hub,
+		mockCtrl:     mockCtrl,
+		transport:    newTransport(),
 		allowPrivate: false,
 	}
 	p.targetURL.Store(parsed)
@@ -96,7 +98,6 @@ func parseAndValidateTarget(raw string, allowPrivate bool) (*url.URL, error) {
 		return nil, fmt.Errorf("URL must have a host")
 	}
 
-	// Block SSRF: reject localhost, private IPs, metadata endpoints (unless allowed)
 	if !allowPrivate && isBlockedHost(parsed.Hostname()) {
 		return nil, fmt.Errorf("target host %q is blocked (SSRF protection)", parsed.Hostname())
 	}
@@ -104,29 +105,23 @@ func parseAndValidateTarget(raw string, allowPrivate bool) (*url.URL, error) {
 }
 
 func isBlockedHost(host string) bool {
-	// localhost variants
 	if host == "localhost" || host == "localhost.localdomain" || host == "ip6-localhost" {
 		return true
 	}
-	// loopback
 	if host == "127.0.0.1" || host == "::1" || strings.HasPrefix(host, "127.") {
 		return true
 	}
-	// link-local
 	if host == "169.254.169.254" || strings.HasPrefix(host, "169.254.") {
 		return true
 	}
-	// IPv6 link-local
 	if strings.HasPrefix(host, "fe80::") {
 		return true
 	}
-	// RFC 1918 private ranges
 	ip := net.ParseIP(host)
 	if ip != nil {
 		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 			return true
 		}
-		// 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 		if ip4 := ip.To4(); ip4 != nil {
 			if ip4[0] == 10 ||
 				(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) ||
@@ -151,7 +146,6 @@ func (p *Proxy) getTargetURL() *url.URL {
 	return p.targetURL.Load()
 }
 
-// GetTargetURLForTest returns the atomic pointer for test manipulation
 func (p *Proxy) GetTargetURLForTest() *atomic.Pointer[url.URL] {
 	return &p.targetURL
 }
@@ -160,8 +154,7 @@ func (p *Proxy) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Read request body (streaming with limit)
-		reqBodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 10<<20)) // 10MB limit
+		reqBodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
 		if err != nil {
 			http.Error(w, "failed to read request body", http.StatusBadRequest)
 			return
@@ -173,13 +166,11 @@ func (p *Proxy) Handler() http.HandlerFunc {
 			reqHeaders[k] = strings.Join(v, ", ")
 		}
 
-		// Handle built-in mock endpoint
 		if strings.HasPrefix(r.URL.Path, "/_driftwood/mock/") {
 			p.serveMockResponse(w, r, start, reqBodyBytes, reqHeaders)
 			return
 		}
 
-		// Proxy request to target server
 		p.executeProxyCall(w, r, start, reqBodyBytes, reqHeaders)
 	}
 }
@@ -191,7 +182,6 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 		return
 	}
 
-	// Create single host reverse proxy (reuse)
 	revProxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(target)
@@ -210,12 +200,24 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 			respHeaders[k] = strings.Join(v, ", ")
 		}
 
-		// Stream response body with limit (don't buffer whole body if large)
+		// Read body with limit
 		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 		if err != nil {
 			return err
 		}
 		_ = resp.Body.Close()
+
+		// Decompress gzip if present (Content-Encoding: gzip)
+		if ce := resp.Header.Get("Content-Encoding"); strings.Contains(strings.ToLower(ce), "gzip") {
+			decompressed, err := decompressGzip(bodyBytes)
+			if err != nil {
+				log.Printf("[Driftwood] gzip decompress error: %v", err)
+			} else {
+				bodyBytes = decompressed
+				// Remove Content-Encoding since we decompressed
+				respHeaders["Content-Encoding"] = "identity"
+			}
+		}
 
 		respBodyBuf.Write(bodyBytes)
 		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
@@ -225,11 +227,18 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 	revProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("[Driftwood Proxy Error] %v", err)
 
+		// Check if dev mock mode is enabled
+		cfg := p.store.GetConfig()
+		if cfg.DevMockMode {
+			log.Printf("[Driftwood] DevMockMode enabled, serving mock response")
+			p.serveMockResponse(w, r, time.Now(), nil, nil)
+			return
+		}
+
 		// Return 502 instead of silently falling back to mock
 		http.Error(w, "Bad Gateway: target unreachable", http.StatusBadGateway)
 	}
 
-	// Capture response writer
 	recWriter := &responseRecorder{
 		ResponseWriter: w,
 		statusCode:     http.StatusOK,
@@ -238,26 +247,32 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 
 	revProxy.ServeHTTP(recWriter, r)
 
-	// Process captured transaction if handled by revProxy
-	// Also capture 204/empty responses (key on completion, not body length)
-	if true { // always process for sniffing
-		duration := time.Since(start).Milliseconds()
-		respStr := respBodyBuf.String()
-		isJSON := isJSONContent(respHeaders, respStr)
+	// Process captured transaction (always process for sniffing, including 204/empty)
+	duration := time.Since(start).Milliseconds()
+	respStr := respBodyBuf.String()
+	isJSON := isJSONContent(respHeaders, respStr)
 
-		p.processAndStoreTraffic(
-			r.Method,
-			r.URL.Path,
-			r.URL.String(),
-			respStatusCode,
-			duration,
-			reqHeaders,
-			respHeaders,
-			string(reqBodyBytes),
-			respStr,
-			isJSON,
-		)
+	p.processAndStoreTraffic(
+		r.Method,
+		r.URL.Path,
+		r.URL.String(),
+		respStatusCode,
+		duration,
+		reqHeaders,
+		respHeaders,
+		string(reqBodyBytes),
+		respStr,
+		isJSON,
+	)
+}
+
+func decompressGzip(data []byte) ([]byte, error) {
+	gr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
 	}
+	defer gr.Close()
+	return io.ReadAll(gr)
 }
 
 func (p *Proxy) serveMockResponse(w http.ResponseWriter, r *http.Request, start time.Time, reqBodyBytes []byte, reqHeaders map[string]string) {
@@ -302,10 +317,10 @@ func (p *Proxy) processAndStoreTraffic(
 	contractStatus := "NO_BASELINE"
 	var contractDiff *types.ContractDiff
 
-	// Sanitize headers BEFORE any processing/storage
 	sanitizedReqHeaders := sanitizeHeaders(reqHeaders)
 	sanitizedRespHeaders := sanitizeHeaders(respHeaders)
 
+	// For 204/empty responses, still process if we have a baseline to check
 	if isJSON && strings.TrimSpace(respBody) != "" {
 		baseline, exists := p.store.GetBaseline(method, path)
 		if !exists {
@@ -327,9 +342,27 @@ func (p *Proxy) processAndStoreTraffic(
 				}
 			}
 		}
+	} else if statusCode == http.StatusNoContent {
+		// For 204 No Content, still check if we have a baseline to detect contract violation
+		_, exists := p.store.GetBaseline(method, path)
+		if exists {
+			contractStatus = "BREAKING" // expected body but got none
+			contractDiff = &types.ContractDiff{
+				HasBreakingChanges: true,
+				Deltas: []types.DiffDelta{
+					{
+						JSONPath: "$",
+						Kind:     types.KindTypeMismatch,
+						Severity: types.SeverityBreaking,
+						Message:  "expected response body but received 204 No Content",
+						Expected: "JSON body",
+						Actual:   "<empty>",
+					},
+				},
+			}
+		}
 	}
 
-	// Apply sanitization to request/response bodies (PII in bodies)
 	sanitizedReqBody := capture.SanitizeBody(reqBody)
 	sanitizedRespBody := capture.SanitizeBody(respBody)
 
@@ -350,19 +383,20 @@ func (p *Proxy) processAndStoreTraffic(
 		Diff:            contractDiff,
 	}
 
-	// Additional sanitization pass on the full traffic object
 	capture.SanitizeTraffic(&traffic)
 
 	p.store.AddTraffic(traffic)
 	p.hub.Publish("traffic", traffic)
 
 	if contractDiff != nil && contractDiff.HasBreakingChanges {
-		p.hub.Publish("alert", map[string]interface{}{
+		alertData := map[string]interface{}{
 			"traffic_id":      traffic.ID,
 			"endpoint":        fmt.Sprintf("%s %s", method, path),
 			"contract_status": contractStatus,
 			"diff":            contractDiff,
-		})
+		}
+		// Hub.Publish already handles non-blocking with dropped counter
+		p.hub.Publish("alert", alertData)
 	}
 }
 
@@ -431,4 +465,9 @@ func (p *Proxy) Shutdown(ctx context.Context) error {
 		return p.server.Shutdown(ctx)
 	}
 	return nil
+}
+
+// DroppedAlerts returns the count of dropped alerts
+func (p *Proxy) DroppedAlerts() int64 {
+	return atomic.LoadInt64(&p.droppedAlerts)
 }
