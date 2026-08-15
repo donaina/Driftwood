@@ -24,6 +24,7 @@ type JSONSchemaNode struct {
 	ItemSchema   *JSONSchemaNode            `json:"item_schema,omitempty"`
 	SampleValue  interface{}                `json:"sample_value,omitempty"`
 	RequiredKeys []string                   `json:"required_keys,omitempty"`
+	Format       string                     `json:"format,omitempty"` // date, date-time, uuid, email
 }
 
 // DiffSeverity classifies the impact of a schema diff
