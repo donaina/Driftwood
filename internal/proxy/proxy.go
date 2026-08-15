@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -395,7 +396,41 @@ func (p *Proxy) processAndStoreTraffic(
 			"contract_status": contractStatus,
 			"diff":            contractDiff,
 		}
-		// Hub.Publish already handles non-blocking with dropped counter
+
+		// Call AI explainer sidecar for breaking changes (async, non-blocking)
+		go func() {
+			// Get baseline if exists
+			var baselineSample string
+			baseline, hasBaseline := p.store.GetBaseline(method, path)
+			if hasBaseline && baseline != nil {
+				baselineSample = baseline.SamplePayload
+			}
+
+			url := "http://localhost:8788/explain"
+			deltas, _ := json.Marshal(contractDiff.Deltas)
+			body := map[string]interface{}{
+				"endpoint":       fmt.Sprintf("%s %s", method, path),
+				"deltas":         json.RawMessage(deltas),
+				"baseline_sample": baselineSample,
+				"current_sample": respBody,
+			}
+			bodyBytes, _ := json.Marshal(body)
+			req, _ := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+
+			client := &http.Client{Timeout: 8 * time.Second}
+			resp, err := client.Do(req)
+			if err == nil && resp.StatusCode == 200 {
+				var aiResp map[string]interface{}
+				if json.NewDecoder(resp.Body).Decode(&aiResp) == nil {
+					alertData["ai_explanation"] = aiResp
+				}
+				resp.Body.Close()
+			} else if resp != nil {
+				resp.Body.Close()
+			}
+		}()
+
 		p.hub.Publish("alert", alertData)
 	}
 }
