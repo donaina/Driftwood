@@ -36,8 +36,12 @@ func (s *Server) Router() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// CORS headers for local DevTools or API integration
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// CORS: only allow localhost origins (security)
+		origin := r.Header.Get("Origin")
+		if isAllowedOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Driftwood-Target")
 
@@ -227,4 +231,22 @@ func (s *Server) handleMockMode(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"mode": s.mockCtrl.GetMode(),
 	})
+}
+
+// isAllowedOrigin returns true if the origin is localhost (security: no wildcard CORS)
+func isAllowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	allowed := []string{
+		"http://localhost:8787",
+		"http://127.0.0.1:8787",
+		"http://[::1]:8787",
+	}
+	for _, a := range allowed {
+		if origin == a {
+			return true
+		}
+	}
+	return false
 }

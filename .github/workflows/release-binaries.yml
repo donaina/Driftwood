@@ -30,6 +30,12 @@ jobs:
           GOOS=darwin GOARCH=arm64 go build -o dist/drift-darwin-arm64 cmd/drift/main.go
           GOOS=windows GOARCH=amd64 go build -o dist/drift-windows-amd64.exe cmd/drift/main.go
 
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:

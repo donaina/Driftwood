@@ -20,12 +20,13 @@ type Store struct {
 	config      types.ProxyConfig
 	maxTraffics int
 	persistPath string
+	writeMx     sync.Mutex // separate lock for file writes to avoid holding main lock
 }
 
 func NewStore(targetURL, proxyPort string) *Store {
 	homeDir, _ := os.UserHomeDir()
 	persistDir := filepath.Join(homeDir, ".driftwood")
-	_ = os.MkdirAll(persistDir, 0755)
+	_ = os.MkdirAll(persistDir, 0700) // secure perms
 
 	s := &Store{
 		traffics:    make([]types.CapturedTraffic, 0),
@@ -61,10 +62,11 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.traffics = append([]types.CapturedTraffic{t}, s.traffics...)
-	if len(s.traffics) > s.maxTraffics {
-		s.traffics = s.traffics[:s.maxTraffics]
+	traffics := append([]types.CapturedTraffic{t}, s.traffics...)
+	if len(traffics) > s.maxTraffics {
+		traffics = traffics[:s.maxTraffics]
 	}
+	s.traffics = traffics
 
 	if t.Diff != nil && len(t.Diff.Deltas) > 0 {
 		for _, d := range t.Diff.Deltas {
@@ -96,21 +98,60 @@ func (s *Store) ClearTraffic() {
 	s.traffics = make([]types.CapturedTraffic, 0)
 }
 
+// GetBaseline returns a COPY to avoid pointer aliasing
 func (s *Store) GetBaseline(method, path string) (*types.ContractBaseline, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	key := fmt.Sprintf("%s:%s", method, path)
 	b, exists := s.baselines[key]
-	return b, exists
+	if !exists {
+		return nil, false
+	}
+	// Return copy
+	copy := *b
+	// Deep copy schema
+	copy.Schema = deepCopySchema(b.Schema)
+	return &copy, true
+}
+
+// GetAllBaselines returns copies to avoid pointer aliasing
+func (s *Store) GetAllBaselines() []*types.ContractBaseline {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	list := make([]*types.ContractBaseline, 0, len(s.baselines))
+	for _, b := range s.baselines {
+		copy := *b
+		copy.Schema = deepCopySchema(b.Schema)
+		list = append(list, &copy)
+	}
+	return list
+}
+
+func deepCopySchema(node *types.JSONSchemaNode) *types.JSONSchemaNode {
+	if node == nil {
+		return nil
+	}
+	copy := *node
+	if node.Properties != nil {
+		copy.Properties = make(map[string]*types.JSONSchemaNode, len(node.Properties))
+		for k, v := range node.Properties {
+			copy.Properties[k] = deepCopySchema(v)
+		}
+	}
+	if node.ItemSchema != nil {
+		copy.ItemSchema = deepCopySchema(node.ItemSchema)
+	}
+	return &copy
 }
 
 func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.ContractBaseline, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	inferredSchema, err := schema.InferFromJSON(samplePayload)
 	if err != nil {
+		s.mu.Unlock()
 		return nil, fmt.Errorf("invalid payload JSON: %w", err)
 	}
 
@@ -141,28 +182,39 @@ func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.Contrac
 	}
 
 	s.baselines[key] = cb
-	_ = s.saveBaselinesToFileUnsafe()
+
+	// Marshal under lock, write outside lock
+	var data []byte
+	data, err = json.MarshalIndent(s.baselines, "", "  ")
+	s.mu.Unlock()
+
+	if err != nil {
+		return nil, fmt.Errorf("marshal failed: %w", err)
+	}
+
+	// Atomic write: temp file + rename
+	if err := atomicWriteFile(s.persistPath, data, 0600); err != nil {
+		return nil, fmt.Errorf("atomic write failed: %w", err)
+	}
 	return cb, nil
 }
 
 func (s *Store) DeleteBaseline(method, path string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	key := fmt.Sprintf("%s:%s", method, path)
 	delete(s.baselines, key)
-	_ = s.saveBaselinesToFileUnsafe()
-}
 
-func (s *Store) GetAllBaselines() []*types.ContractBaseline {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	// Marshal under lock
+	var data []byte
+	var err error
+	data, err = json.MarshalIndent(s.baselines, "", "  ")
+	s.mu.Unlock()
 
-	list := make([]*types.ContractBaseline, 0, len(s.baselines))
-	for _, b := range s.baselines {
-		list = append(list, b)
+	if err != nil {
+		return
 	}
-	return list
+	// Atomic write outside lock
+	_ = atomicWriteFile(s.persistPath, data, 0600)
 }
 
 func (s *Store) GetAlerts(limit int) []types.DiffDelta {
@@ -177,18 +229,45 @@ func (s *Store) GetAlerts(limit int) []types.DiffDelta {
 	return res
 }
 
-func (s *Store) saveBaselinesToFileUnsafe() error {
-	data, err := json.MarshalIndent(s.baselines, "", "  ")
+// atomicWriteFile writes to a temp file then renames (atomic on POSIX)
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmpFile, err := os.CreateTemp(dir, ".baselines.*.tmp")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.persistPath, data, 0644)
+	tmpName := tmpFile.Name()
+	defer func() {
+		_ = os.Remove(tmpName)
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func (s *Store) loadBaselinesFromFile() error {
 	data, err := os.ReadFile(s.persistPath)
 	if err != nil {
+		return err // file doesn't exist is OK
+	}
+	// Use a temp map to avoid partial state on corrupt file
+	var baselines map[string]*types.ContractBaseline
+	if err := json.Unmarshal(data, &baselines); err != nil {
+		// Backup corrupt file
+		_ = os.Rename(s.persistPath, s.persistPath+".corrupt."+time.Now().Format("20060102-150405"))
 		return err
 	}
-	return json.Unmarshal(data, &s.baselines)
+	s.mu.Lock()
+	s.baselines = baselines
+	s.mu.Unlock()
+	return nil
 }
