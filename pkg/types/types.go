@@ -112,6 +112,7 @@ type ProxyConfig struct {
 	ProxyPort        string `json:"proxy_port"`
 	AutoSaveBaseline bool   `json:"auto_save_baseline"`
 	InterceptJSON    bool   `json:"intercept_json"`
+	DevMockMode      bool   `json:"dev_mock_mode"` // enable mock fallback for dev
 }
 
 // EventMessage represents real-time updates broadcast to WebSocket/SSE clients
