@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/donaina/driftwood/pkg/types"
 )
 
 type Hub struct {
-	mu        sync.RWMutex
-	clients   map[chan []byte]bool
-	broadcast chan []byte
+	mu              sync.RWMutex
+	clients         map[chan []byte]bool
+	broadcast       chan []byte
+	droppedAlerts   int64 // counter for dropped alerts
 }
 
 func NewHub() *Hub {
@@ -54,14 +56,29 @@ func (h *Hub) Publish(eventType string, data interface{}) {
 	select {
 	case h.broadcast <- payload:
 	default:
+		// Broadcast channel full - log drop
+		if eventType == "alert" {
+			atomic.AddInt64(&h.droppedAlerts, 1)
+		}
 	}
 }
 
+// DroppedAlerts returns the count of dropped alerts
+func (h *Hub) DroppedAlerts() int64 {
+	return atomic.LoadInt64(&h.droppedAlerts)
+}
+
 func (h *Hub) SSEHandler(w http.ResponseWriter, r *http.Request) {
+	// CORS: only localhost (same as API)
+	origin := r.Header.Get("Origin")
+	if isAllowedOrigin(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -99,4 +116,22 @@ func (h *Hub) SSEHandler(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// isAllowedOrigin returns true if the origin is localhost (security: no wildcard CORS)
+func isAllowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	allowed := []string{
+		"http://localhost:8787",
+		"http://127.0.0.1:8787",
+		"http://[::1]:8787",
+	}
+	for _, a := range allowed {
+		if origin == a {
+			return true
+		}
+	}
+	return false
 }
