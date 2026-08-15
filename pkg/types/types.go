@@ -77,6 +77,17 @@ type ContractBaseline struct {
 	RequestCount  int64           `json:"request_count"`
 }
 
+// EndpointHistory stores versioned history for a single endpoint
+type EndpointHistory struct {
+	Method        string             `json:"method"`
+	Path          string             `json:"path"`
+	Versions      []*ContractBaseline `json:"versions"`
+	LockedVersion int                `json:"locked_version"` // 0 = latest, else specific version
+	ObservationCount int64           `json:"observation_count"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+}
+
 // CapturedTraffic holds full metadata for an intercepted HTTP transaction
 type CapturedTraffic struct {
 	ID              string            `json:"id"`

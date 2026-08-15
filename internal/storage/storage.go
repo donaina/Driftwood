@@ -13,27 +13,31 @@ import (
 )
 
 type Store struct {
-	mu          sync.RWMutex
-	traffics    []types.CapturedTraffic
-	baselines   map[string]*types.ContractBaseline // Key: "METHOD:PATH"
-	alerts      []types.DiffDelta
-	config      types.ProxyConfig
-	maxTraffics int
-	persistPath string
-	writeMx     sync.Mutex // separate lock for file writes to avoid holding main lock
+	mu           sync.RWMutex
+	traffics     []types.CapturedTraffic
+	histories    map[string]*types.EndpointHistory // Key: "METHOD:PATH"
+	alerts       []types.DiffDelta
+	config       types.ProxyConfig
+	maxTraffics  int
+	maxAlerts    int
+	persistPath  string
+	persistDir   string
+	writeMx      sync.Mutex // separate lock for file writes
 }
 
 func NewStore(targetURL, proxyPort string) *Store {
 	homeDir, _ := os.UserHomeDir()
 	persistDir := filepath.Join(homeDir, ".driftwood")
-	_ = os.MkdirAll(persistDir, 0700) // secure perms
+	_ = os.MkdirAll(persistDir, 0700)
 
 	s := &Store{
 		traffics:    make([]types.CapturedTraffic, 0),
-		baselines:   make(map[string]*types.ContractBaseline),
+		histories:   make(map[string]*types.EndpointHistory),
 		alerts:      make([]types.DiffDelta, 0),
 		maxTraffics: 500,
+		maxAlerts:   200,
 		persistPath: filepath.Join(persistDir, "baselines.json"),
+		persistDir:  persistDir,
 		config: types.ProxyConfig{
 			TargetURL:        targetURL,
 			ProxyPort:        proxyPort,
@@ -42,7 +46,7 @@ func NewStore(targetURL, proxyPort string) *Store {
 		},
 	}
 
-	_ = s.loadBaselinesFromFile()
+	_ = s.loadHistoriesFromFile()
 	return s
 }
 
@@ -74,8 +78,8 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 				s.alerts = append([]types.DiffDelta{d}, s.alerts...)
 			}
 		}
-		if len(s.alerts) > 200 {
-			s.alerts = s.alerts[:200]
+		if len(s.alerts) > s.maxAlerts {
+			s.alerts = s.alerts[:s.maxAlerts]
 		}
 	}
 }
@@ -98,33 +102,83 @@ func (s *Store) ClearTraffic() {
 	s.traffics = make([]types.CapturedTraffic, 0)
 }
 
-// GetBaseline returns a COPY to avoid pointer aliasing
+// GetBaseline returns a COPY of the latest (or locked) version
 func (s *Store) GetBaseline(method, path string) (*types.ContractBaseline, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	key := fmt.Sprintf("%s:%s", method, path)
-	b, exists := s.baselines[key]
-	if !exists {
+	h, exists := s.histories[key]
+	if !exists || len(h.Versions) == 0 {
 		return nil, false
 	}
-	// Return copy
+
+	versionIdx := h.LockedVersion
+	if versionIdx <= 0 || versionIdx > len(h.Versions) {
+		versionIdx = len(h.Versions) - 1 // latest (0-indexed)
+	} else {
+		versionIdx-- // convert to 0-based
+	}
+
+	b := h.Versions[versionIdx]
 	copy := *b
-	// Deep copy schema
 	copy.Schema = deepCopySchema(b.Schema)
 	return &copy, true
 }
 
-// GetAllBaselines returns copies to avoid pointer aliasing
+// GetHistory returns the full version history for an endpoint
+func (s *Store) GetHistory(method, path string) (*types.EndpointHistory, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	key := fmt.Sprintf("%s:%s", method, path)
+	h, exists := s.histories[key]
+	if !exists {
+		return nil, false
+	}
+
+	// Return deep copy
+	copy := *h
+	copy.Versions = make([]*types.ContractBaseline, len(h.Versions))
+	for i, v := range h.Versions {
+		vc := *v
+		vc.Schema = deepCopySchema(v.Schema)
+		copy.Versions[i] = &vc
+	}
+	return &copy, true
+}
+
+// GetAllHistories returns all endpoint histories (copies)
+func (s *Store) GetAllHistories() []*types.EndpointHistory {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	list := make([]*types.EndpointHistory, 0, len(s.histories))
+	for _, h := range s.histories {
+		copy := *h
+		copy.Versions = make([]*types.ContractBaseline, len(h.Versions))
+		for i, v := range h.Versions {
+			vc := *v
+			vc.Schema = deepCopySchema(v.Schema)
+			copy.Versions[i] = &vc
+		}
+		list = append(list, &copy)
+	}
+	return list
+}
+
 func (s *Store) GetAllBaselines() []*types.ContractBaseline {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	list := make([]*types.ContractBaseline, 0, len(s.baselines))
-	for _, b := range s.baselines {
-		copy := *b
-		copy.Schema = deepCopySchema(b.Schema)
-		list = append(list, &copy)
+	list := make([]*types.ContractBaseline, 0, len(s.histories))
+	for _, h := range s.histories {
+		if len(h.Versions) > 0 {
+			v := h.Versions[len(h.Versions)-1] // latest
+			copy := *v
+			copy.Schema = deepCopySchema(v.Schema)
+			list = append(list, &copy)
+		}
 	}
 	return list
 }
@@ -156,13 +210,35 @@ func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.Contrac
 	}
 
 	key := fmt.Sprintf("%s:%s", method, path)
-	existing, exists := s.baselines[key]
+	h, exists := s.histories[key]
+	now := time.Now()
 
-	version := 1
-	var reqCount int64 = 1
-	if exists {
-		version = existing.Version + 1
-		reqCount = existing.RequestCount + 1
+	if !exists {
+		h = &types.EndpointHistory{
+			Method:           method,
+			Path:             path,
+			Versions:         make([]*types.ContractBaseline, 0),
+			LockedVersion:    0,
+			ObservationCount: 0,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+		s.histories[key] = h
+	}
+
+	// Update frequency-based required keys if this is an object
+	if inferredSchema.Type == types.TypeObject && inferredSchema.Properties != nil {
+		h.ObservationCount++
+		for k := range inferredSchema.Properties {
+			// Track field presence frequency
+			inferredSchema.Properties[k].SampleValue = nil // we'll track separately
+		}
+	}
+
+	version := len(h.Versions) + 1
+	reqCount := int64(1)
+	if len(h.Versions) > 0 {
+		reqCount = h.Versions[len(h.Versions)-1].RequestCount + 1
 	}
 
 	cb := &types.ContractBaseline{
@@ -171,49 +247,70 @@ func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.Contrac
 		Path:          path,
 		Schema:        inferredSchema,
 		SamplePayload: samplePayload,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		CreatedAt:     now,
+		UpdatedAt:     now,
 		Version:       version,
 		RequestCount:  reqCount,
 	}
 
-	if exists {
-		cb.CreatedAt = existing.CreatedAt
+	if len(h.Versions) > 0 {
+		last := h.Versions[len(h.Versions)-1]
+		cb.CreatedAt = last.CreatedAt
 	}
 
-	s.baselines[key] = cb
+	h.Versions = append(h.Versions, cb)
+	h.UpdatedAt = now
 
-	// Marshal under lock, write outside lock
+	// Marshal under lock
 	var data []byte
-	data, err = json.MarshalIndent(s.baselines, "", "  ")
+	data, err = json.MarshalIndent(s.histories, "", "  ")
 	s.mu.Unlock()
 
 	if err != nil {
 		return nil, fmt.Errorf("marshal failed: %w", err)
 	}
 
-	// Atomic write: temp file + rename
+	// Atomic write
 	if err := atomicWriteFile(s.persistPath, data, 0600); err != nil {
 		return nil, fmt.Errorf("atomic write failed: %w", err)
 	}
 	return cb, nil
 }
 
+// SetLockedVersion pins an endpoint to a specific version
+func (s *Store) SetLockedVersion(method, path string, version int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s", method, path)
+	h, exists := s.histories[key]
+	if !exists {
+		return fmt.Errorf("endpoint not found")
+	}
+	if version < 0 || version > len(h.Versions) {
+		return fmt.Errorf("invalid version %d (have %d versions)", version, len(h.Versions))
+	}
+	h.LockedVersion = version
+	h.UpdatedAt = time.Now()
+
+	data, err := json.MarshalIndent(s.histories, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(s.persistPath, data, 0600)
+}
+
 func (s *Store) DeleteBaseline(method, path string) {
 	s.mu.Lock()
 	key := fmt.Sprintf("%s:%s", method, path)
-	delete(s.baselines, key)
+	delete(s.histories, key)
 
-	// Marshal under lock
-	var data []byte
-	var err error
-	data, err = json.MarshalIndent(s.baselines, "", "  ")
+	data, err := json.MarshalIndent(s.histories, "", "  ")
 	s.mu.Unlock()
 
 	if err != nil {
 		return
 	}
-	// Atomic write outside lock
 	_ = atomicWriteFile(s.persistPath, data, 0600)
 }
 
@@ -229,7 +326,6 @@ func (s *Store) GetAlerts(limit int) []types.DiffDelta {
 	return res
 }
 
-// atomicWriteFile writes to a temp file then renames (atomic on POSIX)
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmpFile, err := os.CreateTemp(dir, ".baselines.*.tmp")
@@ -254,20 +350,21 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-func (s *Store) loadBaselinesFromFile() error {
+func (s *Store) loadHistoriesFromFile() error {
 	data, err := os.ReadFile(s.persistPath)
 	if err != nil {
 		return err // file doesn't exist is OK
 	}
-	// Use a temp map to avoid partial state on corrupt file
-	var baselines map[string]*types.ContractBaseline
-	if err := json.Unmarshal(data, &baselines); err != nil {
+
+	var histories map[string]*types.EndpointHistory
+	if err := json.Unmarshal(data, &histories); err != nil {
 		// Backup corrupt file
 		_ = os.Rename(s.persistPath, s.persistPath+".corrupt."+time.Now().Format("20060102-150405"))
 		return err
 	}
+
 	s.mu.Lock()
-	s.baselines = baselines
+	s.histories = histories
 	s.mu.Unlock()
 	return nil
 }
