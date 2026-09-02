@@ -57,6 +57,28 @@ type DiffDelta struct {
 	Actual   string       `json:"actual"`
 }
 
+// AlertWithExplanation extends DiffDelta with an optional AI-generated explanation
+type AlertWithExplanation struct {
+	DiffDelta
+	AIExplanation *string `json:"ai_explanation,omitempty"`
+}
+
+// StoredAlert represents an alert stored for retrieval via the API
+type StoredAlert struct {
+	TrafficID string
+	DiffDelta
+	AIExplanation *string `json:"ai_explanation,omitempty"`
+}
+
+// Alert represents a contract alert with optional AI explanation
+type Alert struct {
+	TrafficID      string          `json:"traffic_id"`
+	Endpoint       string          `json:"endpoint"`
+	ContractStatus string          `json:"contract_status"`
+	Diff           *ContractDiff   `json:"diff,omitempty"`
+	AIExplanation  map[string]interface{} `json:"ai_explanation,omitempty"`
+}
+
 // ContractDiff contains all diff deltas for a response
 type ContractDiff struct {
 	HasBreakingChanges bool        `json:"has_breaking_changes"`

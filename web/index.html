@@ -634,6 +634,9 @@
         <div class="nav-item" onclick="switchTab('baselines')" id="nav-baselines">
           📋 Endpoint Baselines
         </div>
+        <div class="nav-item" onclick="switchTab('history')" id="nav-history">
+          📜 Version History
+        </div>
         <div class="nav-item" onclick="switchTab('alerts')" id="nav-alerts">
           🚨 Contract Alerts
         </div>
@@ -710,7 +713,20 @@
         </div>
       </div>
 
-      <!-- View 3: Alerts -->
+      <!-- View 3: History -->
+      <div class="view-panel" id="view-history">
+        <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="font-size: 1rem;">Version History Browser</h3>
+          <button class="btn btn-primary" onclick="loadHistories()" style="font-size: 0.8rem;">
+            🔄 Refresh History
+          </button>
+        </div>
+        <div id="histories-container" style="display: grid; gap: 1rem;">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- View 4: Alerts -->
       <div class="view-panel" id="view-alerts">
         <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detected Contract Violations</h3>
         <div id="alerts-container" style="display: grid; gap: 0.75rem;">
@@ -718,7 +734,7 @@
         </div>
       </div>
 
-      <!-- View 4: Settings -->
+      <!-- View 5: Settings -->
       <div class="view-panel" id="view-settings">
         <div
           style="background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-color); max-width: 550px;">
@@ -933,6 +949,20 @@
 
       container.innerHTML = alertsHistory.map(a => {
         const severityClass = a.severity === 'BREAKING' ? 'delta-item' : 'delta-item warning';
+        let aiExplanationHTML = '';
+        if (a.AIExplanation && Object.keys(a.AIExplanation).length > 0) {
+          const ai = a.AIExplanation;
+          aiExplanationHTML = `
+            <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(16, 185, 129, 0.1); border-left: 3px solid var(--color-match); border-radius: 4px; font-size: 0.85rem;">
+              <div style="font-weight: 600; margin-bottom: 0.25rem;">AI Explanation:</div>
+              <div><strong>Summary:</strong> ${escapeHtml(ai.summary || '')}</div>
+              <div><strong>Impact:</strong> ${escapeHtml(ai.impact || '')}</div>
+              <div><strong>Root Cause:</strong> ${escapeHtml(ai.root_cause || '')}</div>
+              <div><strong>Suggested Action:</strong> ${escapeHtml(ai.suggested_action || '')}</div>
+              <div style="margin-top: 0.25rem;"><strong>Confidence:</strong> ${(ai.confidence || 0).toFixed(2)}</div>
+            </div>
+          `;
+        }
         return `
           <div class="${severityClass}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
@@ -940,6 +970,7 @@
               <span style="font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">${a.severity}</span>
             </div>
             <div>${escapeHtml(a.message)}</div>
+            ${aiExplanationHTML}
           </div>
         `;
       }).join('');
@@ -1058,6 +1089,11 @@
 
       document.getElementById(`nav-${tabName}`).classList.add('active');
       document.getElementById(`view-${tabName}`).classList.add('active');
+
+      // Auto-load histories when switching to history tab
+      if (tabName === 'history') {
+        loadHistories();
+      }
     }
 
     function showToast(title, msg) {
@@ -1075,6 +1111,63 @@
       setTimeout(() => {
         toast.remove();
       }, 5000);
+    }
+
+    // History functions
+    async function loadHistories() {
+      try {
+        const res = await fetch('/_driftwood/api/histories');
+        const histories = await res.json() || [];
+        renderHistories(histories);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('histories-container').innerHTML = `
+          <div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+            Error loading history data
+          </div>
+        `;
+      }
+    }
+
+    function renderHistories(histories) {
+      const container = document.getElementById('histories-container');
+      if (histories.length === 0) {
+        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">No baseline contracts found. History will appear as you track API traffic.</div>`;
+        return;
+      }
+
+      container.innerHTML = histories.map(h => {
+        return `
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+              <div>
+                <span class="method-badge method-${h.Method.toLowerCase()}">${h.Method}</span>
+                <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${h.Path}</span>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Versions: ${h.Versions.length}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Observations: ${h.ObservationCount}</div>
+              </div>
+            </div>
+            <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
+              ${h.Versions.map((v, index) => `
+                <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(30, 41, 59, 0.2);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 600; font-size: 0.9rem;">Version ${v.Version}</span>
+                    <span style="font-size: 0.75rem; color: ${v.Version === h.LockedVersion ? 'var(--accent-blue)' : 'var(--text-muted)'};">
+                      ${v.Version === h.LockedVersion ? '(LOCKED)' : ''}
+                    </span>
+                  </div>
+                  <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    ${new Date(v.CreatedAt).toLocaleString()}
+                  </div>
+                  <pre class="code-box" style="max-height: 200px;">${escapeHtml(v.SamplePayload || '{}')}</pre>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     function escapeHtml(str) {

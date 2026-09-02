@@ -16,7 +16,8 @@ type Store struct {
 	mu           sync.RWMutex
 	traffics     []types.CapturedTraffic
 	histories    map[string]*types.EndpointHistory // Key: "METHOD:PATH"
-	alerts       []types.DiffDelta
+	alerts       map[string]*types.Alert
+	alertOrder   []string
 	config       types.ProxyConfig
 	maxTraffics  int
 	maxAlerts    int
@@ -33,7 +34,8 @@ func NewStore(targetURL, proxyPort string) *Store {
 	s := &Store{
 		traffics:    make([]types.CapturedTraffic, 0),
 		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make([]types.DiffDelta, 0),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
 		maxTraffics: 500,
 		maxAlerts:   200,
 		persistPath: filepath.Join(persistDir, "baselines.json"),
@@ -72,16 +74,33 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 	}
 	s.traffics = traffics
 
-	if t.Diff != nil && len(t.Diff.Deltas) > 0 {
-		for _, d := range t.Diff.Deltas {
-			if d.Severity == types.SeverityBreaking || d.Severity == types.SeverityWarning {
-				s.alerts = append([]types.DiffDelta{d}, s.alerts...)
-			}
+	if t.Diff != nil && (t.Diff.HasBreakingChanges || t.Diff.HasWarnings) {
+		alert := &types.Alert{
+			TrafficID:      t.ID,
+			Endpoint:       fmt.Sprintf("%s %s", t.Method, t.Path),
+			ContractStatus: t.ContractStatus,
+			Diff:           t.Diff,
+			AIExplanation:  nil,
 		}
-		if len(s.alerts) > s.maxAlerts {
-			s.alerts = s.alerts[:s.maxAlerts]
+		key := t.ID
+		s.alerts[key] = alert
+		s.alertOrder = append(s.alertOrder, key)
+		if len(s.alertOrder) > s.maxAlerts {
+			oldKey := s.alertOrder[0]
+			delete(s.alerts, oldKey)
+			s.alertOrder = s.alertOrder[1:]
 		}
 	}
+}
+
+func (s *Store) UpdateAlertAIExplanation(trafficID string, explanation map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if alert, exists := s.alerts[trafficID]; exists {
+		alert.AIExplanation = explanation
+		return nil
+	}
+	return fmt.Errorf("alert not found for trafficID: %s", trafficID)
 }
 
 func (s *Store) GetTraffics(limit int) []types.CapturedTraffic {
@@ -314,15 +333,31 @@ func (s *Store) DeleteBaseline(method, path string) {
 	_ = atomicWriteFile(s.persistPath, data, 0600)
 }
 
-func (s *Store) GetAlerts(limit int) []types.DiffDelta {
+func (s *Store) GetAlerts(limit int) []types.Alert {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if limit <= 0 || limit > len(s.alerts) {
-		limit = len(s.alerts)
+	if limit <= 0 {
+		return []types.Alert{}
 	}
-	res := make([]types.DiffDelta, limit)
-	copy(res, s.alerts[:limit])
+
+	// Determine how many to return
+	count := len(s.alertOrder)
+	if limit < count {
+		count = limit
+	}
+
+	// Create result slice
+	res := make([]types.Alert, 0, count)
+
+	// Iterate from most recent (end of alertOrder) to least recent
+	for i := len(s.alertOrder) - 1; i >= 0 && len(res) < count; i-- {
+		key := s.alertOrder[i]
+		if alert, exists := s.alerts[key]; exists {
+			res = append(res, *alert)
+		}
+	}
+
 	return res
 }
 

@@ -69,6 +69,8 @@ func (s *Server) Router() http.HandlerFunc {
 				s.handleConfig(w, r)
 			case path == "/_driftwood/api/alerts":
 				s.handleAlerts(w, r)
+			case path == "/_driftwood/api/histories":
+				s.handleHistories(w, r)
 			case path == "/_driftwood/api/export/typescript":
 				s.handleExportTypeScript(w, r)
 			case path == "/_driftwood/api/mock/mode":
@@ -170,6 +172,12 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	alerts := s.store.GetAlerts(50)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(alerts)
+}
+
+func (s *Server) handleHistories(w http.ResponseWriter, r *http.Request) {
+	histories := s.store.GetAllHistories()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(histories)
 }
 
 func (s *Server) handleExportTypeScript(w http.ResponseWriter, r *http.Request) {
