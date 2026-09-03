@@ -16,7 +16,7 @@ func TestStore_RoundTrip(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{
@@ -25,6 +25,7 @@ func TestStore_RoundTrip(t *testing.T) {
 			AutoSaveBaseline: true,
 			InterceptJSON:    true,
 		},
+		alertOrder:  make([]string, 0),
 	}
 
 	cb, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`)
@@ -38,7 +39,7 @@ func TestStore_RoundTrip(t *testing.T) {
 	s2 := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{
@@ -76,10 +77,11 @@ func TestStore_CorruptFileRecovery(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	err := s.loadHistoriesFromFile()
@@ -100,10 +102,11 @@ func TestStore_AtomicWrite(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	for i := 0; i < 10; i++ {
@@ -127,10 +130,11 @@ func TestStore_RingBufferTraffic(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 3,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	for i := 0; i < 5; i++ {
@@ -157,10 +161,11 @@ func TestStore_RingBufferAlerts(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	for i := 0; i < 250; i++ {
@@ -193,10 +198,11 @@ func TestStore_GetBaseline_ReturnsCopy(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`)
@@ -223,10 +229,11 @@ func TestStore_GetAllBaselines_ReturnsCopies(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1}`)
@@ -249,10 +256,11 @@ func TestStore_VersionedHistory(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	v1, _ := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "v1"}`)
@@ -280,10 +288,11 @@ func TestStore_VersionHistoryPreserved(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	// Save 3 versions
@@ -310,7 +319,7 @@ func TestStore_VersionHistoryPreserved(t *testing.T) {
 	s2 := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
@@ -330,10 +339,11 @@ func TestStore_SeedIfAbsent(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1, "locked": true}`)
@@ -352,10 +362,11 @@ func TestStore_FrequencyBasedRequiredKeys(t *testing.T) {
 	s := &Store{
 		traffics:   make([]types.CapturedTraffic, 0),
 		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make([]types.DiffDelta, 0),
+		alerts:     make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		alertOrder:  make([]string, 0),
 	}
 
 	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice", "email": "alice@example.com"}`)
