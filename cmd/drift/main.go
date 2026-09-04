@@ -39,6 +39,7 @@ func main() {
 	store := storage.NewStore(*target, *port)
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
+	// Use NewProxyForTest to allow private IPs (like 127.0.0.1) for local testing and VPS deployment
 
 	prx, err := proxy.NewProxyForTest(*target, store, hub, mockCtrl)
 	if err != nil {
