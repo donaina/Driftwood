@@ -40,7 +40,7 @@ func main() {
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
 
-	prx, err := proxy.NewProxy(*target, store, hub, mockCtrl)
+	prx, err := proxy.NewProxyForTest(*target, store, hub, mockCtrl)
 	if err != nil {
 		log.Fatalf("Failed to initialize proxy: %v", err)
 	}
