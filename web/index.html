@@ -8,22 +8,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
   <style>
     :root {
-      --bg-main: #0b0f19;
-      --bg-card: #111827;
-      --bg-hover: #1f293d;
-      --border-color: #1e293b;
-      --text-main: #f3f4f6;
-      --text-muted: #9ca3af;
-      --accent-blue: #3b82f6;
-      --accent-cyan: #06b6d4;
-      --color-match: #10b981;
-      --color-warning: #f59e0b;
-      --color-breaking: #ef4444;
-      --color-info: #6366f1;
+      --bg-main: #09090B;
+      --bg-card: #101014;
+      --bg-hover: #18181D;
+      --border-color: #1c1c1e;
+      --text-main: #e4e4e7;
+      --text-muted: #8e8e93;
+      --accent-healthy: #00c9a7;
+      --accent-warning: #ff9f0a;
+      --accent-breaking: #ff3b30;
+      --accent-info: #5ac8fa;
     }
 
     * {
@@ -35,7 +33,7 @@
     body {
       background-color: var(--bg-main);
       color: var(--text-main);
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -44,7 +42,7 @@
 
     /* Top Navbar */
     header {
-      background: rgba(17, 24, 39, 0.85);
+      background: rgba(16, 16, 20, 0.85);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border-color);
       padding: 0.85rem 1.5rem;
@@ -63,7 +61,7 @@
     }
 
     .brand-logo {
-      background: linear-gradient(135deg, #ef4444, #f59e0b);
+      background: var(--accent-healthy);
       width: 34px;
       height: 34px;
       border-radius: 8px;
@@ -71,18 +69,16 @@
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      color: #fff;
+      color: #09090B;
       font-size: 1.1rem;
-      box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
     }
 
     .brand-title {
       font-size: 1.25rem;
-      font-weight: 700;
+      font-weight: 600;
       letter-spacing: -0.02em;
-      background: linear-gradient(to right, #ffffff, #9ca3af);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      font-family: 'Geist', sans-serif;
+      color: var(--text-main);
     }
 
     .status-pill {
@@ -93,17 +89,17 @@
       border-radius: 9999px;
       font-size: 0.8rem;
       font-weight: 600;
-      background: rgba(16, 185, 129, 0.1);
-      color: var(--color-match);
-      border: 1px solid rgba(16, 185, 129, 0.25);
+      background: rgba(0, 201, 167, 0.1);
+      color: var(--accent-healthy);
+      border: 1px solid rgba(0, 201, 167, 0.25);
     }
 
     .status-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background-color: var(--color-match);
-      box-shadow: 0 0 8px var(--color-match);
+      background-color: var(--accent-healthy);
+      box-shadow: 0 0 8px var(--accent-healthy);
       animation: pulse 2s infinite;
     }
 
@@ -131,9 +127,9 @@
       display: flex;
       align-items: center;
       gap: 0.4rem;
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      color: var(--color-breaking);
+      background: rgba(255, 59, 48, 0.15);
+      border: 1px solid rgba(255, 59, 48, 0.3);
+      color: var(--accent-breaking);
       padding: 0.35rem 0.75rem;
       border-radius: 6px;
       font-size: 0.85rem;
@@ -162,31 +158,82 @@
     }
 
     .btn-primary {
-      background: var(--accent-blue);
-      border-color: var(--accent-blue);
+      background: var(--accent-info);
+      border-color: var(--accent-info);
       color: white;
     }
 
     .btn-primary:hover {
-      background: #2563eb;
+      background: #3eb0e6;
     }
 
     .btn-danger {
-      background: rgba(239, 68, 68, 0.2);
-      border-color: rgba(239, 68, 68, 0.4);
-      color: #fca5a5;
+      background: rgba(255, 59, 48, 0.2);
+      border-color: rgba(255, 59, 48, 0.4);
+      color: #ffb3aa;
     }
 
     .btn-danger:hover {
-      background: rgba(239, 68, 68, 0.35);
+      background: rgba(255, 59, 48, 0.35);
     }
 
-    /* Main Container Layout */
+    .vitals-container {
+  display: flex;
+  justify-content: space-around;
+  padding: 1rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  gap: 2rem;
+}
+
+.vital-item {
+  text-align: center;
+  flex: 1;
+}
+
+.vital-item label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+.vital-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.25rem;
+  font-family: 'Geist', sans-serif;
+}
+
+.vital-sparkline {
+  height: 20px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  margin-top: 0.25rem;
+}
+
+.vital-ring {
+  --ring-deg: 0deg;
+  --ring-color: var(--accent-healthy);
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  margin: 0 auto;
+  background: conic-gradient(var(--ring-color) var(--ring-deg), var(--bg-hover) 0deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  transition: background 0.3s ease;
+}
+
+/* Main Container Layout */
     .app-container {
       display: grid;
       grid-template-columns: 280px 1fr;
       flex: 1;
-      height: calc(100vh - 58px);
+      min-height: 0;
       overflow: hidden;
     }
 
@@ -233,9 +280,9 @@
     }
 
     .nav-item.active {
-      background: rgba(59, 130, 246, 0.15);
-      color: var(--accent-blue);
-      border-left: 3px solid var(--accent-blue);
+      background: rgba(90, 200, 250, 0.15);
+      color: var(--accent-info);
+      border-left: 3px solid var(--accent-info);
     }
 
     .demo-box {
@@ -277,9 +324,9 @@
     }
 
     .demo-btn.active-mode {
-      border-color: var(--accent-cyan);
-      background: rgba(6, 182, 212, 0.15);
-      color: var(--accent-cyan);
+      border-color: var(--accent-warning);
+      background: rgba(255, 159, 10, 0.15);
+      color: var(--accent-warning);
     }
 
     /* Main Content */
@@ -316,7 +363,7 @@
     }
 
     .search-bar:focus {
-      border-color: var(--accent-blue);
+      border-color: var(--accent-info);
     }
 
     /* Traffic Stream View */
@@ -515,8 +562,8 @@
     }
 
     .delta-item {
-      background: rgba(239, 68, 68, 0.1);
-      border-left: 4px solid var(--color-breaking);
+      background: rgba(255, 59, 48, 0.1);
+      border-left: 4px solid var(--accent-breaking);
       padding: 0.75rem;
       border-radius: 4px;
       margin-bottom: 0.5rem;
@@ -524,13 +571,13 @@
     }
 
     .delta-item.warning {
-      background: rgba(245, 158, 11, 0.1);
-      border-left-color: var(--color-warning);
+      background: rgba(255, 159, 10, 0.1);
+      border-left-color: var(--accent-warning);
     }
 
     .delta-item.info {
-      background: rgba(99, 102, 241, 0.1);
-      border-left-color: var(--color-info);
+      background: rgba(90, 200, 250, 0.1);
+      border-left-color: var(--accent-info);
     }
 
     .delta-path {
@@ -565,9 +612,9 @@
     }
 
     .toast {
-      background: #1e1b4b;
-      border: 1px solid #4338ca;
-      color: white;
+      background: var(--bg-card);
+      border: 1px solid var(--accent-info);
+      color: var(--text-main);
       padding: 1rem 1.25rem;
       border-radius: 8px;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
@@ -579,8 +626,8 @@
     }
 
     .toast.breaking {
-      background: #450a0a;
-      border-color: #991b1b;
+      background: rgba(255, 59, 48, 0.1);
+      border-color: var(--accent-breaking);
     }
 
     @keyframes slideIn {
@@ -594,6 +641,34 @@
         opacity: 1;
       }
     }
+
+  /* Responsive collapse: <768px */
+  @media (max-width: 767px) {
+    aside {
+      display: none;
+    }
+    .app-container {
+      grid-template-columns: 1fr;
+      height: calc(100vh - 58px);
+    }
+    .nav-item {
+      justify-content: center;
+    }
+  }
+
+  /* Responsive collapse: <768px */
+  @media (max-width: 767px) {
+    aside {
+      display: none;
+    }
+    .app-container {
+      grid-template-columns: 1fr;
+      height: calc(100vh - 58px);
+    }
+    .nav-item {
+      justify-content: center;
+    }
+  }
   </style>
 </head>
 
@@ -610,17 +685,36 @@
     </div>
 
     <div class="header-actions">
-      <div class="alert-counter" id="alert-counter-btn" onclick="switchTab('alerts')">
-        🚨 <span id="alert-count">0</span> Breaking Contract Changes
+      <div class="alert-counter" id="alert-counter-btn">
+        ■ <span id="alert-count">0</span> Breaking Contract Changes
       </div>
-      <button class="btn btn-primary" onclick="triggerTestRequest()">
-        ▶ Trigger Test Payload
+      <button class="btn btn-primary" id="triggerTestRequestBtn">
+        Trigger Test Payload
       </button>
-      <button class="btn btn-danger" onclick="clearTrafficHistory()">
-        🗑 Clear Traffic
+      <button class="btn btn-danger" id="clearTrafficHistoryBtn">
+        Clear Traffic
       </button>
     </div>
   </header>
+
+  <!-- Vital Signs -->
+  <div class="vitals-container">
+    <div class="vital-item">
+      <label>Request Rate</label>
+      <div class="vital-value" id="request-rate">-</div>
+      <div class="vital-sparkline" id="request-sparkline"></div>
+    </div>
+    <div class="vital-item">
+      <label>Error Rate</label>
+      <div class="vital-value" id="error-rate">-</div>
+      <div class="vital-sparkline" id="error-sparkline"></div>
+    </div>
+    <div class="vital-item">
+      <label>Contract Health</label>
+      <div class="vital-value" id="contract-health">-</div>
+      <div class="vital-ring" id="contract-ring"></div>
+    </div>
+  </div>
 
   <!-- App Layout -->
   <div class="app-container">
@@ -628,20 +722,20 @@
     <aside>
       <div class="nav-section">
         <div class="section-title">Navigation</div>
-        <div class="nav-item active" onclick="switchTab('traffic')" id="nav-traffic">
-          🌐 Live Network Traffic
+        <div class="nav-item active" id="nav-traffic">
+          Live Network Traffic
         </div>
-        <div class="nav-item" onclick="switchTab('baselines')" id="nav-baselines">
-          📋 Endpoint Baselines
+        <div class="nav-item" id="nav-baselines">
+          Endpoint Baselines
         </div>
-        <div class="nav-item" onclick="switchTab('history')" id="nav-history">
-          📜 Version History
+        <div class="nav-item" id="nav-history">
+          Version History
         </div>
-        <div class="nav-item" onclick="switchTab('alerts')" id="nav-alerts">
-          🚨 Contract Alerts
+        <div class="nav-item" id="nav-alerts">
+          Contract Alerts
         </div>
-        <div class="nav-item" onclick="switchTab('settings')" id="nav-settings">
-          ⚙️ Proxy Settings
+        <div class="nav-item" id="nav-settings">
+          Proxy Settings
         </div>
       </div>
 
@@ -652,20 +746,20 @@
         </p>
         <div class="demo-box">
           <div class="demo-btn-group">
-            <button class="demo-btn active-mode" id="mode-NORMAL" onclick="setMockMode('NORMAL')">
-              ✅ Normal Baseline Payload
+            <button class="demo-btn active-mode" id="mode-NORMAL">
+              Normal Baseline Payload
             </button>
-            <button class="demo-btn" id="mode-TYPE_BREAK" onclick="setMockMode('TYPE_BREAK')">
-              ⚡ Type Mismatch (int ➔ str)
+            <button class="demo-btn" id="mode-TYPE_BREAK">
+              Type Mismatch (int ➔ str)
             </button>
-            <button class="demo-btn" id="mode-MISSING_FIELD" onclick="setMockMode('MISSING_FIELD')">
-              ❌ Removed Required Field
+            <button class="demo-btn" id="mode-MISSING_FIELD">
+              Removed Required Field
             </button>
-            <button class="demo-btn" id="mode-NULL_BREAK" onclick="setMockMode('NULL_BREAK')">
-              ⚠️ Nullability Violation
+            <button class="demo-btn" id="mode-NULL_BREAK">
+              Nullability Violation
             </button>
-            <button class="demo-btn" id="mode-ADDED_FIELD" onclick="setMockMode('ADDED_FIELD')">
-              ✨ Added Non-Breaking Field
+            <button class="demo-btn" id="mode-ADDED_FIELD">
+              Added Non-Breaking Field
             </button>
           </div>
         </div>
@@ -802,6 +896,27 @@
       loadBaselines();
       loadAlerts();
       loadConfig();
+      initVitals();
+
+      // Event listeners for navigation and buttons
+      document.getElementById('alert-counter-btn').addEventListener('click', () => switchTab('alerts'));
+      document.getElementById('triggerTestRequestBtn').addEventListener('click', triggerTestRequest);
+      document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
+      document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
+      document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
+      document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
+      document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
+      document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
+      document.getElementById('mode-NORMAL').addEventListener('click', () => setMockMode('NORMAL'));
+      document.getElementById('mode-TYPE_BREAK').addEventListener('click', () => setMockMode('TYPE_BREAK'));
+      document.getElementById('mode-MISSING_FIELD').addEventListener('click', () => setMockMode('MISSING_FIELD'));
+      document.getElementById('mode-NULL_BREAK').addEventListener('click', () => setMockMode('NULL_BREAK'));
+      document.getElementById('mode-ADDED_FIELD').addEventListener('click', () => setMockMode('ADDED_FIELD'));
+      document.getElementById('loadHistoriesBtn').addEventListener('click', loadHistories);
+      document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+      document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+      document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
+      document.getElementById('setAsBaselineFromDrawerBtn').addEventListener('click', setAsBaselineFromDrawer);
     });
 
     function initSSE() {
@@ -879,7 +994,7 @@
       if (alertData.diff && alertData.diff.deltas) {
         alertData.diff.deltas.forEach(d => {
           if (d.severity === 'BREAKING') {
-            showToast('🚨 Breaking Contract Change!', `${alertData.endpoint}: ${d.message}`);
+            showToast('Breaking Contract Change!', `${alertData.endpoint}: ${d.message}`);
           }
         });
       }
@@ -914,6 +1029,7 @@
           </tr>
         `;
       }).join('');
+      updateVitals();
     }
 
     function renderBaselines() {
@@ -953,7 +1069,7 @@
         if (a.AIExplanation && Object.keys(a.AIExplanation).length > 0) {
           const ai = a.AIExplanation;
           aiExplanationHTML = `
-            <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(16, 185, 129, 0.1); border-left: 3px solid var(--color-match); border-radius: 4px; font-size: 0.85rem;">
+            <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(0, 201, 167, 0.1); border-left: 3px solid var(--accent-healthy); border-radius: 4px; font-size: 0.85rem;">
               <div style="font-weight: 600; margin-bottom: 0.25rem;">AI Explanation:</div>
               <div><strong>Summary:</strong> ${escapeHtml(ai.summary || '')}</div>
               <div><strong>Impact:</strong> ${escapeHtml(ai.impact || '')}</div>
@@ -1002,7 +1118,7 @@
           </div>
         `).join('');
       } else {
-        deltasContainer.innerHTML = '<div style="color: #34d399; font-weight: 500;">✅ Payload perfectly matches baseline contract!</div>';
+        deltasContainer.innerHTML = '<div style="color: var(--accent-healthy); font-weight: 500;">● Payload perfectly matches baseline contract!</div>';
       }
 
       try {
@@ -1101,10 +1217,10 @@
       const toast = document.createElement('div');
       toast.className = 'toast breaking';
       toast.innerHTML = `
-        <div style="font-size: 1.25rem;">🚨</div>
+        <div style="font-size: 1.25rem; color: var(--accent-breaking);">■</div>
         <div>
-          <div style="font-weight: 700; margin-bottom: 0.2rem;">${escapeHtml(title)}</div>
-          <div style="font-size: 0.85rem; color: #fca5a5;">${escapeHtml(msg)}</div>
+          <div style="font-weight: 700; margin-bottom: 0.2rem; color: var(--text-main);">${escapeHtml(title)}</div>
+          <div style="font-size: 0.85rem; color: var(--text-muted);">${escapeHtml(msg)}</div>
         </div>
       `;
       container.appendChild(toast);
@@ -1142,7 +1258,7 @@
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
               <div>
                 <span class="method-badge method-${h.Method.toLowerCase()}">${h.Method}</span>
-                <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${h.Path}</span>
+                <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${escapeHtml(h.Path)}</span>
               </div>
               <div style="text-align: right;">
                 <div style="font-size: 0.75rem; color: var(--text-muted);">Versions: ${h.Versions.length}</div>
@@ -1154,7 +1270,7 @@
                 <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(30, 41, 59, 0.2);">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                     <span style="font-weight: 600; font-size: 0.9rem;">Version ${v.Version}</span>
-                    <span style="font-size: 0.75rem; color: ${v.Version === h.LockedVersion ? 'var(--accent-blue)' : 'var(--text-muted)'};">
+                    <span style="font-size: 0.75rem; color: ${v.Version === h.LockedVersion ? 'var(--accent-info)' : 'var(--text-muted)'};">
                       ${v.Version === h.LockedVersion ? '(LOCKED)' : ''}
                     </span>
                   </div>
@@ -1168,6 +1284,51 @@
           </div>
         `;
       }).join('');
+    }
+
+    // Vital Signs — computed client-side from the live traffic buffer
+    function initVitals() {
+      updateVitals();
+      setInterval(updateVitals, 5000);
+    }
+
+    function updateVitals() {
+      const now = Date.now();
+      const recent = trafficHistory.filter(t => now - new Date(t.timestamp).getTime() < 60000);
+      const errCount = trafficHistory.filter(t => t.status_code >= 400).length;
+      const matchCount = trafficHistory.filter(t => !t.contract_status || t.contract_status === 'MATCH').length;
+
+      const reqRate = recent.length;
+      const errRate = trafficHistory.length ? errCount / trafficHistory.length : 0;
+      const health = trafficHistory.length ? matchCount / trafficHistory.length : 1;
+
+      const reqEl = document.getElementById('request-rate');
+      if (reqEl) reqEl.textContent = reqRate + '/min';
+
+      const errEl = document.getElementById('error-rate');
+      if (errEl) errEl.textContent = (errRate * 100).toFixed(1) + '%';
+
+      const healthEl = document.getElementById('contract-health');
+      if (healthEl) healthEl.textContent = Math.round(health * 100) + '%';
+
+      const reqSpark = document.getElementById('request-sparkline');
+      if (reqSpark) {
+        const pct = Math.min(100, reqRate * 10);
+        reqSpark.style.background = `linear-gradient(to right, var(--accent-info) ${pct}%, var(--bg-hover) ${pct}%)`;
+      }
+
+      const errSpark = document.getElementById('error-sparkline');
+      if (errSpark) {
+        const pct = errRate * 100;
+        errSpark.style.background = `linear-gradient(to right, var(--accent-breaking) ${pct}%, var(--bg-hover) ${pct}%)`;
+      }
+
+      const ring = document.getElementById('contract-ring');
+      if (ring) {
+        ring.style.setProperty('--ring-deg', (health * 360) + 'deg');
+        ring.style.setProperty('--ring-color',
+          health === 1 ? 'var(--accent-healthy)' : health >= 0.9 ? 'var(--accent-warning)' : 'var(--accent-breaking)');
+      }
     }
 
     function escapeHtml(str) {
