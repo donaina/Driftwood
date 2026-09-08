@@ -47,8 +47,8 @@ func main() {
 	}
 
 	srv := server.NewServer(store, hub, prx, mockCtrl)
-	// Bind to 127.0.0.1 only (not all interfaces) for security
-	addr := "127.0.0.1:" + *port
+	// Bind to 0.0.0.0 (all interfaces) for external access
+	addr := "0.0.0.0:" + *port
 
 	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://localhost:%s", *port)
 	log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", *target)
