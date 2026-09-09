@@ -178,57 +178,57 @@
     }
 
     .vitals-container {
-  display: flex;
-  justify-content: space-around;
-  padding: 1rem;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-color);
-  gap: 2rem;
-}
+      display: flex;
+      justify-content: space-around;
+      padding: 1rem;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+      gap: 2rem;
+    }
 
-.vital-item {
-  text-align: center;
-  flex: 1;
-}
+    .vital-item {
+      text-align: center;
+      flex: 1;
+    }
 
-.vital-item label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.25rem;
-  display: block;
-}
+    .vital-item label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+      display: block;
+    }
 
-.vital-value {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-main);
-  margin-bottom: 0.25rem;
-  font-family: 'Geist', sans-serif;
-}
+    .vital-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 0.25rem;
+      font-family: 'Geist', sans-serif;
+    }
 
-.vital-sparkline {
-  height: 20px;
-  background: var(--bg-hover);
-  border-radius: 4px;
-  margin-top: 0.25rem;
-}
+    .vital-sparkline {
+      height: 20px;
+      background: var(--bg-hover);
+      border-radius: 4px;
+      margin-top: 0.25rem;
+    }
 
-.vital-ring {
-  --ring-deg: 0deg;
-  --ring-color: var(--accent-healthy);
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  margin: 0 auto;
-  background: conic-gradient(var(--ring-color) var(--ring-deg), var(--bg-hover) 0deg);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
-  transition: background 0.3s ease;
-}
+    .vital-ring {
+      --ring-deg: 0deg;
+      --ring-color: var(--accent-healthy);
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      margin: 0 auto;
+      background: conic-gradient(var(--ring-color) var(--ring-deg), var(--bg-hover) 0deg);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+      transition: background 0.3s ease;
+    }
 
-/* Main Container Layout */
+    /* Main Container Layout */
     .app-container {
       display: grid;
       grid-template-columns: 280px 1fr;
@@ -642,34 +642,82 @@
       }
     }
 
-  /* Responsive collapse: <768px */
-  @media (max-width: 767px) {
-    aside {
-      display: none;
+    /* Responsive collapse: <768px */
+    @media (max-width: 767px) {
+      aside {
+        display: none;
+      }
+      .app-container {
+        grid-template-columns: 1fr;
+        height: calc(100vh - 58px);
+      }
+      .nav-item {
+        justify-content: center;
+      }
     }
-    .app-container {
-      grid-template-columns: 1fr;
-      height: calc(100vh - 58px);
-    }
-    .nav-item {
-      justify-content: center;
-    }
-  }
 
-  /* Responsive collapse: <768px */
-  @media (max-width: 767px) {
-    aside {
-      display: none;
+    /* Setup Wizard Styles */
+    #view-setup {
+      background: var(--bg-card);
     }
-    .app-container {
-      grid-template-columns: 1fr;
-      height: calc(100vh - 58px);
+
+    #setup-steps {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
     }
-    .nav-item {
+
+    .setup-step {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      position: relative;
+    }
+
+    .setup-step.active {
+      color: var(--text-main);
+      font-weight: 600;
+      background: rgba(90, 200, 250, 0.1);
+    }
+
+    .setup-step.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 4px solid var(--accent-info);
+    }
+
+    .setup-step-content {
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    #setup-target-url {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    #setup-detection-status {
+      height: 60px;
+      display: flex;
+      align-items: center;
       justify-content: center;
     }
-  }
-  /* Guided Tour Styles */
+
+/* Guided Tour Styles */
 .guided-tour-overlay {
   position: fixed;
   top: 0;
@@ -747,8 +795,8 @@
   line-height: 16px;
   font-size: 12px;
   font-weight: bold;
-  margin-left: 4px;
-  cursor: help;
+}
+.help-tooltip .help-icon:hover {
   opacity: 0.8;
 }
 .help-tooltip .help-icon:hover {
@@ -767,10 +815,6 @@
   bottom: 125%;
   left: 50%;
   margin-left: -125px;
-  opacity: 0;
-  transition: opacity 0.3s;
-  font-size: 0.85rem;
-  line-height: 1.4;
 }
 .help-tooltip .help-text::after {
   content: "";
@@ -795,7 +839,6 @@
   padding: 0.5rem 1rem;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.85rem;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -1083,7 +1126,87 @@
 
     <!-- Main Content Area -->
     <main>
-      <!-- View 1: Live Traffic Stream -->
+      <!-- Setup Wizard (shown on first visit) -->
+      <div class="view-panel" id="view-setup">
+        <div style="text-align: center; padding: 3rem;">
+          <div style="font-size: 2.5rem; margin-bottom: 1rem; background: var(--accent-info); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: inline-block;">
+            Driftwood
+          </div>
+          <h1 style="font-size: 1.8rem; margin-bottom: 1.5rem; font-weight: 600;">Welcome to API Contract Monitoring</h1>
+          <p style="font-size: 1.1rem; color: var(--text-muted); margin-bottom: 2rem; max-width: 400px; line-height: 1.6;">
+            Driftwood helps you detect unintended API breaking changes before they reach production. Let's get you set up in under a minute.
+          </p>
+
+          <!-- Step Indicator -->
+          <div id="setup-steps" style="display: flex; justify-content: center; margin-bottom: 2rem; gap: 1rem;">
+            <div class="setup-step active" data-step="1">1. Target API</div>
+            <div class="setup-step" data-step="2">2. Detect Endpoints</div>
+            <div class="setup-step" data-step="3">3. Set Baselines</div>
+          </div>
+
+          <!-- Step Content -->
+          <div id="setup-content">
+            <!-- Step 1: Target API -->
+            <div class="setup-step-content active" data-step="1">
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Where is your API running?</label>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                  <button class="btn" id="detect-localhost">Auto-detect Localhost</button>
+                  <button class="btn btn-primary" id="use-manual-url">Enter URL Manually</button>
+                </div>
+              </div>
+              <div id="manual-url-input" style="display: none; margin-top: 1rem;">
+                <input type="text" id="setup-target-url" class="search-bar" placeholder="http://localhost:3000" />
+                <button class="btn btn-primary" id="setup-next-1" style="margin-top: 0.5rem;">Next</button>
+              </div>
+            </div>
+
+            <!-- Step 2: Detect Endpoints -->
+            <div class="setup-step-content" data-step="2" style="display: none;">
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Detecting API endpoints...</label>
+                <div id="setup-detection-status" style="color: var(--text-muted); font-size: 0.9rem;">
+                  Scanning for common endpoints...
+                </div>
+                <div style="margin-top: 1rem; display: flex; justify-content: center;">
+                  <div class="vital-ring" style="width: 40px; height: 40px;"></div>
+                </div>
+              </div>
+              <div style="text-align: center; margin-top: 2rem;">
+                <button class="btn btn-primary" id="setup-skip-detection">Skip Detection</button>
+              </div>
+            </div>
+
+            <!-- Step 3: Set Baselines -->
+            <div class="setup-step-content" data-step="3" style="display: none;">
+              <div style="margin-bottom: 1.5rem;">
+                <label style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Ready to monitor your API contract?</label>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+                  Driftwood will automatically learn the contract from your API's responses and alert you to any breaking changes.
+                </p>
+                <div style="display: flex; gap: 1rem; justify-content: center;">
+                  <button class="btn" id="setup-skip-baselines">Skip for Now</button>
+                  <button class="btn btn-primary" id="setup-complete">Start Monitoring</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Navigation Buttons -->
+          <div style="margin-top: 2rem; display: flex; justify-content: center; gap: 1rem;">
+            <button class="btn" id="setup-prev" style="display: none;">Previous</button>
+            <button class="btn btn-primary" id="setup-next">Next</button>
+          </div>
+
+          <div style="margin-top: 2rem; color: var(--text-muted); font-size: 0.9rem;">
+            <button class="btn" id="setup-close-wizard" style="text-decoration: underline; background: none; border: none; color: var(--text-muted); padding: 0;">
+              I'll configure later
+            </button>
+          </div>
+        </div>
+      </div>
+
+    <!-- View 1: Live Traffic Stream -->
       <div class="view-panel active" id="view-traffic">
         <div class="traffic-table-container">
           <table>
@@ -1285,66 +1408,43 @@
     let selectedTraffic = null;
     let eventSource = null;
 
-    window.addEventListener('DOMContentLoaded', async () => {
-      // Check if setup wizard is needed (no baselines exist)
-      const setupNeeded = await checkIfSetupNeeded();
 
-      if (setupNeeded) {
-        // Show setup wizard first
-        showSetupWizard();
+    window.addEventListener('DOMContentLoaded', () => {
+      // Check if we should show setup wizard first
+      shouldShowSetupWizard().then(show => {
+        if (show) {
+          showSetupWizard();
+        } else {
+          // Initialize normal app
+          initSSE();
+          loadTraffic();
+          loadBaselines();
+          loadAlerts();
+          loadConfig();
+          initVitals();
 
-        // Add event listeners for setup wizard buttons
-        document.getElementById('setup-use-demo-btn').addEventListener('click', handleUseDemo);
-        document.getElementById('setup-create-baseline-btn').addEventListener('click', handleCreateBaseline);
-        document.getElementById('setup-finish-btn').addEventListener('click', handleFinishSetup);
-      } else {
-        // Normal initialization
-        initSSE();
-        loadTraffic();
-        loadBaselines();
-        loadAlerts();
-        loadConfig();
-        initVitals();
-
-        // Event listeners for navigation and buttons
-        document.getElementById('alert-counter-btn').addEventListener('click', () => switchTab('alerts'));
-        document.getElementById('triggerTestRequestBtn').addEventListener('click', triggerTestRequest);
-        document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
-        document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
-        document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
-        document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
-        document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
-        document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
-      document.getElementById('nav-setup-wizard').addEventListener('click', () => switchTab('setup-wizard'));
-        document.getElementById('mode-NORMAL').addEventListener('click', () => setMockMode('NORMAL'));
-        document.getElementById('mode-TYPE_BREAK').addEventListener('click', () => setMockMode('TYPE_BREAK'));
-        document.getElementById('mode-MISSING_FIELD').addEventListener('click', () => setMockMode('MISSING_FIELD'));
-        document.getElementById('mode-NULL_BREAK').addEventListener('click', () => setMockMode('NULL_BREAK'));
-        document.getElementById('mode-ADDED_FIELD').addEventListener('click', () => setMockMode('ADDED_FIELD'));
-        document.getElementById('loadHistoriesBtn').addEventListener('click', loadHistories);
-        document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
-        document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
-        document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
-        document.getElementById('setAsBaselineFromDrawerBtn').addEventListener('click', setAsBaselineFromDrawer);
-        document.getElementById('tryDemoBtn').addEventListener('click', () => {
-          // Switch to traffic tab if not already there
-          switchTab('traffic');
-          // Trigger a test request to start the demo
-          triggerTestRequest();
-          // Change button text to show it's active
-          const btn = document.getElementById('tryDemoBtn');
-          btn.textContent = 'Demo Active ●';
-          btn.style.background = 'var(--accent-warning)';
-          // Reset after 5 seconds
-          setTimeout(() => {
-            btn.textContent = 'Try Demo →';
-            btn.style.background = '';
-          }, 5000);
-        });
-      }
-
-      // Initialize guided tour (runs in both cases)
-      initGuidedTour();
+          // Event listeners for navigation and buttons
+          document.getElementById('alert-counter-btn').addEventListener('click', () => switchTab('alerts'));
+          document.getElementById('triggerTestRequestBtn').addEventListener('click', triggerTestRequest);
+          document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
+          document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
+          document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
+          document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
+          document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
+          document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
+          document.getElementById('mode-NORMAL').addEventListener('click', () => setMockMode('NORMAL'));
+          document.getElementById('mode-TYPE_BREAK').addEventListener('click', () => setMockMode('TYPE_BREAK'));
+          document.getElementById('mode-MISSING_FIELD').addEventListener('click', () => setMockMode('MISSING_FIELD'));
+          document.getElementById('mode-NULL_BREAK').addEventListener('click', () => setMockMode('NULL_BREAK'));
+          document.getElementById('mode-ADDED_FIELD').addEventListener('click', () => setMockMode('ADDED_FIELD'));
+          document.getElementById('loadHistoriesBtn').addEventListener('click', loadHistories);
+          document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+          document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+          document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
+          document.getElementById('setAsBaselineFromDrawerBtn').addEventListener('click', setAsBaselineFromDrawer);
+        }
+      });
+    });
     });
 
     function initSSE() {
@@ -1480,7 +1580,7 @@
             </div>
             <pre class="code-box">${escapeHtml(b.sample_payload)}</pre>
           </div>
-        `;
+        `);
       }).join('');
     }
 
@@ -1841,8 +1941,355 @@
     }
 
     function escapeHtml(str) {
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
     }
+
+    // Scenario Library functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const scenarios = [
+        {
+          id: 'type-change-number-to-string',
+          title: 'ID Type Change: Number to String',
+          description: 'Changing ID fields from numeric to string types breaks clients that expect numeric IDs for mathematical operations or direct database lookups.',
+          severity: 'breaking',
+          type: 'REST',
+          impact: 'High - May cause runtime errors in client applications',
+          fix: 'Update client code to handle string IDs, or use content negotiation for versioned endpoints',
+          changes: [
+            { field: 'user.id', change: 'number → string', type: 'breaking' },
+            { field: 'order.customerId', change: 'integer → string', type: 'breaking' }
+          ]
+        },
+        {
+          id: 'removed-required-field',
+          title: 'Removed Required Field: Email',
+          description: 'Removing a required email field from a user registration endpoint breaks clients that depend on this field for account creation or communication.',
+          severity: 'breaking',
+          type: 'REST',
+          impact: 'High - Clients will receive validation errors',
+          fix: 'Make the field optional first, then remove in a future version after deprecation period',
+          changes: [
+            { field: 'user.email', change: 'required → removed', type: 'breaking' }
+          ]
+        },
+        {
+          id: 'status-code-change',
+          title: 'Status Code Change: 200 → 201',
+          description: 'Changing the success status code from 200 to 201 for a creation endpoint may break clients that hardcode status code checks.',
+          severity: 'warning',
+          type: 'REST',
+          impact: 'Medium - May cause incorrect error handling in clients',
+          fix: 'Maintain backward compatibility by supporting both status codes during transition',
+          changes: [
+            { field: 'POST /users response', change: '200 → 201', type: 'warning' }
+          ]
+        },
+        {
+          id: 'added-optional-field',
+          title: 'Added Optional Field: Phone Number',
+          description: 'Adding an optional phone number field is backward compatible and safe for existing clients.',
+          severity: 'info',
+          type: 'REST',
+          impact: 'Low - Safe addition that enhances functionality',
+          fix: 'No action needed - this is a safe change',
+          changes: [
+            { field: 'user.phoneNumber', change: 'added (optional)', type: 'info' }
+          ]
+        },
+        {
+          id: 'graphql-type-rename',
+          title: 'GraphQL Type Rename: User → Person',
+          description: 'Renaming a GraphQL type breaks existing queries that reference the old type name.',
+          severity: 'breaking',
+          type: 'GraphQL',
+          impact: 'High - All existing queries will fail',
+          fix: 'Use aliases or maintain both type names during migration period',
+          changes: [
+            { field: 'GraphQL schema', change: 'type User → type Person', type: 'breaking' }
+          ]
+        },
+        {
+          id: 'header-removal',
+          title: 'Removed Header: X-RateLimit-Remaining',
+          description: 'Removing a custom rate limit header breaks clients that monitor their API usage.',
+          severity: 'warning',
+          type: 'REST',
+          impact: 'Medium - Clients lose visibility into rate limiting',
+          fix: 'Provide alternative header or keep deprecated header for transition period',
+          changes: [
+            { field: 'Response header', change: 'X-RateLimit-Remaining → removed', type: 'warning' }
+          ]
+        }
+      ];
+
+      const scenarioGrid = document.getElementById('scenario-grid');
+      const filterButtons = document.querySelectorAll('.scenario-filter-btn');
+      const scenarioLibrarySection = document.getElementById('scenario-library');
+
+      function renderScenarios(filter = 'all') {
+        scenarioGrid.innerHTML = '';
+
+        const filteredScenarios = filter === 'all'
+          ? scenarios
+          : scenarios.filter(s => s.severity === filter);
+
+        filteredScenarios.forEach(scenario => {
+          const card = document.createElement('div');
+          card.className = 'scenario-card';
+          card.innerHTML = `
+            <div class="scenario-card-header">
+              <div class="scenario-card-title">
+                <div class="scenario-card-badge ${scenario.severity}">${scenario.severity.toUpperCase()}</div>
+                <div>${scenario.title}</div>
+              </div>
+            </div>
+            <div class="scenario-card-body">
+              <p class="scenario-card-description">${scenario.description}</p>
+              <div class="scenario-card-details">
+                <div class="scenario-detail-item">
+                  <span class="scenario-detail-label">Impact:</span>
+                  <span class="scenario-detail-value">${scenario.impact}</span>
+                </div>
+                <div class="scenario-detail-item">
+                  <span class="scenario-detail-label">Type:</span>
+                  <span class="scenario-detail-value">${scenario.type}</span>
+                </div>
+              </div>
+              ${scenario.changes && scenario.changes.length > 0 ? `
+                <div class="scenario-card-details">
+                  <div class="scenario-detail-item">
+                    <span class="scenario-detail-label">Changes:</span>
+                  </div>
+                  ${scenario.changes.map(change => `
+                    <div class="scenario-detail-item">
+                      <span class="scenario-detail-label">${change.field}:</span>
+                      <span class="scenario-detail-value">${change.change}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+            </div>
+            <div class="scenario-card-footer">
+              <button class="scenario-activate-btn" data-scenario-id="${scenario.id}">
+                Load Scenario
+              </button>
+            </div>
+          `;
+          scenarioGrid.appendChild(card);
+        });
+
+        // Add event listeners to load scenario buttons
+        document.querySelectorAll('.scenario-activate-btn').forEach(button => {
+          button.addEventListener('click', function() {
+            const scenarioId = this.getAttribute('data-scenario-id');
+            loadScenario(scenarioId);
+          });
+        });
+      }
+
+      function loadScenario(scenarioId) {
+        const scenario = scenarios.find(s => s.id === scenarioId);
+        if (!scenario) return;
+
+        // Hide all pages and show scenario library
+        document.querySelectorAll('.page').forEach(page => {
+          page.style.display = 'none';
+        });
+        scenarioLibrarySection.style.display = 'block';
+
+        // Update active filter button
+        filterButtons.forEach(btn => {
+          btn.classList.toggle('active', btn.getAttribute('data-filter') === scenario.severity || btn.getAttribute('data-filter') === 'all');
+        });
+
+        // Show scenario details (in a real implementation, this would configure the mock simulator)
+        alert(`Loading scenario: ${scenario.title}\n\n${scenario.description}\n\nImpact: ${scenario.impact}\n\nTo fix: ${scenario.fix}`);
+
+        // In a full implementation, this would:
+        // 1. Configure the mock simulator to behave according to the scenario
+        // 2. Update the target URL if needed
+        // 3. Reset baselines
+        // 4. Show a confirmation that the scenario is active
+      }
+
+      // Filter button event listeners
+      filterButtons.forEach(button => {
+        button.addEventListener('click', function() {
+          const filter = this.getAttribute('data-filter');
+
+          // Update active button
+          filterButtons.forEach(btn => btn.classList.remove('active'));
+          this.classList.add('active');
+
+          // Render filtered scenarios
+          renderScenarios(filter);
+        });
+      });
+
+      // Initial render
+      renderScenarios();
+
+      // Add navigation to scenario library (we'll need to add this to the header)
+      // For now, we'll add a simple way to access it - in practice, this would be in the nav
+      window.showScenarioLibrary = function() {
+        document.querySelectorAll('.page').forEach(page => {
+          page.style.display = 'none';
+        });
+        scenarioLibrarySection.style.display = 'block';
+
+        // Update nav active state
+        document.querySelectorAll('.nav-item').forEach(item => {
+          item.classList.remove('active');
+        });
+        // We'd add a nav item for scenarios in a real implementation
+      };
+    });
+
+    // Setup Wizard functionality
+    let currentSetupStep = 1;
+    const totalSetupSteps = 3;
+    let detectedTargetUrl = '';
+
+    function shouldShowSetupWizard() {
+      // In a real implementation, this would check localStorage or make an API call
+      // For now, we'll check if baselines exist
+      return fetch('/_driftwood/api/baselines')
+        .then(res => res.json())
+        .then(baselines => baselines.length === 0)
+        .catch(() => true); // Show setup if we can't check
+    }
+
+    function showSetupWizard() {
+      document.getElementById('view-setup').classList.add('active');
+      document.getElementById('view-traffic').classList.remove('active');
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      currentSetupStep = 1;
+      updateSetupUI();
+    }
+
+    function goToSetupStep(step) {
+      currentSetupStep = step;
+      updateSetupUI();
+    }
+
+    function goToNextSetupStep() {
+      if (currentSetupStep < totalSetupSteps) {
+        goToSetupStep(currentSetupStep + 1);
+      }
+    }
+
+    function goToPreviousSetupStep() {
+      if (currentSetupStep > 1) {
+        goToSetupStep(currentSetupStep - 1);
+      }
+    }
+
+    function updateSetupUI() {
+      // Update step indicators
+      document.querySelectorAll('.setup-step').forEach(stepEl => {
+        const stepNum = parseInt(stepEl.getAttribute('data-step'));
+        if (stepNum === currentSetupStep) {
+          stepEl.classList.add('active');
+        } else {
+          stepEl.classList.remove('active');
+        }
+      });
+
+      // Update step content visibility
+      document.querySelectorAll('.setup-step-content').forEach(contentEl => {
+        const stepNum = parseInt(contentEl.getAttribute('data-step'));
+        if (stepNum === currentSetupStep) {
+          contentEl.style.display = 'block';
+        } else {
+          contentEl.style.display = 'none';
+        }
+      });
+
+      // Update navigation buttons
+      document.getElementById('setup-prev').style.display = currentSetupStep > 1 ? 'inline-block' : 'none';
+      document.getElementById('setup-next').style.display = currentSetupStep < totalSetupSteps ? 'inline-block' : 'none';
+      document.getElementById('setup-next-1').style.display = currentSetupStep === 1 ? 'inline-block' : 'none';
+
+      // Handle step-specific logic
+      if (currentSetupStep === 2) {
+        startEndpointDetection();
+      }
+    }
+
+    function detectLocalhost() {
+      const commonPorts = [3000, 3001, 4000, 5000, 8000, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090];
+      document.getElementById('detect-localhost').disabled = true;
+      document.getElementById('detect-localhost').innerText = 'Detecting...';
+      document.getElementById('setup-detection-status').innerText = 'Checking common development ports...';
+
+      let found = false;
+      for (const port of commonPorts) {
+        // In a real implementation, we would actually try to connect
+        // For demo, we'll simulate finding something on port 3000
+        if (port === 3000 && !found) {
+          setTimeout(() => {
+            detectedTargetUrl = `http://localhost:${port}`;
+            document.getElementById('setup-detection-status').innerText = `Found API at http://localhost:${port}`;
+            document.getElementById('setup-skip-detection').style.display = 'inline-block';
+          }, 1000);
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        setTimeout(() => {
+          document.getElementById('setup-detection-status').innerText = 'No API detected on common ports';
+          document.getElementById('setup-skip-detection').style.display = 'inline-block';
+          document.getElementById('detect-localhost').disabled = false;
+          document.getElementById('detect-localhost').innerText = 'Auto-detect Localhost';
+        }, 1500);
+      }
+    }
+
+    function startEndpointDetection() {
+      document.getElementById('setup-detection-status').innerText = 'Scanning for API endpoints...';
+      // Simulate detection
+      setTimeout(() => {
+        document.getElementById('setup-detection-status').innerText = 'Found 5 API endpoints';
+        // In reality, we would call an endpoint to discover the API
+      }, 1500);
+    }
+
+    async function completeSetup() {
+      // Save the target URL to config
+      try {
+        await fetch('/_driftwood/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            target_url: detectedTargetUrl || 'http://localhost:3000',
+            auto_save_baseline: true,
+            proxy_port: "8787",
+            intercept_json: true
+          })
+        });
+
+        // Show success message
+        showToast('Setup Complete', `Driftwood is now monitoring ${detectedTargetUrl || 'http://localhost:3000'}`);
+
+        // Hide setup wizard and show traffic view
+        document.getElementById('view-setup').classList.remove('active');
+        document.getElementById('view-traffic').classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById('nav-traffic').classList.add('active');
+
+        // Load initial data
+        loadTraffic();
+        loadBaselines();
+        loadAlerts();
+        initVitals();
+      } catch (error) {
+        console.error('Setup failed:', error);
+        showToast('Setup Failed', 'Please try again or configure manually');
+      }
+    }
+
   // Guided Tour Functionality
 function initGuidedTour() {
   const overlay = document.getElementById('guided-tour-overlay');
@@ -1910,18 +2357,37 @@ function initGuidedTour() {
 <!-- Guided Tour Overlay -->
 <div id="guided-tour-overlay" class="guided-tour-overlay" style="display: none;">
   <div class="guided-tour-content">
-    <h3>Welcome to Driftwood!</h3>
-    <div id="guided-tour-text">
-      Learn how to monitor API contract stability in 3 simple steps:
-    </div>
+    <h3>Welcome to Driftwood</h3>
+    <p id="guided-tour-text"></p>
+    <button id="guided-tour-next" class="guided-tour-btn">Next →</button>
     <div class="guided-tour-dots">
-      <div class="guided-tour-dot active" id="dot1"></div>
+      <div class="guided-tour-dot" id="dot1"></div>
       <div class="guided-tour-dot" id="dot2"></div>
       <div class="guided-tour-dot" id="dot3"></div>
     </div>
-    <button class="guided-tour-btn" id="guided-tour-next">Get Started</button>
   </div>
 </div>
-</body>
 
+  <!-- Scenario Library -->
+  <section id="scenario-library" class="page" style="display: none;">
+    <div class="scenario-library">
+      <div class="scenario-header">
+        <h2>Scenario Library</h2>
+        <p>Learn about API contract changes with pre-configured breaking change scenarios</p>
+      </div>
+
+      <div class="scenario-filters">
+        <button class="scenario-filter-btn active" data-filter="all">All Scenarios</button>
+        <button class="scenario-filter-btn" data-filter="breaking">Breaking</button>
+        <button class="scenario-filter-btn" data-filter="warning">Warnings</button>
+        <button class="scenario-filter-btn" data-filter="info">Informational</button>
+      </div>
+
+      <div class="scenario-grid" id="scenario-grid">
+        <!-- Scenario cards will be populated here by JavaScript -->
+      </div>
+    </div>
+  </section>
+
+</body>
 </html>
