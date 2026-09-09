@@ -669,7 +669,275 @@
       justify-content: center;
     }
   }
-  </style>
+  /* Guided Tour Styles */
+.guided-tour-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.guided-tour-content {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 2.5rem;
+  max-width: 500px;
+  width: 90%;
+  position: relative;
+}
+.guided-tour-content h3 {
+  margin-top: 0;
+  color: var(--text-main);
+  font-size: 1.5rem;
+}
+.guided-tour-content p {
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.guided-tour-btn {
+  background: var(--accent-info);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 1.5rem;
+}
+.guided-tour-btn:hover {
+  background: #3eb0e6;
+}
+.guided-tour-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 1.5rem;
+}
+.guided-tour-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+.guided-tour-dot.active {
+  background: var(--accent-info);
+  opacity: 1;
+}
+
+/* Contextual Help Styles */
+.help-tooltip {
+  position: relative;
+  display: inline-block;
+}
+.help-tooltip .help-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-info);
+  color: white;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 16px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 4px;
+  cursor: help;
+  opacity: 0.8;
+}
+.help-tooltip .help-icon:hover {
+  opacity: 1;
+}
+.help-tooltip .help-text {
+  visibility: hidden;
+  width: 250px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  text-align: center;
+  border-radius: 6px;
+  padding: 8px;
+  position: absolute;
+  z-index: 100;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -125px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.help-tooltip .help-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: var(--bg-card) transparent transparent transparent;
+}
+.help-tooltip:hover .help-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Share Button Styles */
+.share-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.15s ease;
+}
+.share-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-info);
+}
+.share-btn:active {
+  transform: translateY(1px);
+}
+
+/* Empty State Enhancements */
+.empty-state-enhanced {
+  text-align: center;
+  padding: 3rem;
+}
+.empty-state-enhanced h3 {
+  color: var(--text-main);
+  margin-bottom: 1rem;
+}
+.empty-state-enhanced p {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+/* Setup Wizard Styles */
+.setup-wizard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  max-width: 500px;
+  margin: 2rem auto;
+}
+.setup-wizard h2 {
+  color: var(--text-main);
+  margin-bottom: 1.5rem;
+  font-size: 1.75rem;
+}
+.setup-wizard p {
+  color: var(--text-muted);
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+.setup-wizard .step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2.5rem;
+}
+.setup-wizard .step-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+.setup-wizard .step-icon.primary {
+  background: var(--accent-info);
+  color: white;
+}
+.setup-wizard .step-icon.demo {
+  background: var(--accent-warning);
+  color: white;
+}
+.setup-wizard .step-icon.success {
+  background: var(--accent-healthy);
+  color: white;
+}
+.setup-wizard .step h3 {
+  color: var(--text-main);
+  margin-bottom: 0.75rem;
+  font-size: 1.25rem;
+}
+.setup-wizard .step p {
+  color: var(--text-muted);
+  max-width: 350px;
+  margin-bottom: 1.5rem;
+}
+.setup-wizard .input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
+.setup-wizard .input-group label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+  text-align: left;
+}
+.setup-wizard .input-group input {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  width: 100%;
+}
+.setup-wizard .input-group input:focus {
+  outline: none;
+  border-color: var(--accent-info);
+}
+.setup-wizard .btn-group {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+.setup-wizard .btn {
+  flex: 1;
+}
+.setup-wizard .progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 2rem 0;
+}
+.setup-wizard .progress-fill {
+  height: 100%;
+  background: var(--accent-healthy);
+  width: 0%;
+  transition: width 0.3s ease;
+}
+.setup-wizard .progress-text {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
 </head>
 
 <body>
@@ -737,30 +1005,77 @@
         <div class="nav-item" id="nav-settings">
           Proxy Settings
         </div>
+        <div class="nav-item" id="nav-setup-wizard">
+          Setup Wizard
+        </div>
       </div>
 
       <div class="nav-section">
         <div class="section-title">Contract Drift Simulator</div>
-        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-          Simulate backend type mutations & contract breaks in 1-click:
+        <p style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 1.5rem; font-weight: 500;">
+          Learn how API changes affect contracts by simulating common breaking changes:
         </p>
-        <div class="demo-box">
-          <div class="demo-btn-group">
-            <button class="demo-btn active-mode" id="mode-NORMAL">
-              Normal Baseline Payload
-            </button>
-            <button class="demo-btn" id="mode-TYPE_BREAK">
-              Type Mismatch (int ➔ str)
-            </button>
-            <button class="demo-btn" id="mode-MISSING_FIELD">
-              Removed Required Field
-            </button>
-            <button class="demo-btn" id="mode-NULL_BREAK">
-              Nullability Violation
-            </button>
-            <button class="demo-btn" id="mode-ADDED_FIELD">
-              Added Non-Breaking Field
-            </button>
+        <div class="demo-box" style="border: 1px solid var(--border-color); border-radius: 8px;">
+          <div style="display: grid; gap: 1rem;">
+            <div class="demo-scenario">
+              <button class="demo-btn w-full" id="mode-NORMAL">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-weight: 600;">Normal Baseline</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Standard API response</div>
+                  </div>
+                  <div style="background: var(--accent-healthy); color: #09090B; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
+                </div>
+              </button>
+            </div>
+
+            <div class="demo-scenario">
+              <button class="demo-btn w-full" id="mode-TYPE_BREAK">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-weight: 600;">Type Mismatch</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">int → string (Breaking)</div>
+                  </div>
+                  <div style="background: var(--accent-breaking); color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                </div>
+              </button>
+            </div>
+
+            <div class="demo-scenario">
+              <button class="demo-btn w-full" id="mode-MISSING_FIELD">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-weight: 600;">Missing Field</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Removed required field (Breaking)</div>
+                  </div>
+                  <div style="background: var(--accent-breaking); color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                </div>
+              </button>
+            </div>
+
+            <div class="demo-scenario">
+              <button class="demo-btn w-full" id="mode-NULL_BREAK">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-weight: 600;">Null Violation</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Added null to required field (Breaking)</div>
+                  </div>
+                  <div style="background: var(--accent-breaking); color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                </div>
+              </button>
+            </div>
+
+            <div class="demo-scenario">
+              <button class="demo-btn w-full" id="mode-ADDED_FIELD">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-weight: 600;">Added Field</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">Added optional field (Safe)</div>
+                  </div>
+                  <div style="background: var(--accent-healthy); color: #09090B; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -784,8 +1099,17 @@
             </thead>
             <tbody id="traffic-table-body">
               <tr>
-                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                  Listening for HTTP network traffic...
+                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                  <div style="margin-bottom: 1.5rem;">
+                    No API traffic detected yet
+                  </div>
+                  <div>
+                    Point Driftwood at your API to start monitoring contract stability<br>
+                    <small>or click below to try a simulated breaking change</small>
+                  </div>
+                  <button class="btn btn-primary" style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; font-size: 1rem;" id="tryDemoBtn">
+                    Try Demo →
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -848,6 +1172,77 @@
           <button class="btn btn-primary" onclick="saveConfig()">Save Settings</button>
         </div>
       </div>
+
+      <!-- View 6: Setup Wizard -->
+      <div class="view-panel" id="view-setup-wizard">
+        <div class="setup-wizard">
+          <div class="progress-bar">
+            <div class="progress-fill" id="setup-progress-fill"></div>
+          </div>
+          <div class="progress-text" id="setup-progress-text">Step 1 of 3</div>
+
+          <div class="step" id="setup-step-1">
+            <div class="step-icon primary">1</div>
+            <h3>Connect to Your API</h3>
+            <p>Point Driftwood at your API to start monitoring contract stability</p>
+            <div class="input-group">
+              <label for="setup-target-url">API Backend URL</label>
+              <input type="text" id="setup-target-url" class="search-bar" placeholder="http://localhost:3000" />
+            </div>
+            <div style="margin-top: 1rem; color: var(--text-muted); font-size: 0.85rem;">
+              Or try with our built-in demo simulator:
+            </div>
+            <button class="btn btn-primary" id="setup-use-demo-btn" style="margin-top: 0.5rem;">
+              Use Demo Simulator →
+            </div>
+          </div>
+
+          <div class="step" id="setup-step-2" style="display: none;">
+            <div class="step-icon demo">2</div>
+            <h3>Create Your First Baseline</h3>
+            <p>Let Driftwood observe your API to establish the initial contract</p>
+            <div style="margin-bottom: 1.5rem;">
+              <button class="btn btn-primary" id="setup-create-baseline-btn" style="width: 100%; padding: 1rem;">
+                Start Monitoring & Create Baseline
+              </button>
+            </div>
+            <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem;">
+              <div>• Driftwood will monitor traffic for 10 seconds</div>
+              <div>• It will learn the expected API contract</div>
+              <div>• Your baseline will be saved for future drift detection</div>
+            </div>
+          </div>
+
+          <div class="step" id="setup-step-3" style="display: none;">
+            <div class="step-icon success">3</div>
+            <h3>Setup Complete!</h3>
+            <p>Driftwood is now monitoring your API for contract changes</p>
+            <div style="margin-bottom: 2rem;">
+              <div style="display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap;">
+                <div style="text-align: center;">
+                  <div style="font-size: 2rem; margin-bottom: 0.5rem;">●</div>
+                  <div>Monitoring Active</div>
+                </div>
+                <div style="text-align: center;">
+                  <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
+                  <div>Baseline Saved</div>
+                </div>
+                <div style="text-align: center;">
+                  <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔔</div>
+                  <div>Alerts Ready</div>
+                </div>
+              </div>
+            </div>
+            <p style="color: var(--text-muted); max-width: 350px;">
+              Driftwood will now notify you of any breaking changes to your API contract.
+              You can always adjust settings or add more baselines from the Settings panel.
+            </p>
+            <button class="btn btn-primary" id="setup-finish-btn" style="width: 100%; padding: 1rem;">
+              Go to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -890,33 +1285,66 @@
     let selectedTraffic = null;
     let eventSource = null;
 
-    window.addEventListener('DOMContentLoaded', () => {
-      initSSE();
-      loadTraffic();
-      loadBaselines();
-      loadAlerts();
-      loadConfig();
-      initVitals();
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Check if setup wizard is needed (no baselines exist)
+      const setupNeeded = await checkIfSetupNeeded();
 
-      // Event listeners for navigation and buttons
-      document.getElementById('alert-counter-btn').addEventListener('click', () => switchTab('alerts'));
-      document.getElementById('triggerTestRequestBtn').addEventListener('click', triggerTestRequest);
-      document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
-      document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
-      document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
-      document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
-      document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
-      document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
-      document.getElementById('mode-NORMAL').addEventListener('click', () => setMockMode('NORMAL'));
-      document.getElementById('mode-TYPE_BREAK').addEventListener('click', () => setMockMode('TYPE_BREAK'));
-      document.getElementById('mode-MISSING_FIELD').addEventListener('click', () => setMockMode('MISSING_FIELD'));
-      document.getElementById('mode-NULL_BREAK').addEventListener('click', () => setMockMode('NULL_BREAK'));
-      document.getElementById('mode-ADDED_FIELD').addEventListener('click', () => setMockMode('ADDED_FIELD'));
-      document.getElementById('loadHistoriesBtn').addEventListener('click', loadHistories);
-      document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
-      document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
-      document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
-      document.getElementById('setAsBaselineFromDrawerBtn').addEventListener('click', setAsBaselineFromDrawer);
+      if (setupNeeded) {
+        // Show setup wizard first
+        showSetupWizard();
+
+        // Add event listeners for setup wizard buttons
+        document.getElementById('setup-use-demo-btn').addEventListener('click', handleUseDemo);
+        document.getElementById('setup-create-baseline-btn').addEventListener('click', handleCreateBaseline);
+        document.getElementById('setup-finish-btn').addEventListener('click', handleFinishSetup);
+      } else {
+        // Normal initialization
+        initSSE();
+        loadTraffic();
+        loadBaselines();
+        loadAlerts();
+        loadConfig();
+        initVitals();
+
+        // Event listeners for navigation and buttons
+        document.getElementById('alert-counter-btn').addEventListener('click', () => switchTab('alerts'));
+        document.getElementById('triggerTestRequestBtn').addEventListener('click', triggerTestRequest);
+        document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
+        document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
+        document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
+        document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
+        document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
+        document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
+      document.getElementById('nav-setup-wizard').addEventListener('click', () => switchTab('setup-wizard'));
+        document.getElementById('mode-NORMAL').addEventListener('click', () => setMockMode('NORMAL'));
+        document.getElementById('mode-TYPE_BREAK').addEventListener('click', () => setMockMode('TYPE_BREAK'));
+        document.getElementById('mode-MISSING_FIELD').addEventListener('click', () => setMockMode('MISSING_FIELD'));
+        document.getElementById('mode-NULL_BREAK').addEventListener('click', () => setMockMode('NULL_BREAK'));
+        document.getElementById('mode-ADDED_FIELD').addEventListener('click', () => setMockMode('ADDED_FIELD'));
+        document.getElementById('loadHistoriesBtn').addEventListener('click', loadHistories);
+        document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+        document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+        document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
+        document.getElementById('setAsBaselineFromDrawerBtn').addEventListener('click', setAsBaselineFromDrawer);
+        document.getElementById('tryDemoBtn').addEventListener('click', () => {
+          // Switch to traffic tab if not already there
+          switchTab('traffic');
+          // Trigger a test request to start the demo
+          triggerTestRequest();
+          // Change button text to show it's active
+          const btn = document.getElementById('tryDemoBtn');
+          btn.textContent = 'Demo Active ●';
+          btn.style.background = 'var(--accent-warning)';
+          // Reset after 5 seconds
+          setTimeout(() => {
+            btn.textContent = 'Try Demo →';
+            btn.style.background = '';
+          }, 5000);
+        });
+      }
+
+      // Initialize guided tour (runs in both cases)
+      initGuidedTour();
     });
 
     function initSSE() {
@@ -1286,6 +1714,87 @@
       }).join('');
     }
 
+    // Setup Wizard Functions
+    async function checkIfSetupNeeded() {
+      try {
+        const res = await fetch('/_driftwood/api/baselines');
+        const baselines = await res.json();
+        return baselines.length === 0;
+      } catch (err) {
+        console.error('Error checking baselines:', err);
+        return true; // Show setup wizard on error to be safe
+      }
+    }
+
+    function showSetupWizard() {
+      // Hide all view panels
+      document.querySelectorAll('.view-panel').forEach(panel => {
+        panel.classList.remove('active');
+      });
+      // Hide all nav items
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      // Show setup wizard
+      document.getElementById('view-setup-wizard').classList.add('active');
+    }
+
+    function hideSetupWizard() {
+      document.getElementById('view-setup-wizard').classList.remove('active');
+      // Show traffic view by default
+      switchTab('traffic');
+    }
+
+    function updateSetupProgress(step, text) {
+      document.getElementById('setup-progress-text').textContent = text;
+      const progressPercent = (step - 1) * 33.33; // 0%, 33.33%, 66.66% for steps 1,2,3
+      document.getElementById('setup-progress-fill').style.width = progressPercent + '%';
+
+      // Hide all steps
+      document.querySelectorAll('.setup-wizard .step').forEach(stepEl => {
+        stepEl.style.display = 'none';
+      });
+      // Show current step
+      document.getElementById(`setup-step-${step}`).style.display = 'block';
+    }
+
+    async function handleUseDemo() {
+      updateSetupProgress(2, 'Step 2 of 3');
+
+      // Use demo simulator
+      await setMockMode('NORMAL');
+
+      // Small delay to ensure mode is set
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    async function handleCreateBaseline() {
+      updateSetupProgress(3, 'Step 3 of 3');
+
+      // Start monitoring and create baseline
+      await triggerTestRequest();
+
+      // Wait a bit to collect some traffic
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Save the config to use demo mode
+      await saveConfig();
+
+      // Trigger a few more requests to establish baseline
+      for (let i = 0; i < 3; i++) {
+        await triggerTestRequest();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Load baselines to verify it was created
+      await loadBaselines();
+    }
+
+    function handleFinishSetup() {
+      hideSetupWizard();
+      showToast('Setup Complete!', 'Driftwood is now monitoring your API');
+    }
+
     // Vital Signs — computed client-side from the live traffic buffer
     function initVitals() {
       updateVitals();
@@ -1334,7 +1843,85 @@
     function escapeHtml(str) {
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
-  </script>
+  // Guided Tour Functionality
+function initGuidedTour() {
+  const overlay = document.getElementById('guided-tour-overlay');
+  const textEl = document.getElementById('guided-tour-text');
+  const nextBtn = document.getElementById('guided-tour-next');
+  const dots = {
+    1: document.getElementById('dot1'),
+    2: document.getElementById('dot2'),
+    3: document.getElementById('dot3')
+  };
+
+  let currentStep = 0;
+  const steps = [
+    {
+      text: "Step 1: Monitor Live Traffic<br><small>Watch real-time API requests flow in as they happen</small>",
+      highlight: ['nav-traffic', 'view-traffic']
+    },
+    {
+      text: "Step 2: Check Contract Health<br><small>See your API stability at a glance with the vitals panel</small>",
+      highlight: ['vitals-container', 'nav-baselines']
+    },
+    {
+      text: "Step 3: Get Alerted on Changes<br><small>Receive instant notifications when contract drift is detected</small>",
+      highlight: ['nav-alerts']
+    }
+  ];
+
+  function showStep(stepIndex) {
+    if (stepIndex >= steps.length) {
+      overlay.style.display = 'none';
+      return;
+    }
+
+    const step = steps[stepIndex];
+    textEl.innerHTML = step.text;
+
+    // Update dots
+    Object.keys(dots).forEach(key => {
+      dots[key].classList.toggle('active', parseInt(key) === stepIndex + 1);
+    });
+
+    // Update button text
+    if (stepIndex === steps.length - 1) {
+      nextBtn.textContent = 'Got it!';
+    } else {
+      nextBtn.textContent = 'Next →';
+    }
+
+    currentStep = stepIndex;
+  }
+
+  nextBtn.addEventListener('click', () => {
+    showStep(currentStep + 1);
+  });
+
+  // Show tour on first visit (you could use localStorage to track if user has seen it)
+  // For now, we'll show it every time - in production you'd check if user has seen it before
+  setTimeout(() => {
+    overlay.style.display = 'flex';
+    showStep(0);
+  }, 1000);
+}
+
+// Guided tour will be initialized in the setup wizard logic
+<!-- Guided Tour Overlay -->
+<div id="guided-tour-overlay" class="guided-tour-overlay" style="display: none;">
+  <div class="guided-tour-content">
+    <h3>Welcome to Driftwood!</h3>
+    <div id="guided-tour-text">
+      Learn how to monitor API contract stability in 3 simple steps:
+    </div>
+    <div class="guided-tour-dots">
+      <div class="guided-tour-dot active" id="dot1"></div>
+      <div class="guided-tour-dot" id="dot2"></div>
+      <div class="guided-tour-dot" id="dot3"></div>
+    </div>
+    <button class="guided-tour-btn" id="guided-tour-next">Get Started</button>
+  </div>
+</div>
 </body>
 
 </html>
