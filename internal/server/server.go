@@ -50,11 +50,15 @@ func (s *Server) Router() http.HandlerFunc {
 			return
 		}
 
-		// Direct UI or Driftwood Control API call
-		if path == "/" || strings.HasPrefix(path, "/_driftwood") {
+		// Serve static assets from React build
+		if strings.HasPrefix(path, "/assets/") || path == "/favicon.svg" || path == "/icons.svg" {
+			web.ServeIndex(w, r)
+			return
+		}
+
+		// Driftwood Control API (all under /_driftwood/)
+		if strings.HasPrefix(path, "/_driftwood") {
 			switch {
-			case path == "/" || path == "/_driftwood" || path == "/_driftwood/":
-				web.ServeIndex(w, r)
 			case path == "/_driftwood/events":
 				s.hub.SSEHandler(w, r)
 			case path == "/_driftwood/api/traffic":
@@ -78,13 +82,21 @@ func (s *Server) Router() http.HandlerFunc {
 			case strings.HasPrefix(path, "/_driftwood/mock"):
 				proxyHandler(w, r)
 			default:
+				// For any other /_driftwood path, serve the React app (for client-side routing of the control panel if needed)
 				web.ServeIndex(w, r)
 			}
 			return
 		}
 
-		// Forward all other requests through the sniffing proxy
-		proxyHandler(w, r)
+		// For API paths, proxy to the target backend
+		if strings.HasPrefix(path, "/api/") {
+			proxyHandler(w, r)
+			return
+		}
+
+		// For all other paths, serve the React app (for client-side routing)
+		web.ServeIndex(w, r)
+		return
 	}
 }
 
