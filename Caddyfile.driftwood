@@ -1,0 +1,11 @@
+# Caddyfile for Driftwood
+# Replace driftwood.example.com with your actual domain
+
+driftwood.example.com {
+    reverse_proxy 127.0.0.1:8787
+    encode gzip
+    log {
+        output stdout
+        format console
+    }
+}

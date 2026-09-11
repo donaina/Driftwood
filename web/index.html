@@ -1349,35 +1349,127 @@
 
     <!-- View 1: Live Traffic Stream -->
       <div class="view-panel active" id="view-traffic">
-        <div class="traffic-table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Method</th>
-                <th>Path</th>
-                <th>Status</th>
-                <th>Duration</th>
-                <th>Contract Status</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody id="traffic-table-body">
-              <tr>
-                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 3rem;">
-                  <div style="margin-bottom: 1.5rem;">
-                    No API traffic detected yet
+        <!-- Dashboard Overview -->
+        <div class="space-y-8">
+          <!-- Header -->
+          <div class="text-center py-12">
+            <h2 class="text-3xl font-bold text-text-main mb-4">
+              API Contract Monitoring Dashboard
+            </h2>
+            <p class="text-text-muted max-w-xl mx-auto">
+              Continuously monitor your API contracts, detect breaking changes early,
+              and keep your services reliable.
+            </p>
+            <div class="flex justify-center mt-4">
+              <button
+                class="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+                id="tryDemoBtn"
+              >
+                Try Demo →
+              </button>
+            </div>
+          </div>
+
+          <!-- Three-Step Overview (Inspired by Zova) -->
+          <div class="bg-bg-card py-12">
+            <div class="max-w-4xl mx-auto px-4">
+              <h2 class="text-2xl font-semibold text-text-main mb-6 text-center">
+                How Driftwood Works
+              </h2>
+              <div class="grid gap-6 sm:grid-cols-3 items-start">
+                {/* Step 1 */}
+                <div class="flex flex-col items-center space-y-4 text-center p-6 bg-bg-hover rounded-lg">
+                  <div class="w-12 h-12 bg-accent-info/20 rounded-flex items-center justify-center mb-4">
+                    <span class="text-accent-info text-2xl font-bold">01</span>
                   </div>
-                  <div>
-                    Point Driftwood at your API to start monitoring contract stability<br>
-                    <small>or click below to try a simulated breaking change</small>
+                  <h3 class="text-lg font-semibold text-text-main">Connect Your API</h3>
+                  <p class="text-text-sm text-text-muted max-w-md">
+                    Point Driftwood at your API backend to begin monitoring contract stability.
+                  </p>
+                </div>
+
+                {/* Step 2 */}
+                <div class="flex flex-col items-center space-y-4 text-center p-6 bg-bg-hover rounded-lg">
+                  <div class="w-12 h-12 bg-accent-warning/20 rounded-flex items-center justify-center mb-4">
+                    <span class="text-accent-warning text-2xl font-bold">02</span>
                   </div>
-                  <button class="btn btn-primary" style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; font-size: 1rem;" id="tryDemoBtn">
-                    Try Demo →
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  <h3 class="text-lg font-semibold text-text-main">Detect Endpoints</h3>
+                  <p class="text-text-sm text-text-muted max-w-md">
+                    Let Driftwood automatically discover and learn your API's contract from live traffic.
+                  </p>
+                </div>
+
+                {/* Step 3 */}
+                <div class="flex flex-col items-center space-y-4 text-center p-6 bg-bg-hover rounded-lg">
+                  <div class="w-12 h-12 bg-accent-healthy/20 rounded-flex items-center justify-center mb-4">
+                    <span class="text-accent-healthy text-2xl font-bold">03</span>
+                  </div>
+                  <h3 class="text-lg font-semibold text-text-main">Get Alerted</h3>
+                  <p class="text-text-sm text-text-muted max-w-md">
+                    Establish your baseline contract and get alerted to any breaking changes.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Current Traffic Table -->
+          <div class="bg-bg-card rounded-xl border border-border-color p-6">
+            <h3 class="text-xl font-semibold text-text-main mb-4">
+              Live API Traffic
+            </h2>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-border-color">
+                <thead class="bg-bg-hover">
+                  <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
+                      Method
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
+                      Path
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
+                      Duration
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
+                      Contract Status
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
+                      Time
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-border-color" id="traffic-table-body">
+                  <tr>
+                    <td colspan="6" class="px-6 py-12 text-center">
+                      <div class="space-y-4">
+                        <div class="flex flex-col items-center space-y-3">
+                          <div class="h-12 w-12 rounded-full bg-accent-info/20 flex items-center justify-center">
+                            <span class="text-accent-info text-2xl font-bold">●</span>
+                          </div>
+                          <p class="text-text-muted">
+                            No API traffic detected yet
+                          </p>
+                          <p class="text-text-sm text-text-muted">
+                            Point Driftwood at your API to start monitoring contract stability
+                          </p>
+                        </div>
+                        <button
+                          class="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
+                          id="tryDemoBtn"
+                        >
+                          Try Demo →
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2672,6 +2764,11 @@ function renderHistories(histories) {
         });
         document.getElementById('webhook-react-root').style.display = 'none';
         document.getElementById('scenario-react-root').style.display = 'block';
+
+        // Mount React component
+        if (window.mountScenario) {
+          window.mountScenario(document.getElementById('scenario-react-root'));
+        }
 
         // Update nav active state
         document.querySelectorAll('.nav-item').forEach(item => {
