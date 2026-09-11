@@ -86,7 +86,7 @@ const CustomAlertThresholds: React.FC = () => {
       <div className="bg-bg-card rounded-xl border border-border-color p-6">
         <h3 className="text-xl font-semibold text-text-main mb-4">
           Preset Configurations
-        </div>
+        </h3>
         <div className="grid gap-4 sm:grid-cols-4">
           <button
             className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'strict' ? 'border-accent-info bg-accent-info/10' : 'border-transparent'}`}
