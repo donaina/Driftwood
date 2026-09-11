@@ -4,7 +4,7 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 
 ## Proposed Improvements
 
-### 1. Setup Wizard for First-Time Users
+### 1. Setup Wizard for First-Time Users ✓ COMPLETED
 **Goal:** Guide new users through initial configuration to reduce setup friction.
 
 **Features:**
@@ -109,7 +109,7 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 - Uses mono font for JSON payload examples
 - Vital Teal for active/inactive toggle switches
 
-### 7. Custom Alert Thresholds
+### 7. Custom Alert Thresholds ✓ COMPLETED
 **Goal:** Allow teams to define what constitutes breaking vs non-breaking changes for their context.
 
 **Features:**
@@ -130,7 +130,7 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 - Reset to defaults button
 - Explanation tooltips for each option
 
-### 8. Multi-Tenant View (Agency Mode)
+### 8. Multi-Tenant View (Agency Mode) ✓ COMPLETED
 **Goal:** Enable agencies/freelancers to monitor multiple client APIs from one dashboard.
 
 **Features:**
@@ -169,8 +169,8 @@ These improvements can be implemented incrementally, with each as its own PR fol
 4. **Integration Guides** - New static content route
 5. **Export & Reporting** - Enhance share/export functionality
 6. **Webhook Integrations** - New settings section + background worker
-7. **Custom Alert Thresholds** - New settings section + diff engine configuration
-8. **Multi-Tenant View** - Workspace routing + state isolation
+7. **Custom Alert Thresholds** - New settings section + diff engine configuration ✓ COMPLETED
+8. **Multi-Tenant View** - Workspace routing + state isolation ✓ COMPLETED
 
 Each should include:
 - Test-first approach (unit/integration tests)

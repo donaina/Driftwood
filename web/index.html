@@ -1174,11 +1174,17 @@
         <div class="nav-item" id="nav-alerts">
           Contract Alerts
         </div>
+        <div class="nav-item" id="nav-integrations">
+          Integration Guides
+        </div>
         <div class="nav-item" id="nav-settings">
           Proxy Settings
         </div>
         <div class="nav-item" id="nav-thresholds">
           Alert Thresholds
+        </div>
+        <div class="nav-item" id="nav-export-reporting">
+          Export & Reporting
         </div>
         <div class="nav-item" id="nav-agency">
           Agency Mode
@@ -1391,15 +1397,7 @@
 
       <!-- View 3: History -->
       <div class="view-panel" id="view-history">
-        <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-          <h3 style="font-size: 1rem;">Version History Browser</h3>
-          <button class="btn btn-primary" onclick="loadHistories()" style="font-size: 0.8rem;">
-            🔄 Refresh History
-          </button>
-        </div>
-        <div id="histories-container" style="display: grid; gap: 1rem;">
-          <!-- Dynamically populated -->
-        </div>
+        <div id="history-react-root"></div>
       </div>
 
       <!-- View 4: Alerts -->
@@ -1432,7 +1430,7 @@
       </div>
 
       <!-- View 5b: Alert Thresholds -->
-      <div class="view-panel" id="view-thresholds">
+      <div id="thresholds-react-root" style="display:none;">
         <div style="background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-color); max-width: 600px;">
           <h3 style="font-size: 1rem; margin-bottom: 1rem;">Custom Alert Thresholds</h3>
           <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
@@ -1501,7 +1499,9 @@
                   <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Header Changes</label>
                   <select id="threshold-header-changes" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
                     <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
       <div class="view-panel" id="view-setup-wizard">
         <div class="setup-wizard">
           <div class="progress-bar">
@@ -1941,17 +1941,25 @@
       document.getElementById(`nav-${tabName}`).classList.add('active');
       document.getElementById(`view-${tabName}`).classList.add('active');
 
-      // Auto-load histories when switching to history tab
       if (tabName === 'history') {
-        loadHistories();
+        showHistoryLibrary();
+        return;
       }
-      // Load threshold config when switching to thresholds tab
+      if (tabName === 'integrations') {
+        showIntegrationsLibrary();
+        return;
+      }
       if (tabName === 'thresholds') {
-        loadThresholdConfig();
+        showThresholdsLibrary();
+        return;
       }
-      // Load agency config when switching to agency tab
       if (tabName === 'agency') {
-        loadAgencyConfig();
+        showAgencyLibrary();
+        return;
+      }
+      // Load export reporting when switching to export/reporting tab
+      if (tabName === 'export-reporting') {
+        showExportReportingLibrary();
       }
     }
 
@@ -2552,7 +2560,6 @@ function renderHistories(histories) {
 
       const scenarioGrid = document.getElementById('scenario-grid');
       const filterButtons = document.querySelectorAll('.scenario-filter-btn');
-      const scenarioLibrarySection = document.getElementById('scenario-library');
 
       function renderScenarios(filter = 'all') {
         scenarioGrid.innerHTML = '';
@@ -2623,7 +2630,7 @@ function renderHistories(histories) {
         document.querySelectorAll('.page').forEach(page => {
           page.style.display = 'none';
         });
-        scenarioLibrarySection.style.display = 'block';
+        document.getElementById('scenario-react-root').style.display = 'block';
 
         // Update active filter button
         filterButtons.forEach(btn => {
@@ -2663,7 +2670,8 @@ function renderHistories(histories) {
         document.querySelectorAll('.page').forEach(page => {
           page.style.display = 'none';
         });
-        scenarioLibrarySection.style.display = 'block';
+        document.getElementById('webhook-react-root').style.display = 'none';
+        document.getElementById('scenario-react-root').style.display = 'block';
 
         // Update nav active state
         document.querySelectorAll('.nav-item').forEach(item => {
@@ -3020,12 +3028,17 @@ window.showIntegrationsLibrary = function() {
   document.querySelectorAll('.page').forEach(page => {
     page.style.display = 'none';
   });
-  document.getElementById('integrations').style.display = 'block';
+  document.getElementById('webhook-react-root').style.display = 'none';
+  document.getElementById('scenario-react-root').style.display = 'none';
+  document.getElementById('history-react-root').style.display = 'none';
+  document.getElementById('integrations-react-root').style.display = 'block';
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.remove('active');
   });
+  document.getElementById('nav-integrations').classList.add('active');
+
   // We'd add a nav item for integrations in a real implementation
 };
 
@@ -3164,13 +3177,51 @@ window.showExportReportingLibrary = function() {
   document.querySelectorAll('.page').forEach(page => {
     page.style.display = 'none';
   });
-  document.getElementById('export-reporting').style.display = 'block';
+  document.getElementById('webhook-react-root').style.display = 'none';
+  document.getElementById('scenario-react-root').style.display = 'none';
+  document.getElementById('export-reporting-react-root').style.display = 'block';
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.remove('active');
   });
-  // We'd add a nav item for export/reporting in a real implementation
+  document.getElementById('nav-export-reporting').classList.add('active');
+};
+
+window.showThresholdsLibrary = function() {
+  document.querySelectorAll('.page').forEach(page => {
+    page.style.display = 'none';
+  });
+  document.getElementById('thresholds-react-root').style.display = 'block';
+
+  // Mount React component
+  if (window.mountThresholds) {
+    window.mountThresholds(document.getElementById('thresholds-react-root'));
+  }
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  document.getElementById('nav-thresholds').classList.add('active');
+};
+
+window.showAgencyLibrary = function() {
+  document.querySelectorAll('.page').forEach(page => {
+    page.style.display = 'none';
+  });
+  document.getElementById('agency-react-root').style.display = 'block';
+
+  // Mount React component
+  if (window.mountAgency) {
+    window.mountAgency(document.getElementById('agency-react-root'));
+  }
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  document.getElementById('nav-agency').classList.add('active');
 };
 
 // Webhook & Alert Integrations functionality
@@ -3293,13 +3344,28 @@ window.showWebhookLibrary = function() {
   document.querySelectorAll('.page').forEach(page => {
     page.style.display = 'none';
   });
-  document.getElementById('webhook-integrations').style.display = 'block';
+  document.getElementById('webhook-react-root').style.display = 'block';
+  document.getElementById('scenario-react-root').style.display = 'none';
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.remove('active');
   });
   // We'd add a nav item for webhook integrations in a real implementation
+};
+
+// Add navigation to history library
+window.showHistoryLibrary = function() {
+  document.querySelectorAll('.page').forEach(page => {
+    page.style.display = 'none';
+  });
+  document.getElementById('history-react-root').style.display = 'block';
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  document.getElementById('nav-history').classList.add('active');
 };
 
 // Add CSS for Webhook & Alert Integrations section
@@ -3445,143 +3511,19 @@ document.head.appendChild(webhookStyle);
 </div>
 
   <!-- Scenario Library -->
-  <section id="scenario-library" class="page" style="display: none;">
-    <div class="scenario-library">
-      <div class="scenario-header">
-        <h2>Scenario Library</h2>
-        <p>Learn about API contract changes with pre-configured breaking change scenarios</p>
-      </div>
-
-      <div class="scenario-filters">
-        <button class="scenario-filter-btn active" data-filter="all">All Scenarios</button>
-        <button class="scenario-filter-btn" data-filter="breaking">Breaking</button>
-        <button class="scenario-filter-btn" data-filter="warning">Warnings</button>
-        <button class="scenario-filter-btn" data-filter="info">Informational</button>
-      </div>
-
-      <div class="scenario-grid" id="scenario-grid">
-        <!-- Scenario cards will be populated here by JavaScript -->
-      </div>
-    </div>
-  </section>
+  <div id="scenario-react-root" style="display:none;"></div>
 
   <!-- Interactive Integration Guides -->
-  <section id="integrations" class="page" style="display: none;">
-    <div class="integrations-library">
-      <div class="integrations-header">
-        <h2>Integration Guides</h2>
-        <p>Copy-paste ready integration examples for popular frameworks</p>
-        <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
-          <button class="btn btn-primary" onclick="showAllIntegrations()">
-            Show All
-          </button>
-        </div>
-      </div>
-
-      <div class="integrations-filters">
-        <button class="integrations-filter-btn active" data-filter="all">All Frameworks</button>
-        <button class="integrations-filter-btn" data-filter="express">Express</button>
-        <button class="integrations-filter-btn" data-filter="fastapi">FastAPI</button>
-        <button class="integrations-filter-btn" data-filter="nestjs">NestJS</button>
-        <button class="integrations-filter-btn" data-filter="django">Django</button>
-        <button class="integrations-filter-btn" data-filter="rails">Rails</button>
-      </div>
-
-      <div class="integrations-grid" id="integrations-grid">
-        <!-- Integration cards will be populated here by JavaScript -->
-      </div>
-    </div>
-  </section>
+  <div id="integrations-react-root" style="display:none;"></div>
 
   <!-- Export & Reporting -->
-  <section id="export-reporting" class="page" style="display: none;">
-    <div class="export-reporting-library">
-      <div class="export-reporting-header">
-        <h2>Export & Reporting</h2>
-        <p>Generate shareable reports of API contract stability for team communication</p>
-        <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
-          <button class="btn btn-primary" onclick="showExportOptions()">
-            Export Current View
-          </button>
-        </div>
-      </div>
-
-      <div class="export-options" id="export-options" style="display: none; margin-bottom: 2rem;">
-        <div class="export-option">
-          <h3>Current View</h3>
-          <p>Export the currently visible dashboard as an image</p>
-          <button class="btn" onclick="exportAsPNG()">Export as PNG</button>
-          <button class="btn" onclick="exportAsSVG()">Export as SVG</button>
-        </div>
-        <div class="export-option">
-          <h3>Summary Report</h3>
-          <p>Generate a PDF summary of contract health metrics</p>
-          <button class="btn" onclick="exportSummaryPDF()">Export Summary PDF</button>
-        </div>
-        <div class="export-option">
-          <h3>Detailed Timeline</h3>
-          <p>Export the full contract evolution timeline</p>
-          <button class="btn" onclick="exportTimelinePDF()">Export Timeline PDF</button>
-        </div>
-      </div>
-
-      <div class="scheduled-reports">
-        <h3>Scheduled Reports</h3>
-        <p>Set up automatic email reports for regular stakeholder updates</p>
-        <div style="margin: 1.5rem 0;">
-          <div class="form-group">
-            <label>Frequency:</label>
-            <select id="report-frequency">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Recipients:</label>
-            <input type="email" id="report-recipients" placeholder="team@example.com, manager@company.com" multiple>
-          </div>
-          <div class="form-group">
-            <label>Report Type:</label>
-            <select id="report-type">
-              <option value="summary">Summary Report</option>
-              <option value="detailed">Detailed Timeline</option>
-              <option value="both">Both Summary & Timeline</option>
-            </select>
-          </div>
-          <button class="btn btn-primary" onclick="scheduleReports()">Schedule Reports</button>
-        </div>
-      </div>
-
-      <div class="report-history">
-        <h3>Report History</h3>
-        <p>View and manage previously generated reports</p>
-        <div id="report-history-list">
-          <!-- Report history items will be populated here -->
-          <div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
-            No reports generated yet
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <div id="export-reporting-react-root" style="display:none;"></div>
 
 <!-- Webhook & Alert Integrations -->
-<section id="webhook-integrations" class="page" style="display: none;">
-  <div class="webhook-integrations-library">
-    <div class="webhook-integrations-header">
-      <h2>Webhook & Alert Integrations</h2>
-      <p>Connect Driftwood to your team's communication tools for real-time alerts on API contract changes</p>
-      <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
-        <!-- We'd add a button to add new webhook configurations in a real implementation -->
-      </div>
-    </div>
+<div id="webhook-react-root" style="display:none;"></div>
 
-    <div id="webhook-grid">
-      <!-- Webhook cards will be populated here by JavaScript -->
-    </div>
-  </div>
-</section>
+<!-- Agency Mode -->
+<div id="agency-react-root" style="display:none;"></div>
 
 </body>
 </html>
