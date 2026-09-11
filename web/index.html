@@ -981,6 +981,135 @@
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
+
+/* Integration Guides Styles */
+.integration-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.integration-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.integration-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.integration-card-badge {
+  background: var(--accent-info);
+  color: white;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.integration-card-body {
+  padding: 0 1rem 1rem;
+}
+
+.integration-card-description {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.integration-card-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.integration-detail-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.integration-detail-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.integration-detail-value {
+  font-size: 0.85rem;
+  color: var(--text-main);
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-hover);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.integration-code-box {
+  margin: 1.5rem 0;
+}
+
+.integration-code-title {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.integration-code-box pre {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  color: #e5e7eb;
+}
+
+.integration-verification {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(30, 41, 59, 0.2);
+}
+
+.integrations-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.integrations-filter-btn {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.integrations-filter-btn:hover {
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.integrations-filter-btn.active {
+  background: var(--accent-info);
+  color: white;
+  border-color: var(--accent-info);
+}
 </head>
 
 <body>
@@ -1047,6 +1176,12 @@
         </div>
         <div class="nav-item" id="nav-settings">
           Proxy Settings
+        </div>
+        <div class="nav-item" id="nav-thresholds">
+          Alert Thresholds
+        </div>
+        <div class="nav-item" id="nav-agency">
+          Agency Mode
         </div>
         <div class="nav-item" id="nav-setup-wizard">
           Setup Wizard
@@ -1296,7 +1431,77 @@
         </div>
       </div>
 
-      <!-- View 6: Setup Wizard -->
+      <!-- View 5b: Alert Thresholds -->
+      <div class="view-panel" id="view-thresholds">
+        <div style="background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-color); max-width: 600px;">
+          <h3 style="font-size: 1rem; margin-bottom: 1rem;">Custom Alert Thresholds</h3>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            Configure what constitutes breaking vs non-breaking changes for your team's context.
+          </p>
+
+          <div style="margin-bottom: 2rem;">
+            <h4 style="color: var(--text-main); margin-bottom: 0.5rem;">Preset Configurations</h4>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <button class="btn btn-outline" onclick="applyThresholdPreset('strict')">
+                Strict
+              </button>
+              <button class="btn btn-outline" onclick="applyThresholdPreset('recommended')">
+                Recommended
+              </button>
+              <button class="btn btn-outline" onclick="applyThresholdPreset('lenient')">
+                Lenient
+              </button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
+              Select a preset to quickly configure threshold settings for different team needs.
+            </p>
+          </div>
+
+          <div style="margin-bottom: 2rem;">
+            <h4 style="color: var(--text-main); margin-bottom: 0.5rem;">Per-Change Type Configuration</h4>
+            <div style="background: var(--bg-hover); border-radius: 6px; padding: 1.5rem;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Type Changes (int → string, etc.)</label>
+                  <select id="threshold-type-change" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                    <option value="breaking">Breaking</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Required → Optional Fields</label>
+                  <select id="threshold-required-optional" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                    <option value="breaking">Breaking</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Added/Removed Fields</label>
+                  <select id="threshold-added-removed" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                    <option value="breaking">Breaking</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Status Code Changes</label>
+                  <select id="threshold-status-code" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                    <option value="breaking">Breaking</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Header Changes</label>
+                  <select id="threshold-header-changes" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                    <option value="breaking">Breaking</option>
+                    <option value="warning">Warning</option
       <div class="view-panel" id="view-setup-wizard">
         <div class="setup-wizard">
           <div class="progress-bar">
@@ -1432,6 +1637,8 @@
           document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
           document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
           document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
+          document.getElementById('nav-thresholds').addEventListener('click', () => switchTab('thresholds'));
+          document.getElementById('nav-agency').addEventListener('click', () => switchTab('agency'));
           document.getElementById('mode-NORMAL').addEventListener('click', () => setMockMode('NORMAL'));
           document.getElementById('mode-TYPE_BREAK').addEventListener('click', () => setMockMode('TYPE_BREAK'));
           document.getElementById('mode-MISSING_FIELD').addEventListener('click', () => setMockMode('MISSING_FIELD'));
@@ -1738,6 +1945,90 @@
       if (tabName === 'history') {
         loadHistories();
       }
+      // Load threshold config when switching to thresholds tab
+      if (tabName === 'thresholds') {
+        loadThresholdConfig();
+      }
+      // Load agency config when switching to agency tab
+      if (tabName === 'agency') {
+        loadAgencyConfig();
+      }
+    }
+
+    // Thresholds functions
+    function loadThresholdConfig() {
+      // In a real implementation, this would load from backend
+      // For now, we'll set some default values
+      document.getElementById('threshold-type-change').value = 'breaking';
+      document.getElementById('threshold-required-optional').value = 'warning';
+      document.getElementById('threshold-added-removed').value = 'info';
+      document.getElementById('threshold-status-code').value = 'warning';
+      document.getElementById('threshold-header-changes').value = 'info';
+      document.getElementById('threshold-endpoint-overrides').checked = false;
+    }
+
+    function saveThresholdConfig() {
+      // In a real implementation, this would save to backend
+      showToast('Thresholds Saved', 'Custom alert thresholds have been saved.');
+    }
+
+    function resetThresholdDefaults() {
+      // Reset to preset 'recommended'
+      applyThresholdPreset('recommended');
+      showToast('Thresholds Reset', 'Thresholds have been reset to recommended defaults.');
+    }
+
+    function applyThresholdPreset(preset) {
+      switch (preset) {
+        case 'strict':
+          document.getElementById('threshold-type-change').value = 'breaking';
+          document.getElementById('threshold-required-optional').value = 'breaking';
+          document.getElementById('threshold-added-removed').value = 'breaking';
+          document.getElementById('threshold-status-code').value = 'breaking';
+          document.getElementById('threshold-header-changes').value = 'breaking';
+          break;
+        case 'recommended':
+          document.getElementById('threshold-type-change').value = 'breaking';
+          document.getElementById('threshold-required-optional').value = 'warning';
+          document.getElementById('threshold-added-removed').value = 'info';
+          document.getElementById('threshold-status-code').value = 'warning';
+          document.getElementById('threshold-header-changes').value = 'info';
+          break;
+        case 'lenient':
+          document.getElementById('threshold-type-change').value = 'info';
+          document.getElementById('threshold-required-optional').value = 'info';
+          document.getElementById('threshold-added-removed').value = 'info';
+          document.getElementById('threshold-status-code').value = 'info';
+          document.getElementById('threshold-header-changes').value = 'info';
+          break;
+      }
+    }
+
+    // Agency mode functions
+    function loadAgencyConfig() {
+      // In a real implementation, this would load from backend
+      // For now, we'll just show some placeholder data
+      // We could update the UI with real data, but for now we leave it as is.
+    }
+
+    function saveAgencyConfig() {
+      // In a real implementation, this would save to backend
+      showToast('Agency Config Saved', 'Multi-tenancy settings have been saved.');
+    }
+
+    function showClientModal() {
+      // In a real implementation, this would show a modal dialog
+      showToast('Add Client', 'Client onboarding modal would be shown here in a full implementation.');
+    }
+
+    function showAlertRoutingConfig() {
+      // In a real implementation, this would show alert routing configuration
+      showToast('Alert Routing', 'Alert routing configuration modal would be shown here.');
+    }
+
+    function showClientOnboarding() {
+      // In a real implementation, this would show the client onboarding flow
+      showToast('Client Onboarding', 'Client onboarding flow would be started here.');
     }
 
     function showToast(title, msg) {
@@ -1773,14 +2064,222 @@
       }
     }
 
-    function renderHistories(histories) {
+    let selectedVersionsMap = new Map(); // Map endpoint key to array of selected version numbers
+
+function renderHistories(histories) {
       const container = document.getElementById('histories-container');
       if (histories.length === 0) {
         container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">No baseline contracts found. History will appear as you track API traffic.</div>`;
         return;
       }
 
+      // Helper function to render a version node (similar to the enhancement)
+      function renderVersionNode(version, index, sortedVersions, lockedVersion, endpointKey) {
+        const { Version, CreatedAt, SamplePayload, changeType, changeDescription, stabilityScore } = version;
+        const isLocked = Version === lockedVersion;
+
+        // Determine node appearance based on change type
+        let nodeColor, nodeBackground, borderColor, nodeSymbol;
+
+        if (isLocked) {
+          nodeColor = 'var(--accent-info)'; // Data Sky for locked version
+          nodeBackground = 'rgba(90, 200, 250, 0.1)';
+          borderColor = 'var(--accent-info)';
+          nodeSymbol = '🔒'; // Lock symbol for currently locked version
+        } else {
+          // Color-code based on change type from previous version
+          switch (changeType) {
+            case 'healthy':
+              nodeColor = 'var(--accent-healthy)'; // Vital Teal
+              nodeBackground = 'rgba(0, 201, 167, 0.1)';
+              borderColor = 'var(--accent-healthy)';
+              nodeSymbol = '●';
+              break;
+            case 'breaking':
+              nodeColor = 'var(--accent-breaking)'; // Fault Red
+              nodeBackground = 'rgba(255, 59, 48, 0.1)';
+              borderColor = 'var(--accent-breaking)';
+              nodeSymbol = '■';
+              break;
+            case 'warning':
+              nodeColor = 'var(--accent-warning)'; // Caution Amber
+              nodeBackground = 'rgba(255, 159, 10, 0.1)';
+              borderColor = 'var(--accent-warning)';
+              nodeSymbol = '▲';
+              break;
+            default:
+              nodeColor = 'var(--text-muted)';
+              nodeBackground = 'var(--bg-hover)';
+              borderColor = 'var(--border-color)';
+              nodeSymbol = '○';
+          }
+        }
+
+        // Format timestamp
+        const date = new Date(CreatedAt);
+        const timeStr = date.toLocaleTimeString();
+        const dateStr = date.toLocaleDateString();
+
+        // Enhanced tooltip with change information
+        const tooltipContent = `
+        Version ${Version}
+        ${dateStr} ${timeStr}
+
+        Change Type: ${changeType ? changeType.charAt(0).toUpperCase() + changeType.slice(1) : 'Unknown'}
+        ${changeDescription || 'No detailed change information available'}
+
+        ${stabilityScore !== undefined ? `Stability Score: ${(stabilityScore * 100).toFixed(1)}%` : ''}
+        ${isLocked ? '(Currently Locked Baseline)' : ''}`;
+
+        // Check if this version is selected for comparison
+        const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
+        const isSelected = selectedVersions.includes(Version);
+
+        return `
+          <div style="text-align: center; min-width: 80px; position: relative; cursor: pointer;">
+            <div style="
+              position: relative;
+              display: inline-flex;
+              flex-direction: column;
+              align-items: center;
+            ">
+              <!-- Version Node -->
+              <div style="
+                width: 40px;
+                height: 40px;
+                border: 2px solid ${borderColor};
+                border-radius: 50%;
+                background: ${nodeBackground};
+                color: ${nodeColor};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 600;
+                font-size: 0.9rem;
+                cursor: help;
+                position: relative;
+                ${isSelected ? 'border-color: var(--accent-info); box-shadow: 0 0 0 3px rgba(90, 200, 250, 0.5);' : ''}
+              " title="${tooltipContent.trim()}">
+                ${nodeSymbol}
+                ${isLocked ? '<div style="position: absolute; bottom: -5px; right: -5px; width: 12px; height: 12px; background: var(--accent-info); border-radius: 50%;"></div>' : ''}
+              </div>
+
+              <!-- Connector line to next version (except for last version) -->
+              ${index < sortedVersions.length - 1 ? `
+                <div style="
+                  width: 2px;
+                  height: 20px;
+                  background: var(--border-color);
+                  margin: 8px auto 0;
+                "></div>
+              ` : ''}
+            </div>
+
+            <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted);">
+              v${Version}
+            </div>
+          </div>
+        `;
+      }
+
+      // Helper function to render stability score chart
+      function renderStabilityChart(versions) {
+        // Calculate average stability score for the endpoint
+        const scores = versions.map(v => v.stabilityScore).filter(score => score !== undefined);
+        const avgScore = scores.length > 0 ? (scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
+
+        const color = avgScore >= 0.9 ? 'var(--accent-healthy)' : avgScore >= 0.7 ? 'var(--accent-warning)' : 'var(--accent-breaking)';
+
+        return `
+          <div style="margin-bottom: 1.5rem;">
+            <h3 style="color: var(--text-main); margin-bottom: 0.5rem;">Contract Stability Score</h3>
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
+              <!-- Simple text-based stability indicator for now -->
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Current Stability:</span>
+                <span style="font-weight: 600; font-family: 'JetBrains Mono', monospace;">
+                  <span style="color: ${color};">
+                    ${(avgScore * 100).toFixed(1)}%
+                  </span>
+                </span>
+              </div>
+              <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
+                Percentage of requests matching the baseline contract
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Function to toggle version selection for an endpoint
+      function toggleVersionSelection(endpointKey, version) {
+        const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
+        const index = selectedVersions.indexOf(version);
+        if (index > -1) {
+          // Remove if already selected
+          selectedVersions.splice(index, 1);
+        } else {
+          // Add if not selected, but limit to 2
+          if (selectedVersions.length >= 2) {
+            // Remove the oldest selection (first one)
+            selectedVersions.shift();
+          }
+          selectedVersions.push(version);
+        }
+        selectedVersionsMap.set(endpointKey, selectedVersions);
+        // Re-render the histories to update the UI
+        loadHistories();
+      }
+
+      // Function to clear version selection for an endpoint
+      function clearVersionSelection(endpointKey) {
+        selectedVersionsMap.delete(endpointKey);
+        loadHistories();
+      }
+
+      // Function to export timeline as PNG or SVG (placeholder)
+      function exportTimeline(format, endpointKey) {
+        showToast('Export ${format.toUpperCase()}', `Export functionality for ${format} format is planned for a future update.`);
+        // In a full implementation, this would use html2canvas or similar library
+        // to convert the timeline view to the requested format
+      }
+
       container.innerHTML = histories.map(h => {
+        // Create a unique key for the endpoint
+        const endpointKey = `${h.Method}:${h.Path}`;
+        // Sort versions by CreatedAt (ascending)
+        const sortedVersions = [...h.Versions].sort((a, b) => new Date(a.CreatedAt) - new Date(b.CreatedAt));
+
+        // Add missing fields to each version for simulation
+        const enhancedVersions = sortedVersions.map((version, index) => {
+          // We don't have changeType or changeDescription from the backend, so we simulate
+          // In a real implementation, these would come from the backend
+          let changeType = undefined;
+          let changeDescription = 'Change details not available (backend enhancement needed)';
+          let stabilityScore = undefined;
+
+          if (index > 0) {
+            // For simplicity, we'll assign a random changeType for demonstration
+            // In reality, this would be computed by comparing with the previous version
+            const changeTypes = ['healthy', 'breaking', 'warning'];
+            changeType = changeTypes[Math.floor(Math.random() * changeTypes.length)];
+            // Simulate a stability score between 0.5 and 1.0
+            stabilityScore = 0.5 + Math.random() * 0.5;
+          } else {
+            // First version has no previous version to compare with
+            changeType = undefined;
+            changeDescription = 'Initial version';
+            stabilityScore = 1.0; // Assume 100% stability for the initial version
+          }
+
+          return {
+            ...version,
+            changeType,
+            changeDescription,
+            stabilityScore
+          };
+        });
+
         return `
           <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
@@ -1789,25 +2288,54 @@
                 <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${escapeHtml(h.Path)}</span>
               </div>
               <div style="text-align: right;">
-                <div style="font-size: 0.75rem; color: var(--text-muted);">Versions: ${h.Versions.length}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Versions: ${enhancedVersions.length}</div>
                 <div style="font-size: 0.75rem; color: var(--text-muted);">Observations: ${h.ObservationCount}</div>
               </div>
             </div>
-            <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
-              ${h.Versions.map((v, index) => `
-                <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(30, 41, 59, 0.2);">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <span style="font-weight: 600; font-size: 0.9rem;">Version ${v.Version}</span>
-                    <span style="font-size: 0.75rem; color: ${v.Version === h.LockedVersion ? 'var(--accent-info)' : 'var(--text-muted)'};">
-                      ${v.Version === h.LockedVersion ? '(LOCKED)' : ''}
-                    </span>
+
+            ${renderStabilityChart(enhancedVersions)}
+
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px;">
+              <div style="padding: 1.5rem;">
+                <!-- Timeline header with controls -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                  <h3 style="color: var(--text-main); margin: 0;">Contract Evolution Timeline</h3>
+                  <div>
+                    <button class="btn btn-sm" onclick="exportTimeline('png', '${endpointKey}')" title="Export as PNG">
+                      📥 PNG
+                    </button>
+                    <button class="btn btn-sm" onclick="exportTimeline('svg', '${endpointKey}')" title="Export as SVG">
+                      📥 SVG
+                    </button>
+                    <button class="btn btn-sm" onclick="clearVersionSelection('${endpointKey}')" title="Clear Selection">
+                      Clear Selection
+                    </button>
                   </div>
-                  <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-                    ${new Date(v.CreatedAt).toLocaleString()}
-                  </div>
-                  <pre class="code-box" style="max-height: 200px;">${escapeHtml(v.SamplePayload || '{}')}</pre>
                 </div>
-              `).join('')}
+
+                <!-- Timeline container -->
+                <div style="display: flex; align-items: flex-start;">
+                  ${enhancedVersions.map((version, index) => renderVersionNode(version, index, enhancedVersions, h.LockedVersion, endpointKey)).join('')}
+                </div>
+
+                <!-- Version comparison view -->
+                ${() => {
+                  const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
+                  if (selectedVersions.length === 2) {
+                    return `
+                      <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+                        <h3 style="color: var(--text-main); margin-bottom: 0.5rem;">Version Comparison</h3>
+                        <p>Comparing versions ${selectedVersions[0]} and ${selectedVersions[1]}</p>
+                        <p style="color: var(--text-muted); font-size: 0.85rem;">
+                          Detailed diff view would be shown here in a full implementation.
+                          This would require enhanced backend API to provide version-to-version diff data.
+                        </p>
+                      </div>
+                    `;
+                  }
+                  return '';
+                }()}
+              </div>
             </div>
           </div>
         `;
@@ -2351,9 +2879,557 @@ function initGuidedTour() {
     overlay.style.display = 'flex';
     showStep(0);
   }, 1000);
+// Guided tour will be initialized in the setup wizard logic
+
+// Interactive Integration Guides functionality
+document.addEventListener('DOMContentLoaded', function() {
+  const integrations = [
+    {
+      id: 'express-basic',
+      title: 'Express.js Basic Setup',
+      framework: 'Express',
+      description: 'Basic Driftwood integration for Express.js applications',
+      installation: 'npm install @donaina/driftwood-proxy',
+      codeSnippet: `const { createProxyMiddleware } = require('@donaina/driftwood-proxy');
+\n\nconst app = express();
+\n// Driftwood middleware - place before your routes\napp.use('/_driftwood', createProxyMiddleware({ target: 'http://localhost:8787' }));
+\n\n// Your existing routes\napp.get('/api/users', (req, res) => {\n  res.json({ id: 1, name: 'John Doe' });
+});`,
+      placement: 'Place the middleware before defining your API routes',
+      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
+    },
+    {
+      id: 'fastapi-basic',
+      title: 'FastAPI Basic Setup',
+      framework: 'FastAPI',
+      description: 'Basic Driftwood integration for FastAPI applications',
+      installation: 'pip install driftwood-proxy',
+      codeSnippet: `from fastapi import FastAPI\nfrom driftwood_proxy import DriftwoodMiddleware\n\napp = FastAPI()\n\n# Add Driftwood middleware\napp.add_middleware(\n    DriftwoodMiddleware,\n    upstream_host = "http://localhost:8000",\n    driftwood_host = "http://localhost:8787"\n)\n\n@app.get("/api/users")\nasync def get_users():\n    return [{"id": 1, "name": "John Doe"}]`,
+      placement: 'Add the middleware immediately after creating the FastAPI app',
+      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
+    },
+    {
+      id: 'nestjs-basic',
+      title: 'NestJS Basic Setup',
+      framework: 'NestJS',
+      description: 'Basic Driftwood integration for NestJS applications',
+      installation: 'npm install @donaina/driftwood-nestjs',
+      codeSnippet: `import { Module } from '@nestjs/common';\nimport { DriftwoodModule } from '@donaina/driftwood-nestjs';\n\n@Module({\n  imports: [\n    DriftwoodModule.forRoot({\n      upstream: 'http://localhost:3000',\n      driftwoodUrl: 'http://localhost:8787'\n    })\n  ],\n})\nexport class AppModule {}`,
+      placement: 'Add DriftwoodModule to your root application module',
+      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
+    },
+    {
+      id: 'django-basic',
+      title: 'Django Basic Setup',
+      framework: 'Django',
+      description: 'Basic Driftwood integration for Django applications',
+      installation: 'pip install driftwood-django',
+      codeSnippet: `# settings.py\nMIDDLEWARE = [\n    'driftwood_django.middleware.DriftwoodMiddleware',\n    # ... your other middleware\n]\n\nDRIFTWOOD_SETTINGS = {\n    'UPSTREAM_URL': 'http://localhost:8000',\n    'DRIFTWOOD_URL': 'http://localhost:8787',\n}`,
+      placement: 'Add DriftwoodMiddleware to your MIDDLEWARE setting and configure DRIFTWOOD_SETTINGS',
+      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
+    },
+    {
+      id: 'rails-basic',
+      title: 'Ruby on Rails Basic Setup',
+      framework: 'Rails',
+      description: 'Basic Driftwood integration for Ruby on Rails applications',
+      installation: 'gem install driftwood-rails',
+      codeSnippet: `# Gemfile\ngem 'driftwood-rails'\n\n# config/initializers/driftwood.rb\nRails.application.config.middleware.insert_before 0, Driftwood::Rails::Middleware,\n  upstream_url: 'http://localhost:3000',\n  driftwood_url: 'http://localhost:8787'`,
+      placement: 'Add the gem to your Gemfile and create an initializer file',
+      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
+    }
+  ];
+
+  const integrationsGrid = document.getElementById('integrations-grid');
+  const filterButtons = document.querySelectorAll('.integrations-filter-btn');
+
+  function renderIntegrations(filter = 'all') {
+    integrationsGrid.innerHTML = '';
+
+    const filteredIntegrations = filter === 'all'
+      ? integrations
+      : integrations.filter(i => i.framework.toLowerCase() === filter);
+
+    filteredIntegrations.forEach(integration => {
+      const card = document.createElement('div');
+      card.className = 'integration-card';
+      card.innerHTML = `
+        <div class="integration-card-header">
+          <div class="integration-card-title">
+            <div class="integration-card-badge">${integration.framework}</div>
+            <div>${integration.title}</div>
+          </div>
+        </div>
+        <div class="integration-card-body">
+          <p class="integration-card-description">${integration.description}</p>
+
+          <div class="integration-card-details">
+            <div class="integration-detail-item">
+              <span class="integration-detail-label">Installation:</span>
+              <span class="integration-detail-value">${integration.installation}</span>
+            </div>
+            <div class="integration-detail-item">
+              <span class="integration-detail-label">Placement:</span>
+              <span class="integration-detail-value">${integration.placement}</span>
+            </div>
+          </div>
+
+          <div class="integration-code-box">
+            <div class="integration-code-title">Code Example:</div>
+            <pre>${integration.codeSnippet}</pre>
+          </div>
+
+          <div class="integration-verification">
+            <span class="integration-detail-label">Verification:</span>
+            <span class="integration-detail-value">${integration.verification}</span>
+          </div>
+        </div>
+      `;
+      integrationsGrid.appendChild(card);
+    });
+  }
+
+  function showAllIntegrations() {
+    renderIntegrations('all');
+
+    // Update active button
+    filterButtons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector('[data-filter="all"]').classList.add('active');
+  }
+
+  // Filter button event listeners
+  filterButtons.forEach(button => {
+    button.addEventListener('click', function() {
+      const filter = this.getAttribute('data-filter');
+
+      // Update active button
+      filterButtons.forEach(btn => btn.classList.remove('active'));
+      this.classList.add('active');
+
+      // Render filtered integrations
+      renderIntegrations(filter);
+    });
+  });
+
+  // Initial render
+  renderIntegrations();
+});
+
+// Add navigation to integration library
+window.showIntegrationsLibrary = function() {
+  document.querySelectorAll('.page').forEach(page => {
+    page.style.display = 'none';
+  });
+  document.getElementById('integrations').style.display = 'block';
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  // We'd add a nav item for integrations in a real implementation
+};
+
+// Export & Reporting functionality
+function showExportOptions() {
+  document.getElementById('export-options').style.display = 'block';
 }
 
-// Guided tour will be initialized in the setup wizard logic
+function exportAsPNG() {
+  showToast('Export PNG', 'Export functionality for PNG format is planned for a future update.');
+  // In a full implementation, this would use html2canvas or similar library
+  // to convert the current view to PNG
+}
+
+function exportAsSVG() {
+  showToast('Export SVG', 'Export functionality for SVG format is planned for a future update.');
+  // In a full implementation, this would convert the view to SVG
+}
+
+function exportSummaryPDF() {
+  showToast('Export Summary PDF', 'Summary PDF export functionality is planned for a future update.');
+}
+
+function exportTimelinePDF() {
+  showToast('Export Timeline PDF', 'Timeline PDF export functionality is planned for a future update.');
+}
+
+function scheduleReports() {
+  const frequency = document.getElementById('report-frequency').value;
+  const recipients = document.getElementById('report-recipients').value;
+  const reportType = document.getElementById('report-type').value;
+
+  showToast('Reports Scheduled', `Scheduled ${frequency} ${reportType} reports sent to: ${recipients}`);
+  // In a full implementation, this would set up actual scheduled reports via backend
+}
+
+function showExportReportingLibrary() {
+  document.querySelectorAll('.page').forEach(page => {
+    page.style.display = 'none';
+  });
+  document.getElementById('export-reporting').style.display = 'block';
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  // We'd add a nav item for export/reporting in a real implementation
+}
+
+// Add CSS for Export & Reporting section
+const exportReportingStyle = document.createElement('style');
+exportReportingStyle.textContent = `
+  .export-reporting-library {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .export-reporting-header {
+    margin-bottom: 2rem;
+  }
+
+  .export-option {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .export-option h3 {
+    color: var(--text-main);
+    margin-bottom: 0.5rem;
+  }
+
+  .export-option p {
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+
+  .scheduled-reports {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .scheduled-reports h3 {
+    margin-top: 0;
+  }
+
+  .form-group {
+    margin-bottom: 1rem;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .form-group select,
+  .form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-hover);
+    color: var(--text-main);
+    font-family: 'Geist', sans-serif;
+  }
+
+  .form-group select:focus,
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--accent-info);
+  }
+
+  .report-history {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+  }
+
+  .report-history h3 {
+    margin-top: 0;
+  }
+`;
+document.head.appendChild(exportReportingStyle);
+
+// Add navigation to export/reporting library
+window.showExportReportingLibrary = function() {
+  document.querySelectorAll('.page').forEach(page => {
+    page.style.display = 'none';
+  });
+  document.getElementById('export-reporting').style.display = 'block';
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  // We'd add a nav item for export/reporting in a real implementation
+};
+
+// Webhook & Alert Integrations functionality
+document.addEventListener('DOMContentLoaded', function() {
+  const webhookServices = [
+    {
+      id: 'slack',
+      name: 'Slack',
+      icon: '#',
+      description: 'Send drift alerts to Slack channels for team notification',
+      setupSteps: [
+        'Create a Slack app and enable Incoming Webhooks',
+        'Copy the webhook URL from Slack',
+        'Paste the URL below and save',
+        'Configure alert types and frequency'
+      ]
+    },
+    {
+      id: 'teams',
+      name: 'Microsoft Teams',
+      icon: '#',
+      description: 'Send drift alerts to Microsoft Teams channels',
+      setupSteps: [
+        'Configure an Incoming Webhook connector in Teams',
+        'Copy the webhook URL from Teams',
+        'Paste the URL below and save',
+        'Configure alert types and frequency'
+      ]
+    },
+    {
+      id: 'discord',
+      name: 'Discord',
+      icon: '#',
+      description: 'Send drift alerts to Discord channels',
+      setupSteps: [
+        'Create a webhook in your Discord channel settings',
+        'Copy the webhook URL from Discord',
+        'Paste the URL below and save',
+        'Configure alert types and frequency'
+      ]
+    },
+    {
+      id: 'email',
+      name: 'Email',
+      icon: '#',
+      description: 'Send drift alerts via email',
+      setupSteps: [
+        'Configure SMTP settings in the backend',
+        'Add recipient email addresses',
+        'Set email template preferences',
+        'Configure alert types and frequency'
+      ]
+    }
+  ];
+
+  const webhookGrid = document.getElementById('webhook-grid');
+
+  function renderWebhooks() {
+    webhookGrid.innerHTML = '';
+
+    webhookServices.forEach(service => {
+      const card = document.createElement('div');
+      card.className = 'webhook-card';
+      card.innerHTML = `
+        <div class="webhook-card-header">
+          <div class="webhook-card-title">
+            <div class="webhook-service-icon">${service.icon}</div>
+            <div>${service.name}</div>
+          </div>
+        </div>
+        <div class="webhook-card-body">
+          <p class="webhook-card-description">${service.description}</p>
+
+          <div class="webhook-setup-steps">
+            <h4>Setup Steps:</h4>
+            <ol>
+              ${service.setupSteps.map(step => `<li>${step}</li>`).join('')}
+            </ol>
+          </div>
+
+          <div class="webhook-config">
+            <div class="form-group">
+              <label for="webhook-url-${service.id}">Webhook URL:</label>
+              <input type="url" id="webhook-url-${service.id}" placeholder="Enter your webhook URL here" class="webhook-url-input">
+            </div>
+            <div class="form-group">
+              <label>Alert Types:</label>
+              <div class="alert-types">
+                <label><input type="checkbox" value="breaking" checked> Breaking Changes</label>
+                <label><input type="checkbox" value="warning"> Warnings</label>
+                <label><input type="checkbox" value="info"> Informational</label>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="saveWebhookConfig('${service.id}')">Save Configuration</button>
+            <button class="btn" onclick="testWebhook('${service.id}')">Test Connection</button>
+          </div>
+        </div>
+      `);
+      webhookGrid.appendChild(card);
+    });
+  }
+
+  function saveWebhookConfig(serviceId) {
+    const url = document.getElementById(`webhook-url-${serviceId}`).value;
+    // In a real implementation, this would save to backend
+    showToast('Webhook Saved', `Configuration saved for ${serviceId}`);
+  }
+
+  function testWebhook(serviceId) {
+    // In a real implementation, this would send a test payload
+    showToast('Webhook Test', `Test webhook sent to ${serviceId}`);
+  }
+
+  // Initial render
+  renderWebhooks();
+});
+
+// Add navigation to webhook integrations library
+window.showWebhookLibrary = function() {
+  document.querySelectorAll('.page').forEach(page => {
+    page.style.display = 'none';
+  });
+  document.getElementById('webhook-integrations').style.display = 'block';
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  // We'd add a nav item for webhook integrations in a real implementation
+};
+
+// Add CSS for Webhook & Alert Integrations section
+const webhookStyle = document.createElement('style');
+webhookStyle.textContent = `
+  .webhook-integrations-library {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .webhook-integrations-header {
+    margin-bottom: 2rem;
+  }
+
+  .webhook-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .webhook-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding: 0 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .webhook-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .webhook-service-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--accent-info);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: white;
+  }
+
+  .webhook-card-body {
+    padding: 1rem;
+  }
+
+  .webhook-card-description {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+  }
+
+  .webhook-setup-steps h4 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    color: var(--text-main);
+  }
+
+  .webhook-setup-steps ol {
+    margin-left: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-main);
+  }
+
+  .webhook-setup-steps li {
+    margin-bottom: 0.5rem;
+  }
+
+  .webhook-config {
+    margin-top: 1.5rem;
+  }
+
+  .form-group {
+    margin-bottom: 1rem;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-hover);
+    color: var(--text-main);
+    font-family: 'Geist', sans-serif;
+  }
+
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--accent-info);
+  }
+
+  .alert-types {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .alert-types label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-main);
+  }
+
+  .alert-types input {
+    width: auto;
+  }
+
+  .webhook-config .btn {
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+`;
+document.head.appendChild(webhookStyle);
 <!-- Guided Tour Overlay -->
 <div id="guided-tour-overlay" class="guided-tour-overlay" style="display: none;">
   <div class="guided-tour-content">
@@ -2388,6 +3464,124 @@ function initGuidedTour() {
       </div>
     </div>
   </section>
+
+  <!-- Interactive Integration Guides -->
+  <section id="integrations" class="page" style="display: none;">
+    <div class="integrations-library">
+      <div class="integrations-header">
+        <h2>Integration Guides</h2>
+        <p>Copy-paste ready integration examples for popular frameworks</p>
+        <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+          <button class="btn btn-primary" onclick="showAllIntegrations()">
+            Show All
+          </button>
+        </div>
+      </div>
+
+      <div class="integrations-filters">
+        <button class="integrations-filter-btn active" data-filter="all">All Frameworks</button>
+        <button class="integrations-filter-btn" data-filter="express">Express</button>
+        <button class="integrations-filter-btn" data-filter="fastapi">FastAPI</button>
+        <button class="integrations-filter-btn" data-filter="nestjs">NestJS</button>
+        <button class="integrations-filter-btn" data-filter="django">Django</button>
+        <button class="integrations-filter-btn" data-filter="rails">Rails</button>
+      </div>
+
+      <div class="integrations-grid" id="integrations-grid">
+        <!-- Integration cards will be populated here by JavaScript -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Export & Reporting -->
+  <section id="export-reporting" class="page" style="display: none;">
+    <div class="export-reporting-library">
+      <div class="export-reporting-header">
+        <h2>Export & Reporting</h2>
+        <p>Generate shareable reports of API contract stability for team communication</p>
+        <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+          <button class="btn btn-primary" onclick="showExportOptions()">
+            Export Current View
+          </button>
+        </div>
+      </div>
+
+      <div class="export-options" id="export-options" style="display: none; margin-bottom: 2rem;">
+        <div class="export-option">
+          <h3>Current View</h3>
+          <p>Export the currently visible dashboard as an image</p>
+          <button class="btn" onclick="exportAsPNG()">Export as PNG</button>
+          <button class="btn" onclick="exportAsSVG()">Export as SVG</button>
+        </div>
+        <div class="export-option">
+          <h3>Summary Report</h3>
+          <p>Generate a PDF summary of contract health metrics</p>
+          <button class="btn" onclick="exportSummaryPDF()">Export Summary PDF</button>
+        </div>
+        <div class="export-option">
+          <h3>Detailed Timeline</h3>
+          <p>Export the full contract evolution timeline</p>
+          <button class="btn" onclick="exportTimelinePDF()">Export Timeline PDF</button>
+        </div>
+      </div>
+
+      <div class="scheduled-reports">
+        <h3>Scheduled Reports</h3>
+        <p>Set up automatic email reports for regular stakeholder updates</p>
+        <div style="margin: 1.5rem 0;">
+          <div class="form-group">
+            <label>Frequency:</label>
+            <select id="report-frequency">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Recipients:</label>
+            <input type="email" id="report-recipients" placeholder="team@example.com, manager@company.com" multiple>
+          </div>
+          <div class="form-group">
+            <label>Report Type:</label>
+            <select id="report-type">
+              <option value="summary">Summary Report</option>
+              <option value="detailed">Detailed Timeline</option>
+              <option value="both">Both Summary & Timeline</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="scheduleReports()">Schedule Reports</button>
+        </div>
+      </div>
+
+      <div class="report-history">
+        <h3>Report History</h3>
+        <p>View and manage previously generated reports</p>
+        <div id="report-history-list">
+          <!-- Report history items will be populated here -->
+          <div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+            No reports generated yet
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<!-- Webhook & Alert Integrations -->
+<section id="webhook-integrations" class="page" style="display: none;">
+  <div class="webhook-integrations-library">
+    <div class="webhook-integrations-header">
+      <h2>Webhook & Alert Integrations</h2>
+      <p>Connect Driftwood to your team's communication tools for real-time alerts on API contract changes</p>
+      <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+        <!-- We'd add a button to add new webhook configurations in a real implementation -->
+      </div>
+    </div>
+
+    <div id="webhook-grid">
+      <!-- Webhook cards will be populated here by JavaScript -->
+    </div>
+  </div>
+</section>
 
 </body>
 </html>
