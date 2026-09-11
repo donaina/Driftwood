@@ -1,0 +1,22 @@
+{
+  "colors": {
+    "bg-main": "#09090B",
+    "bg-card": "#101014",
+    "bg-hover": "#18181D",
+    "border-color": "#1c1c1e",
+    "text-main": "#e4e4e7",
+    "text-muted": "#8e8e93",
+    "accent-healthy": "#00c9a7",
+    "accent-warning": "#ff9f0a",
+    "accent-breaking": "#ff3b30",
+    "accent-info": "#5ac8fa"
+  },
+  "borderRadius": {
+    "none": "0",
+    "sm": "4px",
+    "default": "6px",
+    "lg": "8px",
+    "full": "9999px",
+    "circle": "50%"
+  }
+}
