@@ -2759,8 +2759,8 @@ function renderHistories(histories) {
       // Add navigation to scenario library (we'll need to add this to the header)
       // For now, we'll add a simple way to access it - in practice, this would be in the nav
       window.showScenarioLibrary = function() {
-        document.querySelectorAll('.page').forEach(page => {
-          page.style.display = 'none';
+        document.querySelectorAll('.view-panel').forEach(panel => {
+          panel.style.display = 'none';
         });
         document.getElementById('webhook-react-root').style.display = 'none';
         document.getElementById('scenario-react-root').style.display = 'block';
@@ -3122,7 +3122,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Add navigation to integration library
 window.showIntegrationsLibrary = function() {
-  document.querySelectorAll('.page').forEach(page => {
+  document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
   document.getElementById('webhook-react-root').style.display = 'none';
@@ -3173,16 +3173,16 @@ function scheduleReports() {
 }
 
 function showExportReportingLibrary() {
-  document.querySelectorAll('.page').forEach(page => {
+  document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
-  document.getElementById('export-reporting').style.display = 'block';
+  document.getElementById('export-reporting-react-root').style.display = 'block';
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.remove('active');
   });
-  // We'd add a nav item for export/reporting in a real implementation
+  document.getElementById('nav-export-reporting').classList.add('active');
 }
 
 // Add CSS for Export & Reporting section
@@ -3438,7 +3438,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Add navigation to webhook integrations library
 window.showWebhookLibrary = function() {
-  document.querySelectorAll('.page').forEach(page => {
+  document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
   document.getElementById('webhook-react-root').style.display = 'block';
@@ -3453,7 +3453,7 @@ window.showWebhookLibrary = function() {
 
 // Add navigation to history library
 window.showHistoryLibrary = function() {
-  document.querySelectorAll('.page').forEach(page => {
+  document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
   document.getElementById('history-react-root').style.display = 'block';
