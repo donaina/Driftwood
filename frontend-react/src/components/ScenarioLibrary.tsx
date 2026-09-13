@@ -63,9 +63,7 @@ const ScenarioLibrary: React.FC = () => {
     : scenarios.filter(s => s.severity === activeFilter);
 
   useEffect(() => {
-    // Simulate the showScenario event to ensure component is ready when shown
     const handleShowScenario = () => {
-      // Component is already rendered; we just ensure it's visible
       const root = document.getElementById('scenario-react-root');
       if (root) {
         (root as HTMLElement).style.display = 'block';
@@ -77,13 +75,105 @@ const ScenarioLibrary: React.FC = () => {
     };
   }, []);
 
+  const renderSeverityBadge = (severity: 'breaking' | 'warning' | 'info') => {
+    const bgColor = severity === 'breaking' ? 'bg-accent-breaking/20' :
+                    severity === 'warning' ? 'bg-accent-warning/20' : 'bg-accent-healthy/20';
+    const textColor = severity === 'breaking' ? 'accent-breaking' :
+                      severity === 'warning' ? 'accent-warning' : 'accent-healthy';
+
+    return (
+      <div className={`w-8 h-8 flex items-center justify-center rounded-lg ${bgColor}`}>
+        <span className={`font-bold text-${textColor}`}>
+          {severity.toUpperCase()}
+        </span>
+      </div>
+    );
+  };
+
+  // Handle active scenario view
+  if (activeScenario) {
+    return (
+      <div className="space-y-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-bold text-text-main mb-4">Scenario Library</h2>
+          <p className="text-text-muted max-w-xl mx-auto">
+            Learn about API contract changes with pre-configured breaking change scenarios
+          </p>
+        </div>
+
+        <div className="bg-bg-card rounded-xl border border-border-color p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex items-center space-x-3">
+              {renderSeverityBadge(activeScenario.severity)}
+              <div>
+                <h3 className="text-xl font-semibold text-text-main mb-1">
+                  {activeScenario.title}
+                </h3>
+                <p className="text-sm text-text-muted">{activeScenario.type}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setActiveScenario(null);
+                const scenarioRoot = document.getElementById('scenario-react-root');
+                if (scenarioRoot) (scenarioRoot as HTMLElement).style.display = 'none';
+                const webhookRoot = document.getElementById('webhook-react-root');
+                if (webhookRoot) (webhookRoot as HTMLElement).style.display = 'none';
+                document.getElementById('view-traffic')!.classList.add('active');
+                document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+                document.getElementById('nav-traffic')!.classList.add('active');
+              }}
+              className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
+            >
+              Back to Scenarios
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-base text-text-muted">{activeScenario.description}</p>
+
+            <div className="gap-4">
+              <div>
+                <h4 className="font-semibold text-text-main mb-2">Impact</h4>
+                <p className="text-base text-text-muted">{activeScenario.impact}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-text-main mb-2">Type</h4>
+                <p className="text-base text-text-muted">{activeScenario.type}</p>
+              </div>
+            </div>
+
+            {activeScenario.changes && activeScenario.changes.length > 0 ? (
+              <div className="mt-4">
+                <h4 className="font-semibold text-text-main mb-2">Changes</h4>
+                <div className="space-y-2">
+                  {activeScenario.changes.map((change, index) => (
+                    <div key={index} className="bg-bg-hover rounded-lg p-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-text-muted">Changes:</span>
+                        <span className="font-mono text-text-main">{change.change}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4">
+              <h4 className="font-semibold text-text-main mb-2">Fix</h4>
+              <p className="text-base text-text-muted">{activeScenario.fix}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle scenario grid view
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-text-main mb-4">
-          Scenario Library
-        </h2>
+        <h2 className="text-3xl font-bold text-text-main mb-4">Scenario Library</h2>
         <p className="text-text-muted max-w-xl mx-auto">
           Learn about API contract changes with pre-configured breaking change scenarios
         </p>
@@ -107,14 +197,14 @@ const ScenarioLibrary: React.FC = () => {
             Breaking
           </button>
           <button
-            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'warning' ? 'active bg-accent-warning/20 text-accent-warning' : ''}`}
+            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'warning' ? 'bg-accent-warning/20 text-accent-warning' : ''}`}
             data-filter="warning"
             onClick={() => setActiveFilter('warning')}
           >
             Warnings
           </button>
           <button
-            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'info' ? 'active bg-accent-healthy/20 text-accent-healthy' : ''}`}
+            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'info' ? 'bg-accent-healthy/20 text-accent-healthy' : ''}`}
             data-filter="info"
             onClick={() => setActiveFilter('info')}
           >
@@ -123,195 +213,62 @@ const ScenarioLibrary: React.FC = () => {
         </div>
       </div>
 
-      {activeScenario ? (
-        {/* Scenario Detail View */}
-        <div className="bg-bg-card rounded-xl border border-border-color p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex items-center space-x-3">
-              <div className={`w-8 h-8 flex items-center justify-center rounded-lg
-                ${activeScenario.severity === 'breaking' ? 'bg-accent-breaking/20'
-                : activeScenario.severity === 'warning' ? 'bg-accent-warning/20'
-                : 'bg-accent-healthy/20'}`}>
-                <span className={`font-bold text-${activeScenario.severity === 'breaking' ? 'accent-breaking'
-                : activeScenario.severity === 'warning' ? 'accent-warning'
-                : 'accent-healthy'}`}>
-                  {activeScenario.severity.toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-text-main mb-1">
-                  {activeScenario.title}
-                </h3>
-                <p className="text-sm text-text-muted">
-                  {activeScenario.type}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setActiveScenario(null);
-                // Hide the scenario library and show the main view
-                const scenarioRoot = document.getElementById('scenario-react-root');
-                if (scenarioRoot) {
-                  (scenarioRoot as HTMLElement).style.display = 'none';
-                }
-                const webhookRoot = document.getElementById('webhook-react-root');
-                if (webhookRoot) {
-                  (webhookRoot as HTMLElement).style.display = 'none';
-                }
-                // Show the traffic view by default
-                document.getElementById('view-traffic')!.classList.add('active');
-                document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-                document.getElementById('nav-traffic')!.classList.add('active');
-              }}
-              className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-            >
-              Back to Scenarios
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <p className="text-base text-text-muted">
-              {activeScenario.description}
-            </p>
-
-            <div className="grid gap-4">
-              <div>
-                <h4 className="font-semibold text-text-main mb-2">
-                  Impact
-                </h4>
-                <p className="text-base text-text-muted">
-                  {activeScenario.impact}
-                </p>
-              </div>
-              <div>
-                <h4 className="font-semibold text-text-main mb-2">
-                  Type
-                </h4>
-                <p className="text-base text-text-muted">
-                  {activeScenario.type}
-                </p>
-              </div>
-            </div>
-
-            {activeScenario.changes && activeScenario.changes.length > 0 ? (
-              <div className="mt-4">
-                <h4 className="font-semibold text-text-main mb-2">
-                  Changes
-                </h4>
-                <div className="space-y-2">
-                  {activeScenario.changes.map((change, index) => (
-                    <div key={index} className="bg-bg-hover rounded-lg p-3">
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium text-text-muted">
-                          Changes:
-                        </span>
-                        <span className="font-mono text-text-main">
-                          {change.change}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+      {/* Scenarios Grid */}
+      <div className="grid gap-6">
+        {filteredScenarios.map(scenario => (
+          <div key={scenario.id} className="bg-bg-card rounded-xl border border-border-color p-6">
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center space-x-3">
+                {renderSeverityBadge(scenario.severity)}
+                <div>
+                  <h3 className="text-xl font-semibold text-text-main mb-1">
+                    {scenario.title}
+                  </h3>
+                  <p className="text-sm text-text-muted">{scenario.type}</p>
                 </div>
               </div>
-            ) : null}
 
-            <div className="mt-4">
-              <h4 className="font-semibold text-text-main mb-2">
-                Fix
-              </h4>
-              <p className="text-base text-text-muted">
-                {activeScenario.fix}
-              </p>
+              <button
+                onClick={() => setActiveScenario(scenario)}
+                className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
+              >
+                View Details
+              </button>
             </div>
-          </div>
-        </div>
-      ) : (
-        {/* Scenario Grid View */}
-        <div className="grid gap-6">
-          {filteredScenarios.map(scenario => (
-            <div key={scenario.id} className="bg-bg-card rounded-xl border border-border-color p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-8 h-8 flex items-center justify-center rounded-lg
-                    ${scenario.severity === 'breaking' ? 'bg-accent-breaking/20'
-                    : scenario.severity === 'warning' ? 'bg-accent-warning/20'
-                    : 'bg-accent-healthy/20'}`}>
-                    <span className={`font-bold text-${scenario.severity === 'breaking' ? 'accent-breaking'
-                    : scenario.severity === 'warning' ? 'accent-warning'
-                    : 'accent-healthy'}`}>
-                      {scenario.severity.toUpperCase()}
-                    </span>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold text-text-main mb-1">
-                      {scenario.title}
-                    </h3>
-                    <p className="text-sm text-text-muted">
-                      {scenario.type}
-                    </p>
-                  </div>
+
+            <div className="space-y-4">
+              <p className="text-base text-text-muted">{scenario.description}</p>
+
+              <div className="grid gap-4">
+                <div>
+                  <h4 className="font-semibold text-text-main mb-2">Impact</h4>
+                  <p className="text-base text-text-muted">{scenario.impact}</p>
                 </div>
-                <button
-                  onClick={() => {
-                    setActiveScenario(scenario);
-                                      }}
-                  className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-                >
-                  View Details
-                </button>
+                <div>
+                  <h4 className="font-semibold text-text-main mb-2">Type</h4>
+                  <p className="text-base text-text-muted">{scenario.type}</p>
+                </div>
               </div>
 
-              <div className="space-y-4">
-                <p className="text-base text-text-muted">
-                  {scenario.description}
-                </p>
-
-                <div className="grid gap-4">
-                  <div>
-                    <h4 className="font-semibold text-text-main mb-2">
-                      Impact
-                    </h4>
-                    <p className="text-base text-text-muted">
-                      {scenario.impact}
-                    </p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-text-main mb-2">
-                      Type
-                    </h4>
-                    <p className="text-base text-text-muted">
-                      {scenario.type}
-                    </p>
-                  </div>
-                </div>
-
-                {scenario.changes && scenario.changes.length > 0 ? (
-                  <div className="mt-4">
-                    <h4 className="font-semibold text-text-main mb-2">
-                      Changes
-                    </h4>
-                    <div className="space-y-2">
-                      {scenario.changes.map((change, index) => (
-                        <div key={index} className="bg-bg-hover rounded-lg p-3">
-                          <div className="flex justify-between">
-                            <span className="text-sm font-medium text-text-muted">
-                              Changes:
-                            </span>
-                            <span className="font-mono text-text-main">
-                              {change.change}
-                            </span>
-                          </div>
+              {scenario.changes && scenario.changes.length > 0 ? (
+                <div className="mt-4">
+                  <h4 className="font-semibold text-text-main mb-2">Changes</h4>
+                  <div className="space-y-2">
+                    {scenario.changes.map((change, index) => (
+                      <div key={index} className="bg-bg-hover rounded-lg p-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-text-muted">Changes:</span>
+                          <span className="font-mono text-text-main">{change.change}</span>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                : null}
-              </div>
+                </div>
+              ) : null}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
