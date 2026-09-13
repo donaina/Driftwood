@@ -76,44 +76,6 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
     const { Version, CreatedAt, changeType, changeDescription, stabilityScore } = version;
     const isLocked = history.LockedVersion === Version;
 
-    // Determine node appearance based on change type
-    let nodeColor: string, nodeBackground: string, borderColor: string, nodeSymbol: string;
-
-    if (isLocked) {
-      nodeColor = 'var(--accent-info)'; // Data Sky for locked version
-      nodeBackground = 'rgba(90, 200, 250, 0.1)';
-      borderColor = 'var(--accent-info)';
-      nodeSymbol = '🔒'; // Lock symbol for currently locked version
-    } else {
-      // Color-code based on change type from previous version
-      switch (changeType) {
-        case 'healthy':
-          nodeColor = 'var(--accent-healthy)'; // Vital Teal
-          nodeBackground = 'rgba(0, 201, 167, 0.1)';
-          borderColor = 'var(--accent-healthy)';
-          nodeSymbol = '●';
-          break;
-        case 'breaking':
-          nodeColor = 'var(--accent-breaking)'; // Fault Red
-          nodeBackground = 'rgba(255, 59, 48, 0.1)';
-          borderColor = 'var(--accent-breaking)';
-          nodeSymbol = '■';
-          break;
-        case 'warning':
-          nodeColor = 'var(--accent-warning)'; // Caution Amber
-          nodeBackground = 'rgba(255, 159, 10, 0.1)';
-          borderColor = 'var(--accent-warning)';
-          nodeSymbol = '▲';
-          break;
-        default:
-          nodeColor = 'var(--text-muted)';
-          nodeBackground = 'var(--bg-hover)';
-          borderColor = 'var(--border-color)';
-          nodeSymbol = '○';
-          break;
-      }
-    }
-
     // Format timestamp
     const date = new Date(CreatedAt);
     const timeStr = date.toLocaleTimeString();
@@ -133,6 +95,47 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
     // Check if this version is selected for comparison
     const isSelected = selectedVersions.includes(Version);
 
+    // Determine appearance values
+    const getNodeColor = () => {
+      if (isLocked) return 'var(--accent-info)'; // Data Sky for locked version
+      switch (changeType) {
+        case 'healthy': return 'var(--accent-healthy)'; // Vital Teal
+        case 'breaking': return 'var(--accent-breaking)'; // Fault Red
+        case 'warning': return 'var(--accent-warning)'; // Caution Amber
+        default: return 'var(--text-muted)';
+      }
+    };
+
+    const getNodeBackground = () => {
+      if (isLocked) return 'rgba(90, 200, 250, 0.1)';
+      switch (changeType) {
+        case 'healthy': return 'rgba(0, 201, 167, 0.1)';
+        case 'breaking': return 'rgba(255, 59, 48, 0.1)';
+        case 'warning': return 'rgba(255, 159, 10, 0.1)';
+        default: return 'var(--bg-hover)';
+      }
+    };
+
+    const getBorderColor = () => {
+      if (isLocked) return 'var(--accent-info)';
+      switch (changeType) {
+        case 'healthy': return 'var(--accent-healthy)';
+        case 'breaking': return 'var(--accent-breaking)';
+        case 'warning': return 'var(--accent-warning)';
+        default: return 'var(--border-color)';
+      }
+    };
+
+    const getNodeSymbol = () => {
+      if (isLocked) return '🔒'; // Lock symbol for currently locked version
+      switch (changeType) {
+        case 'healthy': return '●';
+        case 'breaking': return '■';
+        case 'warning': return '▲';
+        default: return '○';
+      }
+    };
+
     return (
       <div
         key={Version}
@@ -144,17 +147,14 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
           <div className={`w-10 h-10 flex items-center justify-center rounded-full
             ${isSelected ? 'border-2 border-accent-info' : 'border'}
             ${isSelected ? 'shadow-[0_0_0_3px_rgba(90,200,250,0.5)]' : ''}
-            bg-${isLocked ? 'accent-info/10' : changeType === 'healthy' ? 'accent-healthy/10'
-              : changeType === 'breaking' ? 'accent-breaking/10'
-                : changeType === 'warning' ? 'accent-warning/10' : 'bg-hover'}`}>
-            <span className={`text-${isLocked ? 'accent-info' : changeType === 'healthy' ? 'accent-healthy'
-              : changeType === 'breaking' ? 'accent-breaking'
-                : changeType === 'warning' ? 'accent-warning' : 'text-muted'} font-bold`}>
-              {nodeSymbol}
+            bg-${isLocked ? 'accent-info/10' : getNodeBackground().includes('var(--') ?
+                  getNodeBackground().replace('var(--', '').replace(')', '') : getNodeBackground()}
+            border-${isSelected ? '2' : '1'} ${isSelected ? 'border-accent-info' : getBorderColor().includes('var(--') ?
+                  getBorderColor().replace('var(--', '').replace(')', '') : getBorderColor()}`}>
+            <span className={`text-${isLocked ? 'accent-info' : getNodeColor().includes('var(--') ?
+                  getNodeColor().replace('var(--', '').replace(')', '') : getNodeColor()} font-bold`}>
+              {getNodeSymbol()}
             </span>
-            {isLocked && (
-              <div className="absolute bottom-0 right-0 w-2 h-2 bg-accent-info rounded-full -mb-1 -mr-1"></div>
-            )}
           </div>
           {index < enhancedVersions.length - 1 && (
             <div className="w-px h-4 mt-2 bg-border-color"></div>
@@ -255,30 +255,30 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
             </button>
           </div>
         </div>
-
-        <div className="flex items-start space-x-4">
-          {enhancedVersions.map((version, index) =>
-            renderVersionNode(version, index)
-          )}
-        </div>
-
-        {selectedVersions.length === 2 && (
-          <div className="mt-6">
-            <div className="bg-bg-card rounded-xl border border-border-color p-4">
-              <h3 className="text-xl font-semibold text-text-main mb-2">
-                Version Comparison
-              </h3>
-              <p className="text-text-muted">
-                Comparing versions {selectedVersions[0]} and {selectedVersions[1]}
-              </p>
-              <p className="mt-2 text-xs text-text-muted">
-                Detailed diff view would be shown here in a full implementation.
-                This would require enhanced backend API to provide version-to-version diff data.
-              </p>
-            </div>
-          )}
-        </div>
       </div>
+
+      <div className="flex items-start space-x-4">
+        {enhancedVersions.map((version, index) =>
+          renderVersionNode(version, index)
+        )}
+      </div>
+
+      {selectedVersions.length === 2 && (
+        <div className="mt-6">
+          <div className="bg-bg-card rounded-xl border border-border-color p-4">
+            <h3 className="text-xl font-semibold text-text-main mb-2">
+              Version Comparison
+            </h3>
+            <p className="text-text-muted">
+              Comparing versions {selectedVersions[0]} and {selectedVersions[1]}
+            </p>
+            <p className="mt-2 text-xs text-text-muted">
+              Detailed diff view would be shown here in a full implementation.
+              This would require enhanced backend API to provide version-to-version diff data.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

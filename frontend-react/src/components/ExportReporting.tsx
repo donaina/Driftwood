@@ -214,7 +214,7 @@ const ExportReporting: React.FC = () => {
                     {report.status}
                   </span>
                 </div>
-              }
+              </div>
             ))}
           </div>
         ) : (

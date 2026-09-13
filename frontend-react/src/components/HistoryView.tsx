@@ -72,7 +72,7 @@ const HistoryView: React.FC = () => {
 
   const handleExportTimeline = (format: string, endpointKey: string) => {
     // Placeholder for export functionality
-    alert(`Export functionality for ${format.toUpperCase()} format is planned for a future update.`);
+    alert(`Export functionality for ${format.toUpperCase()} format for endpoint ${endpointKey} is planned for a future update.`);
     // In a full implementation, this would use html2canvas or similar library
     // to convert the timeline view to the requested format
   };
