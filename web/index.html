@@ -2719,7 +2719,7 @@ function renderHistories(histories) {
         if (!scenario) return;
 
         // Hide all pages and show scenario library
-        document.querySelectorAll('.page').forEach(page => {
+        document.querySelectorAll('.view-panel').forEach(page => {
           page.style.display = 'none';
         });
         document.getElementById('scenario-react-root').style.display = 'block';
@@ -3129,6 +3129,11 @@ window.showIntegrationsLibrary = function() {
   document.getElementById('scenario-react-root').style.display = 'none';
   document.getElementById('history-react-root').style.display = 'none';
   document.getElementById('integrations-react-root').style.display = 'block';
+  
+  // Mount React component
+  if (window.mountIntegrations) {
+    window.mountIntegrations(document.getElementById("integrations-react-root"));
+  }
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -3271,12 +3276,17 @@ document.head.appendChild(exportReportingStyle);
 
 // Add navigation to export/reporting library
 window.showExportReportingLibrary = function() {
-  document.querySelectorAll('.page').forEach(page => {
+  document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
   document.getElementById('webhook-react-root').style.display = 'none';
   document.getElementById('scenario-react-root').style.display = 'none';
   document.getElementById('export-reporting-react-root').style.display = 'block';
+  
+  // Mount React component
+  if (window.mountExportReporting) {
+    window.mountExportReporting(document.getElementById("export-reporting-react-root"));
+  }
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -3286,7 +3296,7 @@ window.showExportReportingLibrary = function() {
 };
 
 window.showThresholdsLibrary = function() {
-  document.querySelectorAll('.page').forEach(page => {
+  document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
   document.getElementById('thresholds-react-root').style.display = 'block';
@@ -3304,7 +3314,7 @@ window.showThresholdsLibrary = function() {
 };
 
 window.showAgencyLibrary = function() {
-  document.querySelectorAll('.page').forEach(page => {
+  document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
   document.getElementById('agency-react-root').style.display = 'block';
@@ -3442,6 +3452,11 @@ window.showWebhookLibrary = function() {
     page.style.display = 'none';
   });
   document.getElementById('webhook-react-root').style.display = 'block';
+  
+  // Mount React component
+  if (window.mountWebhook) {
+    window.mountWebhook(document.getElementById("webhook-react-root"));
+  }
   document.getElementById('scenario-react-root').style.display = 'none';
 
   // Update nav active state
@@ -3457,6 +3472,11 @@ window.showHistoryLibrary = function() {
     page.style.display = 'none';
   });
   document.getElementById('history-react-root').style.display = 'block';
+  
+  // Mount React component
+  if (window.mountHistory) {
+    window.mountHistory(document.getElementById("history-react-root"));
+  }
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
