@@ -9,7 +9,9 @@ import (
 
 func ServeIndex(w http.ResponseWriter, r *http.Request) {
 	// If requesting a static asset from the React build, serve it directly
-	if strings.HasPrefix(r.URL.Path, "/assets/") || r.URL.Path == "/favicon.svg" || r.URL.Path == "/icons.svg" {
+	if strings.HasPrefix(r.URL.Path, "/assets/") || 
+	   strings.HasSuffix(r.URL.Path, ".js") || 
+	   strings.HasSuffix(r.URL.Path, ".svg") {
 		// Base directory for the React app build
 		baseDir := filepath.Join("frontend-react", "dist")
 		// Serve from dist directory

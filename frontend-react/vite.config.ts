@@ -9,6 +9,11 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'src/main.tsx'),
+        scenario: resolve(__dirname, 'src/main-scenario.tsx'),
+        history: resolve(__dirname, 'src/main-history.tsx'),
+        integrations: resolve(__dirname, 'src/main-integrations.tsx'),
+        exportReporting: resolve(__dirname, 'src/main-export-reporting.tsx'),
+        webhook: resolve(__dirname, 'src/main-webhook.tsx'),
         thresholds: resolve(__dirname, 'src/main-thresholds.tsx'),
         agency: resolve(__dirname, 'src/main-agency.tsx')
       },
