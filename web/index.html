@@ -1726,6 +1726,10 @@
           document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
           document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
           document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
+          // Mount main React app for routing
+          if (window.mountMain) {
+            window.mountMain(document.getElementById("view-traffic"));
+          }
           document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
           document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
           document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
