@@ -5,14 +5,21 @@ import LandingPage from './routes/LandingPage';
 import AppShell from './routes/AppShell';
 import './index.css';
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/app" element={<AppShell />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+function mountMain(container: HTMLElement) {
+  ReactDOM.createRoot(container).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/app" element={<AppShell />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+}
+
+// Attach to window for external use
+if (typeof window !== 'undefined') {
+  (window as any).mountMain = mountMain;
+}
