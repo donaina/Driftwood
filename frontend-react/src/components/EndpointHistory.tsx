@@ -33,6 +33,7 @@ interface EndpointHistoryProps {
   onToggleVersionSelection: (endpointKey: string, version: number) => void;
   onClearVersionSelection: (endpointKey: string) => void;
   onExportTimeline: (format: string, endpointKey: string) => void;
+  onToggleLock: (history: HistoryItem, version: number, lock: boolean) => void;
 }
 
 const EndpointHistory: React.FC<EndpointHistoryProps> = ({
@@ -41,6 +42,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   onToggleVersionSelection,
   onClearVersionSelection,
   onExportTimeline,
+  onToggleLock,
 }) => {
   const endpointKey = `${history.method}:${history.path}`;
 
@@ -169,6 +171,33 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
           <div className="mt-2 text-xs text-text-muted">
             v{versionNumber}
           </div>
+          {/* Locking is a separate act from accepting a version. Accepting a new
+              shape records it; pinning decides which accepted shape the endpoint
+              is still held to — so that promoting v4 does not quietly become the
+              thing every later response is compared against. The button is a
+              button rather than a click handler on the node because the node
+              already means "select for comparison", and one target with two
+              meanings is how the badge ended up decorative. */}
+          <button
+            type="button"
+            className={`mt-2 px-2 py-1 rounded-lg border text-xs transition-colors cursor-pointer ${
+              isLocked
+                ? 'border-accent-info text-accent-info'
+                : 'border-border-color text-text-muted hover:bg-bg-hover hover:text-text-main'
+            }`}
+            aria-pressed={isLocked}
+            title={
+              isLocked
+                ? `Release v${versionNumber}: this endpoint will track its latest version again`
+                : `Hold this endpoint to v${versionNumber} as its contract`
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleLock(history, versionNumber, !isLocked);
+            }}
+          >
+            {isLocked ? '🔒 Locked' : 'Lock'}
+          </button>
         </div>
       </div>
     );
@@ -204,6 +233,38 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       </div>
     );
   };
+
+  /* An endpoint Driftwood has seen traffic for but holds no contract on. This
+     is a state worth showing rather than a card to leave blank: it is the
+     difference between "nothing is happening on this API" and "this API is
+     being served right now and I have never been told what its contract is",
+     and it is the state every endpoint starts in. */
+  if (history.versions.length === 0) {
+    return (
+      <div className="bg-bg-card rounded-xl border border-border-color p-6">
+        <div className="flex justify-between items-start">
+          <div className="flex items-center space-x-3">
+            <span className={`method-badge method-${history.method.toLowerCase()}`}>
+              {history.method}
+            </span>
+            <span className="font-mono ml-2 font-semibold">
+              {history.path}
+            </span>
+          </div>
+          <div className="text-right space-y-1">
+            <div className="text-sm text-text-muted">
+              Observations: {history.observation_count}
+            </div>
+          </div>
+        </div>
+        <p className="mt-4 text-text-muted">
+          No contract accepted for this endpoint yet. Driftwood is recording
+          traffic here, but it has nothing to compare it against, so it cannot
+          tell you whether this endpoint has drifted.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-bg-card rounded-xl border border-border-color p-6">

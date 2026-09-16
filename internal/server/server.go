@@ -96,6 +96,8 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleBaselines(w, r)
 		case proxy.ControlPrefix + "/api/baselines/delete":
 			s.handleDeleteBaseline(w, r)
+		case proxy.ControlPrefix + "/api/baselines/lock":
+			s.handleLockBaseline(w, r)
 		case proxy.ControlPrefix + "/api/config":
 			s.handleConfig(w, r)
 		case proxy.ControlPrefix + "/api/alerts":
@@ -201,6 +203,53 @@ func (s *Server) handleDeleteBaseline(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// handleLockBaseline pins an endpoint to one of its accepted versions, or
+// releases it back to tracking the latest.
+//
+// This is the operation the product is named after and, until now, the only one
+// with no way to reach it: SetLockedVersion had no route and no caller, so the
+// dashboard's lock badge could never light up and "lock a known-good contract"
+// was not something a user could do. Locking is distinct from promoting —
+// accepting a new shape records a version, and pinning decides which accepted
+// shape the endpoint is still held to.
+//
+// A version of 0 releases the pin. That is the same encoding GetBaseline reads:
+// 0 means "track the latest", not "version zero", which cannot exist because
+// versions are numbered from 1.
+func (s *Server) handleLockBaseline(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Method  string `json:"method"`
+		Path    string `json:"path"`
+		Version int    `json:"version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.SetLockedVersion(req.Method, req.Path, req.Version); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	hist, ok := s.store.GetHistory(req.Method, req.Path)
+	if !ok {
+		http.Error(w, "endpoint not found", http.StatusNotFound)
+		return
+	}
+	s.hub.Publish("baseline_locked", map[string]interface{}{
+		"method":  req.Method,
+		"path":    req.Path,
+		"version": req.Version,
+	})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(hist)
+}
+
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var cfg types.ProxyConfig
@@ -208,7 +257,21 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		s.store.UpdateConfig(cfg)
+
+		// The listening port is fixed for the life of the process — the socket is
+		// already bound — so it is kept from the running config rather than taken
+		// from the request. The dashboard has no port field either; it sends a
+		// hardcoded 8787, which would otherwise be persisted and then adopted on
+		// the next start by anyone who had launched on a different port.
+		cfg.ProxyPort = s.store.GetConfig().ProxyPort
+
+		if err := s.store.UpdateConfig(cfg); err != nil {
+			// The change is live but will not survive a restart. Saying so is the
+			// point: silently accepting a setting that does not persist is how the
+			// config panel came to look like it worked.
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		_ = s.proxy.SetTarget(cfg.TargetURL)
 		s.hub.Publish("config_updated", cfg)
 	}
