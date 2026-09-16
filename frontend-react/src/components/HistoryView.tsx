@@ -1,20 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import EndpointHistory from './EndpointHistory';
+import EndpointHistory, { type HistoryItem } from './EndpointHistory';
 
-interface History {
-  Method: string;
-  Path: string;
-  Versions: Array<{
-    Version: number;
-    CreatedAt: string;
-    SamplePayload: string;
-  }>;
-  ObservationCount: number;
-  LockedVersion?: number;
-}
+/* This used to redeclare the wire type locally, as `History` with PascalCase
+   fields. One copy got corrected and the other did not, which is exactly how
+   the field-name bug survived: the two only had to agree with each other,
+   never with the API. There is one definition now, and it lives next to the
+   component that consumes it. */
 
 const HistoryView: React.FC = () => {
-  const [histories, setHistories] = useState<History[]>([]);
+  const [histories, setHistories] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedVersionsMap, setSelectedVersionsMap] = useState<Map<string, number[]>>(new Map());
@@ -31,7 +25,7 @@ const HistoryView: React.FC = () => {
       if (!res.ok) {
         throw new Error(`Failed to fetch histories: ${res.status}`);
       }
-      const data: History[] = await res.json();
+      const data: HistoryItem[] = await res.json();
       setHistories(data);
     } catch (err) {
       console.error(err);
@@ -157,7 +151,7 @@ const HistoryView: React.FC = () => {
       </div>
       <div className="space-y-6">
         {histories.map((history) => {
-          const endpointKey = `${history.Method}:${history.Path}`;
+          const endpointKey = `${history.method}:${history.path}`;
           return (
             <EndpointHistory
               key={endpointKey}

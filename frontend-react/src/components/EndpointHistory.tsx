@@ -1,18 +1,27 @@
 import React, { useMemo } from 'react';
 
-interface HistoryItem {
-  Method: string;
-  Path: string;
-  Versions: Array<{
-    Version: number;
-    CreatedAt: string;
-    SamplePayload: string;
+/* The wire type, spelled the way `/_driftwood/api/histories` actually
+   serialises it. pkg/types/types.go tags EndpointHistory and ContractBaseline
+   lower_snake, and server.go encodes those structs straight to the response.
+
+   These fields were PascalCase. That is not a style disagreement: the API has
+   never emitted `Method`, `Versions` or `CreatedAt`, so every one of these
+   reads was undefined, `[...history.Versions]` threw "not iterable" inside
+   render, React unmounted the tree, and the Version History view came up
+   empty with nothing in the UI to explain why. */
+export interface HistoryItem {
+  method: string;
+  path: string;
+  versions: Array<{
+    version: number;
+    created_at: string;
+    sample_payload: string;
   }>;
-  ObservationCount: number;
-  LockedVersion?: number;
+  observation_count: number;
+  locked_version?: number;
 }
 
-interface EnhancedVersion extends Omit<HistoryItem['Versions'][0], 'SamplePayload'> {
+interface EnhancedVersion extends Omit<HistoryItem['versions'][0], 'sample_payload'> {
   changeType?: 'healthy' | 'breaking' | 'warning';
   changeDescription?: string;
   stabilityScore?: number;
@@ -33,57 +42,55 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   onClearVersionSelection,
   onExportTimeline,
 }) => {
-  const endpointKey = `${history.Method}:${history.Path}`;
+  const endpointKey = `${history.method}:${history.path}`;
 
   // Compute enhanced versions (same logic as in the original code)
   const enhancedVersions = useMemo(() => {
-    const sortedVersions = [...history.Versions].sort(
-      (a, b) => new Date(a.CreatedAt).getTime() - new Date(b.CreatedAt).getTime()
+    const sortedVersions = [...history.versions].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
+    // Nothing here is invented. The backend does not yet report what changed
+    // between two versions, so changeType and stabilityScore stay undefined and
+    // the node renders an em-dash rather than a number.
+    //
+    // This previously drew both from Math.random(): a changeType picked from a
+    // three-element array and a stability score of 0.5 + random() * 0.5, which
+    // the tooltip above then printed to one decimal as a measured percentage
+    // and the node colour read as a red/green verdict. Drift detection is only
+    // worth anything if its numbers can be trusted, and these changed on every
+    // render.
     return sortedVersions.map((version, index) => {
-      let changeType: EnhancedVersion['changeType'] | undefined;
-      let changeDescription: EnhancedVersion['changeDescription'] | undefined =
-        'Change details not available (backend enhancement needed)';
-      let stabilityScore: EnhancedVersion['stabilityScore'] | undefined;
-
-      if (index > 0) {
-        // For simplicity, we'll assign a random changeType for demonstration
-        // In reality, this would be computed by comparing with the previous version
-        const changeTypes = ['healthy', 'breaking', 'warning'] as const;
-        changeType = changeTypes[Math.floor(Math.random() * changeTypes.length)] as EnhancedVersion['changeType'];
-        // Simulate a stability score between 0.5 and 1.0
-        stabilityScore = 0.5 + Math.random() * 0.5;
-      } else {
-        // First version has no previous version to compare with
-        changeType = undefined;
-        changeDescription = 'Initial version';
-        stabilityScore = 1.0; // Assume 100% stability for the initial version
-      }
+      // The first version has nothing before it to differ from, so its
+      // description is a fact rather than a guess. Everything after it is
+      // genuinely unknown, and says so.
+      const isFirst = index === 0;
 
       return {
         ...version,
-        changeType,
-        changeDescription,
-        stabilityScore,
+        changeType: undefined,
+        changeDescription: isFirst
+          ? 'Initial version'
+          : 'Change details not captured yet',
+        stabilityScore: undefined,
       };
     });
-  }, [history.Versions]);
+  }, [history.versions]);
 
   const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
 
   const renderVersionNode = (version: EnhancedVersion, index: number) => {
-    const { Version, CreatedAt, changeType, changeDescription, stabilityScore } = version;
-    const isLocked = history.LockedVersion === Version;
+    const { version: versionNumber, created_at, changeType, changeDescription, stabilityScore } = version;
+    const isLocked = history.locked_version === versionNumber;
 
     // Format timestamp
-    const date = new Date(CreatedAt);
+    const date = new Date(created_at);
     const timeStr = date.toLocaleTimeString();
     const dateStr = date.toLocaleDateString();
 
     // Enhanced tooltip with change information
     const tooltipContent = `
-      Version ${Version}
+      Version ${versionNumber}
       ${dateStr} ${timeStr}
 
       Change Type: ${changeType ? changeType.charAt(0).toUpperCase() + changeType.slice(1) : 'Unknown'}
@@ -93,7 +100,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       ${isLocked ? '(Currently Locked Baseline)' : ''}`;
 
     // Check if this version is selected for comparison
-    const isSelected = selectedVersions.includes(Version);
+    const isSelected = selectedVersions.includes(versionNumber);
 
     // Determine appearance values
     const getNodeColor = () => {
@@ -138,9 +145,9 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
 
     return (
       <div
-        key={Version}
+        key={versionNumber}
         className="relative cursor-help"
-        onClick={() => onToggleVersionSelection(endpointKey, Version)}
+        onClick={() => onToggleVersionSelection(endpointKey, versionNumber)}
         title={tooltipContent.trim()}
       >
         <div className="flex flex-col items-center">
@@ -160,7 +167,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
             <div className="w-px h-4 mt-2 bg-border-color"></div>
           )}
           <div className="mt-2 text-xs text-text-muted">
-            v{Version}
+            v{versionNumber}
           </div>
         </div>
       </div>
@@ -168,22 +175,13 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   };
 
   const renderStabilityChart = () => {
-    // Calculate average stability score for the endpoint
-    const scores = enhancedVersions
-      .map((v) => v.stabilityScore)
-      .filter((score): score is number => score !== undefined);
-    const avgScore =
-      scores.length > 0
-        ? scores.reduce((sum, score) => sum + score, 0) / scores.length
-        : 0;
-
-    const color =
-      avgScore >= 0.9
-        ? 'var(--accent-healthy)'
-        : avgScore >= 0.7
-          ? 'var(--accent-warning)'
-          : 'var(--accent-breaking)';
-
+    /* This used to average a Math.random() value per version and print the
+       result to one decimal under the caption "Percentage of requests matching
+       the baseline contract" — a number none of that arithmetic computed, that
+       changed on every render, and that coloured itself green or red as a
+       verdict. Claiming a measured contract metric you did not measure is
+       worse than showing nothing, so it shows nothing until the backend
+       records what actually changed between versions. */
     return (
       <div className="mb-6">
         <h3 className="text-xl font-semibold text-text-main mb-2">
@@ -194,12 +192,13 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
             <span className="text-sm font-medium text-text-muted">
               Current Stability:
             </span>
-            <span className={`font-mono text-${color} font-semibold text-xl`}>
-              {(avgScore * 100).toFixed(1)}%
+            <span className="font-mono text-text-muted font-semibold text-xl">
+              —
             </span>
           </div>
           <div className="mt-2 text-xs text-text-muted">
-            Percentage of requests matching the baseline contract
+            Not measured yet — Driftwood does not currently record what changed
+            between two versions of an endpoint.
           </div>
         </div>
       </div>
@@ -210,11 +209,11 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
     <div className="bg-bg-card rounded-xl border border-border-color p-6">
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center space-x-3">
-          <span className={`method-badge method-${history.Method.toLowerCase()}`}>
-            {history.Method}
+          <span className={`method-badge method-${history.method.toLowerCase()}`}>
+            {history.method}
           </span>
           <span className="font-mono ml-2 font-semibold">
-            {history.Path}
+            {history.path}
           </span>
         </div>
         <div className="text-right space-y-1">
@@ -222,7 +221,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
             Versions: {enhancedVersions.length}
           </div>
           <div className="text-sm text-text-muted">
-            Observations: {history.ObservationCount}
+            Observations: {history.observation_count}
           </div>
         </div>
       </div>
