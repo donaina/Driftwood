@@ -184,13 +184,13 @@
   }
 
   .btn-primary {
-    background: var(--accent-info);
-    border-color: var(--accent-info);
-    color: white;
+    background: var(--accent-healthy);
+    border-color: var(--accent-healthy);
+    color: var(--bg-main);
   }
 
   .btn-primary:hover {
-    background: #3eb0e6;
+    background: color-mix(in srgb, var(--accent-healthy) 88%, var(--bg-main));
   }
 
   .btn-danger {
@@ -306,9 +306,9 @@
   }
 
   .nav-item.active {
-    background: rgba(90, 200, 250, 0.15);
-    color: var(--accent-info);
-    border-left: 3px solid var(--accent-info);
+    background: color-mix(in srgb, var(--accent-healthy) 15%, transparent);
+    color: var(--accent-healthy);
+    border-left: 3px solid var(--accent-healthy);
   }
 
   .demo-box {
@@ -350,9 +350,9 @@
   }
 
   .demo-btn.active-mode {
-    border-color: var(--accent-warning);
-    background: rgba(255, 159, 10, 0.15);
-    color: var(--accent-warning);
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+    color: var(--text-main);
   }
 
   /* Main Content */
@@ -389,7 +389,7 @@
   }
 
   .search-bar:focus {
-    border-color: var(--accent-info);
+    border-color: var(--accent-healthy);
   }
 
   /* Traffic Stream View */
@@ -510,7 +510,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: color-mix(in srgb, var(--bg-main) 70%, transparent);
     backdrop-filter: blur(4px);
     z-index: 100;
     display: none;
@@ -682,7 +682,7 @@
   .setup-step.active {
     color: var(--text-main);
     font-weight: 600;
-    background: rgba(90, 200, 250, 0.1);
+    background: color-mix(in srgb, var(--accent-healthy) 10%, transparent);
   }
 
   .setup-step.active::after {
@@ -722,7 +722,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: color-mix(in srgb, var(--bg-main) 80%, transparent);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -750,8 +750,8 @@
   }
 
   .guided-tour-btn {
-  background: var(--accent-info);
-  color: white;
+  background: var(--accent-healthy);
+  color: var(--bg-main);
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: 6px;
@@ -762,7 +762,7 @@
   }
 
   .guided-tour-btn:hover {
-  background: #3eb0e6;
+  background: color-mix(in srgb, var(--accent-healthy) 88%, var(--bg-main));
   }
 
   .guided-tour-dots {
@@ -981,7 +981,7 @@
 
   .setup-wizard .input-group input:focus {
   outline: none;
-  border-color: var(--accent-info);
+  border-color: var(--accent-healthy);
   }
 
   .setup-wizard .btn-group {
