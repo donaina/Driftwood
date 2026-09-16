@@ -183,7 +183,7 @@ const ScenarioLibrary: React.FC = () => {
       <div className="bg-bg-card rounded-xl border border-border-color p-6">
         <div className="flex flex-wrap gap-2">
           <button
-            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'all' ? 'active bg-accent-info/20 text-accent-info' : ''}`}
+            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'all' ? 'active bg-accent-healthy/20 text-accent-healthy' : ''}`}
             data-filter="all"
             onClick={() => setActiveFilter('all')}
           >

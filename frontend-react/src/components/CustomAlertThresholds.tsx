@@ -89,7 +89,7 @@ const CustomAlertThresholds: React.FC = () => {
         </h3>
         <div className="grid gap-4 sm:grid-cols-4">
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'strict' ? 'border-accent-info bg-accent-info/10' : 'border-transparent'}`}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'strict' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={() => handlePresetChange({ target: { value: 'strict' } } as React.ChangeEvent<HTMLSelectElement>)}
           >
             <span className="text-accent-breaking text-2xl font-bold">■</span>
@@ -99,7 +99,7 @@ const CustomAlertThresholds: React.FC = () => {
             </p>
           </button>
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'recommended' ? 'border-accent-info bg-accent-info/10' : 'border-transparent'}`}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'recommended' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={() => handlePresetChange({ target: { value: 'recommended' } } as React.ChangeEvent<HTMLSelectElement>)}
           >
             <span className="text-accent-warning text-2xl font-bold">▲</span>
@@ -109,7 +109,7 @@ const CustomAlertThresholds: React.FC = () => {
             </p>
           </button>
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'lenient' ? 'border-accent-info bg-accent-info/10' : 'border-transparent'}`}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'lenient' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={() => handlePresetChange({ target: { value: 'lenient' } } as React.ChangeEvent<HTMLSelectElement>)}
           >
             <span className="text-accent-healthy text-2xl font-bold">●</span>
@@ -119,7 +119,7 @@ const CustomAlertThresholds: React.FC = () => {
             </p>
           </button>
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'custom' ? 'border-accent-info bg-accent-info/10' : 'border-transparent'}`}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'custom' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={handleResetToPreset}
           >
             <span className="text-accent-info text-2xl font-bold">○</span>
@@ -232,7 +232,7 @@ const CustomAlertThresholds: React.FC = () => {
         </button>
         <button
           onClick={handleSaveConfig}
-          className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors flex-1 sm:auto"
+          className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors flex-1 sm:auto"
         >
           Save Configuration
         </button>

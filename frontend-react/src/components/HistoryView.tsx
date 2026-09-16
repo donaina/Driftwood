@@ -85,7 +85,7 @@ const HistoryView: React.FC = () => {
             Version History Browser
           </h2>
           <button
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
             onClick={loadHistories}
           >
             🔄 Refresh History
@@ -106,7 +106,7 @@ const HistoryView: React.FC = () => {
             Version History Browser
           </h2>
           <button
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
             onClick={loadHistories}
           >
             🔄 Refresh History
@@ -127,7 +127,7 @@ const HistoryView: React.FC = () => {
             Version History Browser
           </h2>
           <button
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
             onClick={loadHistories}
           >
             🔄 Refresh History
@@ -149,7 +149,7 @@ const HistoryView: React.FC = () => {
           Version History Browser
         </h2>
         <button
-          className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+          className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
           onClick={loadHistories}
         >
           🔄 Refresh History

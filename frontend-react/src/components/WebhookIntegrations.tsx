@@ -91,7 +91,7 @@ const WebhookIntegrations: React.FC = () => {
         </p>
         <div className="flex justify-center mt-4">
           <button
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
             onClick={() => alert('Add new webhook configuration')}
           >
             Add Webhook
@@ -192,7 +192,7 @@ const WebhookIntegrations: React.FC = () => {
               </button>
               <button
                 onClick={() => saveWebhookConfig(service.id)}
-                className="px-4 py-2 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors flex-1 sm:auto"
+                className="px-4 py-2 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors flex-1 sm:auto"
               >
                 Save Configuration
               </button>

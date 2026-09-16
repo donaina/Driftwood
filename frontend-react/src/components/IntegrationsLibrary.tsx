@@ -120,7 +120,7 @@ end`,
         </p>
         <div className="flex justify-center mt-4">
           <button
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
             onClick={() => alert('Show All')}
           >
             Show All
