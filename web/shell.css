@@ -86,13 +86,17 @@
     background: color-mix(in srgb, var(--bg-card) 85%, transparent);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border-color);
-    padding: 0.85rem 1.5rem;
+    /* DESIGN.md §5 fixes this at 58px. It was padding-derived before, which
+       measured ~60px and would drift with any content change inside it.
+       border-box keeps the 58px inclusive of the bottom border. */
+    height: 58px;
+    padding: 0 1.5rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
-    z-index: 50;
+    z-index: var(--z-sticky);
   }
 
   .brand {
@@ -175,7 +179,8 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                color 0.15s ease, transform 0.1s ease;
   }
 
   .btn:hover {
@@ -369,7 +374,8 @@
     background: var(--surface-3);
     color: var(--text-main);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                color 0.15s ease, transform 0.1s ease;
   }
 
   .demo-btn:hover {
@@ -539,7 +545,7 @@
     bottom: 0;
     background: color-mix(in srgb, var(--bg-main) 70%, transparent);
     backdrop-filter: blur(4px);
-    z-index: 100;
+    z-index: var(--z-overlay);
     display: none;
   }
 
@@ -551,11 +557,11 @@
     position: fixed;
     top: 0;
     right: 0;
-    width: 720px;
+    width: min(720px, 100vw);
     height: 100vh;
     background: var(--bg-card);
     border-left: 1px solid var(--border-color);
-    z-index: 101;
+    z-index: var(--z-drawer);
     display: flex;
     flex-direction: column;
     box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
@@ -647,7 +653,7 @@
     position: fixed;
     bottom: 2rem;
     right: 2rem;
-    z-index: 200;
+    z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -672,17 +678,166 @@
     border-color: var(--accent-breaking);
   }
 
-  /* Responsive collapse: <768px */
-  @media (max-width: 767px) {
-    aside {
+  /* ---------------------------------------------------------------------
+     Responsive ladder.
+
+     Two breakpoints, both set by what stops fitting rather than by device
+     class. 1024px is where a 280px sidebar stops leaving a readable traffic
+     table beside it; 768px is where an icon rail costs more than it gives.
+
+     Below 768px the nav becomes a horizontal rail rather than a <select>
+     dropdown. A dropdown needs JS wired into switchTab(), and the routing
+     here is deliberately out of scope for this work (10 nav items, 7
+     panels — see the note on switchTab). The rail is pure CSS and leaves
+     every existing click handler untouched.
+
+     Note the icon rail is scoped to 768-1024px rather than "max-width:
+     1024px". Below 768px the labels come back: there is no hover on touch,
+     so the title= tooltip that makes an icon-only rail work on a desktop
+     does not exist there, and an unlabelled icon row would be unreadable.
+     --------------------------------------------------------------------- */
+
+  /* Both narrow layouts drop the simulator panel. It is a reading-width
+     column of long copy and has no honest narrow form. */
+  @media (max-width: 1024px) {
+    .nav-section:last-child {
       display: none;
     }
+  }
+
+  /* Icon rail. Labels are visually hidden rather than display:none so they
+     remain the nav items' accessible names; title= covers the mouse case. */
+  @media (max-width: 1024px) and (min-width: 768px) {
     .app-container {
-      grid-template-columns: 1fr;
-      height: calc(100vh - 58px);
+      grid-template-columns: 64px 1fr;
     }
+
+    .nav-section {
+      padding: 0.75rem 0.5rem;
+    }
+
     .nav-item {
       justify-content: center;
+      gap: 0;
+      /* The 3px right padding balances the reserved 3px left border so the
+         icon lands on the rail's true centre line. */
+      padding: 0.7rem 3px 0.7rem 0;
+    }
+
+    .nav-label,
+    .section-title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+  }
+
+  /* Top rail: the nav moves above the content and scrolls sideways. */
+  @media (max-width: 767px) {
+    .app-container {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+    }
+
+    aside {
+      flex-direction: row;
+      overflow-x: auto;
+      overflow-y: hidden;
+      border-right: 0;
+      border-bottom: 1px solid var(--border-color);
+      scrollbar-width: none;
+    }
+
+    aside::-webkit-scrollbar {
+      display: none;
+    }
+
+    .nav-section {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.125rem;
+      padding: 0.5rem;
+      border-bottom: 0;
+    }
+
+    /* The rail is self-evidently navigation, and the heading would sit in
+       the leftmost slot — exactly where the eye lands first and where
+       horizontal space is scarcest. */
+    .section-title {
+      display: none;
+    }
+
+    /* The active marker rotates with the rail: left border becomes a
+       bottom border, so it still reads as "this one". */
+    .nav-item {
+      margin-bottom: 0;
+      padding: 0.55rem 0.7rem;
+      border-left: 0;
+      border-bottom: 3px solid transparent;
+    }
+
+    .nav-item.active {
+      border-bottom-color: var(--accent-healthy);
+    }
+
+    /* The header keeps §5's 58px here, which means the controls have to
+       give width rather than wrap onto a second line. */
+    header {
+      gap: 0.75rem;
+      padding: 0 1rem;
+    }
+
+    .brand-title {
+      font-size: var(--text-md);
+    }
+
+    /* The status pill collapses to its dot. A lone LED still reads as
+       "connected"; the words are the part that costs width. */
+    #status-text {
+      display: none;
+    }
+
+    .status-pill {
+      padding: 0.35rem 0.45rem;
+    }
+
+    .header-actions {
+      gap: 0.5rem;
+      flex-wrap: nowrap;
+    }
+
+    .alert-counter-label {
+      display: none;
+    }
+
+    .btn {
+      white-space: nowrap;
+      padding: 0.5rem 0.7rem;
+    }
+
+    /* The three step pills are laid out for a desktop row. At phone widths
+       they wrap mid-label ("1." / "Target" / "API"), which reads as three
+       separate things; let the row wrap and keep each label intact. */
+    #setup-steps {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .setup-step {
+      white-space: nowrap;
+    }
+  }
+
+  /* Below 480px the destructive secondary action is the first thing to go —
+     it duplicates controls inside the traffic view's own toolbar. */
+  @media (max-width: 479px) {
+    #clearTrafficHistoryBtn {
+      display: none;
     }
   }
 
@@ -750,7 +905,7 @@
   right: 0;
   bottom: 0;
   background: color-mix(in srgb, var(--bg-main) 80%, transparent);
-  z-index: 1000;
+  z-index: var(--z-tour);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -848,7 +1003,7 @@
   border-radius: var(--radius-sm);
   padding: 8px;
   position: absolute;
-  z-index: 100;
+  z-index: var(--z-tooltip);
   bottom: 125%;
   left: 50%;
   margin-left: -125px;
@@ -881,7 +1036,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, transform 0.1s ease;
   }
 
   .share-btn:hover {
@@ -1158,7 +1314,8 @@
   border-radius: var(--radius-xs);
   font-size: var(--text-base);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, transform 0.1s ease;
   }
 
   .integrations-filter-btn:hover {
@@ -1388,5 +1545,58 @@
   .webhook-config .btn {
     width: 100%;
     margin-top: 0.5rem;
+  }
+
+  /* ---------------------------------------------------------------------
+     Press states.
+
+     Grouped rather than attached to each :hover so the four interactive
+     controls can't drift apart. 1px, not 2: enough to feel like the
+     control moved under the cursor, small enough not to read as a jump.
+     --------------------------------------------------------------------- */
+  .btn:active,
+  .demo-btn:active,
+  .share-btn:active,
+  .integrations-filter-btn:active,
+  .nav-item:active {
+    transform: translateY(1px);
+  }
+
+  /* ---------------------------------------------------------------------
+     Elevation scale.
+
+     DESIGN.md §5 puts overlays at 100/200. The guided tour was at 1000,
+     an order of magnitude off the rest with nothing between, which is the
+     kind of gap that gets copied by the next overlay someone adds. Named
+     steps instead so the relationship is legible at the call site. Each
+     overlay below reads its step from here.
+     --------------------------------------------------------------------- */
+  :root {
+    --z-sticky: 50;   /* header — above content, below every overlay */
+    --z-overlay: 100; /* dimming layers (drawer scrim) */
+    --z-drawer: 110;  /* panel above its own scrim */
+    --z-tooltip: 150; /* anchored popovers */
+    --z-toast: 200;   /* transient notifications */
+    --z-tour: 300;    /* guided tour: covers the app, never toasts */
+  }
+
+  /* DESIGN.md §6. There was no reduced-motion handling anywhere in the
+     shell, so the pulsing status dot and the toast slide-in ran at full
+     motion regardless of the setting.
+
+     Durations collapse rather than `animation: none`: a toast slid in from
+     `transform: translateX(100%)` must still reach its resting position,
+     and `none` would strand anything whose resting state is the animation's
+     end frame. `iteration-count: 1` is what actually stops the infinite
+     pulse from looping. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
