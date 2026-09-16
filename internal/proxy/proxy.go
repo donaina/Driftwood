@@ -25,6 +25,34 @@ import (
 	"github.com/donaina/driftwood/pkg/types"
 )
 
+// The reserved namespace. Driftwood's own control plane and dashboard live under
+// ControlPrefix; every other path on the port is proxied to the target API. That
+// inversion is the product — a proxy that only forwards a hardcoded `/api/`
+// prefix never sees the endpoints it is supposed to be watching.
+//
+// These live here, rather than in server, because the router and the proxy must
+// agree on the boundary: the router decides what reaches the proxy, and the proxy
+// decides whether a control-path request is a mock fixture or a real backend call.
+// Two copies of this string would drift.
+const (
+	ControlPrefix = "/_driftwood"
+	MockPrefix    = ControlPrefix + "/mock"
+)
+
+// inNamespace reports whether path is prefix itself or sits beneath it. The
+// boundary matters: "/_driftwoodfoo" is a target-API path and must be proxied,
+// so a bare strings.HasPrefix would swallow it.
+func inNamespace(path, prefix string) bool {
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
+}
+
+// IsControlPath reports whether path belongs to Driftwood rather than the target
+// API. Everything for which this is false gets proxied.
+func IsControlPath(path string) bool { return inNamespace(path, ControlPrefix) }
+
+// IsMockPath reports whether path addresses a mock fixture endpoint.
+func IsMockPath(path string) bool { return inNamespace(path, MockPrefix) }
+
 type Proxy struct {
 	targetURL       atomic.Pointer[url.URL]
 	store           *storage.Store
@@ -167,7 +195,10 @@ func (p *Proxy) Handler() http.HandlerFunc {
 			reqHeaders[k] = strings.Join(v, ", ")
 		}
 
-		if strings.HasPrefix(r.URL.Path, "/_driftwood/mock/") {
+		// IsMockPath, not HasPrefix(MockPrefix+"/"): the bare "/_driftwood/mock"
+		// is a mock request too. It used to fall through to the real backend
+		// while the router had already decided it was a mock path.
+		if IsMockPath(r.URL.Path) {
 			p.serveMockResponse(w, r, start, reqBodyBytes, reqHeaders)
 			return
 		}
