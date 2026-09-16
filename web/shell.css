@@ -1,0 +1,1728 @@
+/* ============================================================================
+   Driftwood — dashboard shell stylesheet.
+
+   This file styles the hand-authored chrome in web/index.html: the header, the
+   sidebar, the traffic table, the drawer, toasts, and the setup/tour/help
+   widgets. It is imported by frontend-react/src/index.css so that the shell and
+   the React views ship in ONE stylesheet (assets/driftwood.css). It is not
+   loaded directly by any page — do not add a <link> to it.
+
+   LAYERING. The layer order itself is declared in src/index.css, which must be
+   the first at-rule of the bundled artifact. The short version of why:
+
+     - The reset lives in `shell-reset`, the very first layer. It used to be
+       unlayered, and an unlayered `* { margin: 0; padding: 0 }` beats EVERY
+       layered utility regardless of specificity — which zeroed out every
+       Tailwind spacing utility inside the React views. Folding it into a layer
+       is what makes the two systems coexist.
+     - Everything else lives in `shell`, the last layer. That is deliberate: the
+       shell is hand-authored against concrete pixel values and is expected to
+       win over Tailwind's utilities where the two overlap.
+
+   `@keyframes` are hoisted below the layer blocks and kept at top level. They
+   are not cascade-sorted, so burying them in a layer buys nothing and makes the
+   one real conflict — `pulse`, which Tailwind also emits for `animate-pulse` —
+   hard to see. Ours is namespaced `driftwood-pulse`.
+
+   The `:root` token block that used to open this CSS has been deleted. It
+   duplicated the color values now declared once in src/index.css (@theme) and
+   re-exported through an unlayered :root alias block, which already overrode
+   this copy. Two sources of truth for the same hex is what let the old palette
+   drift.
+   ========================================================================== */
+
+@layer shell-reset {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@keyframes driftwood-pulse {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@layer shell {
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* Top Navbar */
+  header {
+    background: color-mix(in srgb, var(--bg-card) 85%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-color);
+    /* DESIGN.md §5 fixes this at 58px. It was padding-derived before, which
+       measured ~60px and would drift with any content change inside it.
+       border-box keeps the 58px inclusive of the bottom border. */
+    height: 58px;
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .brand-logo {
+    background: var(--accent-healthy);
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    color: var(--bg-main);
+    font-size: var(--text-lg);
+  }
+
+  .brand-title {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-family: 'Geist', sans-serif;
+    color: var(--text-main);
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent-healthy) 10%, transparent);
+    color: var(--accent-healthy);
+    border: 1px solid color-mix(in srgb, var(--accent-healthy) 25%, transparent);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--accent-healthy);
+    animation: driftwood-pulse 2s infinite;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .alert-counter {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: color-mix(in srgb, var(--accent-breaking) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-breaking) 30%, transparent);
+    color: var(--accent-breaking);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn {
+    background: var(--surface-3);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 0.9rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                color 0.15s ease, transform 0.1s ease;
+  }
+
+  .btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+  }
+
+  .btn-primary {
+    background: var(--accent-healthy);
+    border-color: var(--accent-healthy);
+    color: var(--bg-main);
+  }
+
+  .btn-primary:hover {
+    background: color-mix(in srgb, var(--accent-healthy) 88%, var(--bg-main));
+  }
+
+  .btn-danger {
+    background: color-mix(in srgb, var(--accent-breaking) 15%, transparent);
+    border-color: color-mix(in srgb, var(--accent-breaking) 30%, transparent);
+    color: var(--accent-breaking);
+  }
+
+  .btn-danger:hover {
+    background: color-mix(in srgb, var(--accent-breaking) 25%, transparent);
+  }
+
+  .vitals-container {
+    display: flex;
+    justify-content: space-around;
+    padding: 1rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    gap: 2rem;
+  }
+
+  .vital-item {
+    text-align: center;
+    flex: 1;
+  }
+
+  .vital-item label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+    display: block;
+  }
+
+  .vital-value {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 0.25rem;
+    font-family: 'Geist', sans-serif;
+  }
+
+  .vital-sparkline {
+    height: 20px;
+    background: var(--bg-hover);
+    border-radius: var(--radius-xs);
+    margin-top: 0.25rem;
+  }
+
+  .vital-ring {
+    --ring-deg: 0deg;
+    --ring-color: var(--accent-healthy);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    margin: 0 auto;
+    background: conic-gradient(var(--ring-color) var(--ring-deg), var(--bg-hover) 0deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+    transition: background 0.3s ease;
+  }
+
+  /* Main Container Layout */
+  .app-container {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Sidebar Navigation & Demo Simulator */
+  aside {
+    background: var(--bg-card);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .nav-section {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .section-title {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    /* The 3px is reserved on every item, transparent when inactive, so
+       selecting a nav item changes its colour and not its text position.
+       Padding-left is reduced by the same 3px to keep idle geometry as it
+       was before the border existed. */
+    padding: 0.6rem 0.8rem 0.6rem calc(0.8rem - 3px);
+    border-left: 3px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: var(--text-base);
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 0.25rem;
+    transition: background-color 0.15s ease, color 0.15s ease,
+                border-color 0.15s ease;
+  }
+
+  /* Icon geometry lives here rather than in attributes on each <svg> so the
+     ten nav icons stay a single line of markup each and the active state's
+     colour is inherited via currentColor. */
+  .nav-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .nav-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nav-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .nav-item.active {
+    background: color-mix(in srgb, var(--accent-healthy) 15%, transparent);
+    color: var(--accent-healthy);
+    border-left-color: var(--accent-healthy);
+  }
+
+  .demo-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.85rem;
+    margin-top: 0.5rem;
+  }
+
+  .demo-box label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .demo-btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .demo-btn {
+    width: 100%;
+    text-align: left;
+    font-size: var(--text-xs);
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border-color);
+    background: var(--surface-3);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+                color 0.15s ease, transform 0.1s ease;
+  }
+
+  .demo-btn:hover {
+    background: var(--bg-hover);
+  }
+
+  .demo-btn.active-mode {
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  /* Main Content */
+  main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-main);
+  }
+
+  /* Page header inside a .view-panel. The panel already supplies the 1.5rem
+     page gutter, so this contributes only the rule underneath it and the
+     rhythm below — it is not its own card. */
+  .content-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+  }
+
+  .content-title {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .content-subtitle {
+    font-size: var(--text-base);
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    max-width: 68ch;
+  }
+
+  .search-bar {
+    background: var(--surface-3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0.8rem;
+    color: var(--text-main);
+    font-size: var(--text-base);
+    width: 260px;
+    outline: none;
+  }
+
+  .search-bar:focus {
+    border-color: var(--accent-healthy);
+  }
+
+  /* Traffic Stream View */
+  .view-panel {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+  }
+
+  .view-panel.active {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Table Styles */
+  .traffic-table-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  /* DESIGN.md §5 column widths. Path is the one column with no width — it
+     is the only value that needs to flex, and giving it one would make the
+     table's own scroll the only way to read a long route. */
+  .col-method   { width: 90px; }
+  .col-status   { width: 80px; }
+  .col-duration { width: 100px; }
+  .col-contract { width: 160px; }
+  .col-spark    { width: 120px; }
+  .col-time     { width: 100px; }
+
+  /* Those widths have a floor of roughly 720px. Below it the table scrolls
+     inside its own card rather than crushing the Path column to nothing —
+     the page body itself must never scroll sideways. */
+  .table-scroll {
+    overflow-x: auto;
+  }
+
+  .table-scroll table {
+    min-width: 720px;
+  }
+
+  /* Row trend sparkline. Sized to fill its 120px column and drawn as an
+     inline SVG polyline, matching the vitals sparklines. */
+  .row-sparkline {
+    display: block;
+    width: 100%;
+    height: 24px;
+    overflow: visible;
+  }
+
+  .row-sparkline polyline {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* A single request has no trend. Say so rather than drawing a flat line,
+     which would read as "steady" instead of "no data yet". */
+  .spark-empty {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+  }
+
+  /* "9:13:26 AM" in JetBrains Mono is wider than §5's 100px Time column
+     leaves it once the cell padding is taken out, so it wrapped mid-value
+     onto two lines. One step down the scale plus a refusal to break fits it
+     without widening a column the spec fixes. */
+  .cell-time {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: var(--text-xs);
+    white-space: nowrap;
+    padding-left: 0.5rem;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 3rem 1.5rem;
+    text-align: center;
+  }
+
+  .empty-state-icon {
+    width: 32px;
+    height: 32px;
+    fill: none;
+    stroke: var(--text-muted);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    margin-bottom: 0.25rem;
+  }
+
+  .empty-state-title {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
+  .empty-state-body {
+    font-size: var(--text-base);
+    color: var(--text-muted);
+    max-width: 48ch;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Setup wizard completion summary. Was three 32px text glyphs, two of them
+     emoji — banned in UI chrome by DESIGN.md §7 — beside one geometric shape.
+     All three are the shell's own icon vocabulary now, in one accent: this
+     is the success step, so no severity colour belongs here (§7). */
+  .setup-summary {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .setup-summary-item {
+    text-align: center;
+  }
+
+  .setup-summary-icon {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 0.5rem;
+    fill: none;
+    stroke: var(--accent-healthy);
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: var(--text-base);
+  }
+
+  th {
+    background: var(--surface-3);
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-main);
+  }
+
+  tr:hover td {
+    background: var(--bg-hover);
+    cursor: pointer;
+  }
+
+  .method-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: var(--text-xs);
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-xs);
+    text-transform: uppercase;
+  }
+
+  .method-get {
+    background: color-mix(in srgb, var(--accent-info) 20%, transparent);
+    color: var(--accent-info);
+  }
+
+  .method-post {
+    background: color-mix(in srgb, var(--accent-healthy) 20%, transparent);
+    color: var(--accent-healthy);
+  }
+
+  .method-put {
+    background: color-mix(in srgb, var(--accent-warning) 20%, transparent);
+    color: var(--accent-warning);
+  }
+
+  .method-delete {
+    background: color-mix(in srgb, var(--accent-breaking) 20%, transparent);
+    color: var(--accent-breaking);
+  }
+
+  .contract-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: var(--text-xs);
+  }
+
+  .badge-match {
+    background: color-mix(in srgb, var(--accent-healthy) 15%, transparent);
+    color: var(--accent-healthy);
+    border: 1px solid color-mix(in srgb, var(--accent-healthy) 30%, transparent);
+  }
+
+  .badge-breaking {
+    background: color-mix(in srgb, var(--accent-breaking) 15%, transparent);
+    color: var(--accent-breaking);
+    border: 1px solid color-mix(in srgb, var(--accent-breaking) 30%, transparent);
+  }
+
+  .badge-warning {
+    background: color-mix(in srgb, var(--accent-warning) 15%, transparent);
+    color: var(--accent-warning);
+    border: 1px solid color-mix(in srgb, var(--accent-warning) 30%, transparent);
+  }
+
+  .badge-nobaseline {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    border: 1px solid var(--border-strong);
+  }
+
+  /* Detail Modal Drawer */
+  .drawer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--bg-main) 70%, transparent);
+    backdrop-filter: blur(4px);
+    z-index: var(--z-overlay);
+    display: none;
+  }
+
+  .drawer-overlay.open {
+    display: block;
+  }
+
+  .drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(720px, 100vw);
+    height: 100vh;
+    background: var(--bg-card);
+    border-left: 1px solid var(--border-color);
+    z-index: var(--z-drawer);
+    display: flex;
+    flex-direction: column;
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .drawer.open {
+    transform: translateX(0);
+  }
+
+  .drawer-header {
+    padding: 1.2rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .diff-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+  }
+
+  .diff-card-title {
+    font-size: var(--text-base);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .delta-item {
+    background: color-mix(in srgb, var(--accent-breaking) 10%, transparent);
+    border-left: 4px solid var(--accent-breaking);
+    padding: 0.75rem;
+    border-radius: var(--radius-xs);
+    margin-bottom: 0.5rem;
+    font-size: var(--text-base);
+  }
+
+  .delta-item.warning {
+    background: color-mix(in srgb, var(--accent-warning) 10%, transparent);
+    border-left-color: var(--accent-warning);
+  }
+
+  .delta-item.info {
+    background: color-mix(in srgb, var(--accent-info) 10%, transparent);
+    border-left-color: var(--accent-info);
+  }
+
+  .delta-path {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    color: var(--accent-info);
+  }
+
+  .code-box {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: var(--text-xs);
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-main);
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  /* Toast Notification */
+  .toast-container {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .toast {
+    background: var(--bg-card);
+    border: 1px solid var(--accent-info);
+    color: var(--text-main);
+    padding: 1rem 1.25rem;
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    width: 380px;
+    animation: slideIn 0.3s ease;
+  }
+
+  .toast.breaking {
+    background: color-mix(in srgb, var(--accent-breaking) 10%, transparent);
+    border-color: var(--accent-breaking);
+  }
+
+  /* ---------------------------------------------------------------------
+     Responsive ladder.
+
+     Two breakpoints, both set by what stops fitting rather than by device
+     class. 1024px is where a 280px sidebar stops leaving a readable traffic
+     table beside it; 768px is where an icon rail costs more than it gives.
+
+     Below 768px the nav becomes a horizontal rail rather than a <select>
+     dropdown. A dropdown needs JS wired into switchTab(), and the routing
+     here is deliberately out of scope for this work (10 nav items, 7
+     panels — see the note on switchTab). The rail is pure CSS and leaves
+     every existing click handler untouched.
+
+     Note the icon rail is scoped to 768-1024px rather than "max-width:
+     1024px". Below 768px the labels come back: there is no hover on touch,
+     so the title= tooltip that makes an icon-only rail work on a desktop
+     does not exist there, and an unlabelled icon row would be unreadable.
+     --------------------------------------------------------------------- */
+
+  /* Both narrow layouts drop the simulator panel. It is a reading-width
+     column of long copy and has no honest narrow form. */
+  @media (max-width: 1024px) {
+    .nav-section:last-child {
+      display: none;
+    }
+  }
+
+  /* Icon rail. Labels are visually hidden rather than display:none so they
+     remain the nav items' accessible names; title= covers the mouse case. */
+  @media (max-width: 1024px) and (min-width: 768px) {
+    .app-container {
+      grid-template-columns: 64px 1fr;
+    }
+
+    .nav-section {
+      padding: 0.75rem 0.5rem;
+    }
+
+    .nav-item {
+      justify-content: center;
+      gap: 0;
+      /* The 3px right padding balances the reserved 3px left border so the
+         icon lands on the rail's true centre line. */
+      padding: 0.7rem 3px 0.7rem 0;
+    }
+
+    .nav-label,
+    .section-title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+  }
+
+  /* Top rail: the nav moves above the content and scrolls sideways. */
+  @media (max-width: 767px) {
+    .app-container {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+    }
+
+    aside {
+      flex-direction: row;
+      overflow-x: auto;
+      overflow-y: hidden;
+      border-right: 0;
+      border-bottom: 1px solid var(--border-color);
+      scrollbar-width: none;
+    }
+
+    aside::-webkit-scrollbar {
+      display: none;
+    }
+
+    .nav-section {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.125rem;
+      padding: 0.5rem;
+      border-bottom: 0;
+    }
+
+    /* The rail is self-evidently navigation, and the heading would sit in
+       the leftmost slot — exactly where the eye lands first and where
+       horizontal space is scarcest. */
+    .section-title {
+      display: none;
+    }
+
+    /* The active marker rotates with the rail: left border becomes a
+       bottom border, so it still reads as "this one". */
+    .nav-item {
+      margin-bottom: 0;
+      padding: 0.55rem 0.7rem;
+      border-left: 0;
+      border-bottom: 3px solid transparent;
+    }
+
+    .nav-item.active {
+      border-bottom-color: var(--accent-healthy);
+    }
+
+    /* The header keeps §5's 58px here, which means the controls have to
+       give width rather than wrap onto a second line. */
+    header {
+      gap: 0.75rem;
+      padding: 0 1rem;
+    }
+
+    .brand-title {
+      font-size: var(--text-md);
+    }
+
+    /* The status pill collapses to its dot. A lone LED still reads as
+       "connected"; the words are the part that costs width. */
+    #status-text {
+      display: none;
+    }
+
+    .status-pill {
+      padding: 0.35rem 0.45rem;
+    }
+
+    .header-actions {
+      gap: 0.5rem;
+      flex-wrap: nowrap;
+    }
+
+    .alert-counter-label {
+      display: none;
+    }
+
+    .btn {
+      white-space: nowrap;
+      padding: 0.5rem 0.7rem;
+    }
+
+    /* The three step pills are laid out for a desktop row. At phone widths
+       they wrap mid-label ("1." / "Target" / "API"), which reads as three
+       separate things; let the row wrap and keep each label intact. */
+    #setup-steps {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .setup-step {
+      white-space: nowrap;
+    }
+  }
+
+  /* Below 480px the destructive secondary action is the first thing to go —
+     it duplicates controls inside the traffic view's own toolbar. */
+  @media (max-width: 479px) {
+    #clearTrafficHistoryBtn {
+      display: none;
+    }
+  }
+
+  /* Setup Wizard Styles */
+  #view-setup {
+    background: var(--bg-card);
+  }
+
+  #setup-steps {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .setup-step {
+    font-size: var(--text-base);
+    color: var(--text-muted);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-sm);
+    position: relative;
+  }
+
+  .setup-step.active {
+    color: var(--text-main);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--accent-healthy) 10%, transparent);
+  }
+
+  .setup-step.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid var(--accent-info);
+  }
+
+  .setup-step-content {
+    animation: fadeIn 0.3s ease;
+  }
+
+  #setup-target-url {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: var(--text-base);
+  }
+
+  #setup-detection-status {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Guided Tour Styles */
+  .guided-tour-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--bg-main) 80%, transparent);
+  z-index: var(--z-tour);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  }
+
+  .guided-tour-content {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem;
+  max-width: 500px;
+  width: 90%;
+  position: relative;
+  }
+
+  .guided-tour-content h3 {
+  margin-top: 0;
+  color: var(--text-main);
+  font-size: var(--text-2xl);
+  }
+
+  .guided-tour-content p {
+  color: var(--text-muted);
+  line-height: 1.6;
+  }
+
+  .guided-tour-btn {
+  background: var(--accent-healthy);
+  color: var(--bg-main);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 1.5rem;
+  }
+
+  .guided-tour-btn:hover {
+  background: color-mix(in srgb, var(--accent-healthy) 88%, var(--bg-main));
+  }
+
+  .guided-tour-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 1.5rem;
+  }
+
+  .guided-tour-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.5;
+  }
+
+  .guided-tour-dot.active {
+  background: var(--accent-info);
+  opacity: 1;
+  }
+
+  /* Contextual Help Styles */
+  .help-tooltip {
+  position: relative;
+  display: inline-block;
+  }
+
+  .help-tooltip .help-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-info);
+  color: white;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 16px;
+  font-size: var(--text-xs);
+  font-weight: bold;
+  }
+
+  .help-tooltip .help-icon:hover {
+  opacity: 0.8;
+  }
+
+  .help-tooltip .help-icon:hover {
+  opacity: 1;
+  }
+
+  .help-tooltip .help-text {
+  visibility: hidden;
+  width: 250px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  text-align: center;
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  position: absolute;
+  z-index: var(--z-tooltip);
+  bottom: 125%;
+  left: 50%;
+  margin-left: -125px;
+  }
+
+  .help-tooltip .help-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: var(--bg-card) transparent transparent transparent;
+  }
+
+  .help-tooltip:hover .help-text {
+  visibility: visible;
+  opacity: 1;
+  }
+
+  /* Share Button Styles */
+  .share-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, transform 0.1s ease;
+  }
+
+  .share-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-info);
+  }
+
+  .share-btn:active {
+  transform: translateY(1px);
+  }
+
+  /* Empty State Enhancements */
+  .empty-state-enhanced {
+  text-align: center;
+  padding: 3rem;
+  }
+
+  .empty-state-enhanced h3 {
+  color: var(--text-main);
+  margin-bottom: 1rem;
+  }
+
+  .empty-state-enhanced p {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  }
+
+  /* Setup Wizard Styles */
+  .setup-wizard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  max-width: 500px;
+  margin: 2rem auto;
+  }
+
+  .setup-wizard h2 {
+  color: var(--text-main);
+  margin-bottom: 1.5rem;
+  font-size: var(--text-2xl);
+  }
+
+  .setup-wizard p {
+  color: var(--text-muted);
+  margin-bottom: 2rem;
+  line-height: 1.6;
+  }
+
+  .setup-wizard .step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2.5rem;
+  }
+
+  .setup-wizard .step-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  font-size: var(--text-2xl);
+  }
+
+  .setup-wizard .step-icon.primary {
+  background: var(--accent-info);
+  color: white;
+  }
+
+  .setup-wizard .step-icon.demo {
+  background: var(--accent-warning);
+  color: white;
+  }
+
+  .setup-wizard .step-icon.success {
+  background: var(--accent-healthy);
+  color: white;
+  }
+
+  .setup-wizard .step h3 {
+  color: var(--text-main);
+  margin-bottom: 0.75rem;
+  font-size: var(--text-xl);
+  }
+
+  .setup-wizard .step p {
+  color: var(--text-muted);
+  max-width: 350px;
+  margin-bottom: 1.5rem;
+  }
+
+  .setup-wizard .input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  margin-bottom: 1.5rem;
+  }
+
+  .setup-wizard .input-group label {
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  margin-bottom: 0.5rem;
+  text-align: left;
+  }
+
+  .setup-wizard .input-group input {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 0.75rem 1rem;
+  font-size: var(--text-base);
+  width: 100%;
+  }
+
+  .setup-wizard .input-group input:focus {
+  outline: none;
+  border-color: var(--accent-healthy);
+  }
+
+  .setup-wizard .btn-group {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+  }
+
+  .setup-wizard .btn {
+  flex: 1;
+  }
+
+  .setup-wizard .progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  margin: 2rem 0;
+  }
+
+  .setup-wizard .progress-fill {
+  height: 100%;
+  background: var(--accent-healthy);
+  width: 0%;
+  transition: width 0.3s ease;
+  }
+
+  .setup-wizard .progress-text {
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  margin-top: 0.5rem;
+  }
+
+  /* Integration Guides Styles */
+  .integration-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  }
+
+  .integration-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  }
+
+  .integration-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  }
+
+  .integration-card-badge {
+  background: var(--accent-info);
+  color: white;
+  border-radius: var(--radius-xs);
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  }
+
+  .integration-card-body {
+  padding: 0 1rem 1rem;
+  }
+
+  .integration-card-description {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+  }
+
+  .integration-card-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  }
+
+  .integration-detail-item {
+  display: flex;
+  flex-direction: column;
+  }
+
+  .integration-detail-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+  }
+
+  .integration-detail-value {
+  font-size: var(--text-base);
+  color: var(--text-main);
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-hover);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-xs);
+  }
+
+  .integration-code-box {
+  margin: 1.5rem 0;
+  }
+
+  .integration-code-title {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  }
+
+  .integration-code-box pre {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: var(--text-xs);
+  overflow-x: auto;
+  color: var(--text-main);
+  }
+
+  .integration-verification {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  }
+
+  .integrations-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  }
+
+  .integrations-filter-btn {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-xs);
+  font-size: var(--text-base);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, transform 0.1s ease;
+  }
+
+  .integrations-filter-btn:hover {
+  background: var(--bg-card);
+  color: var(--text-main);
+  }
+
+  .integrations-filter-btn.active {
+  background: var(--accent-info);
+  color: white;
+  border-color: var(--accent-info);
+  }
+
+  /* -----------------------------------------------------------------
+     Export & Reporting view. These rules used to be injected at runtime
+     by a document.createElement('style') block in the shell's inline
+     script, which meant they were absent from the stylesheet link and
+     invisible to the cascade layers. Folded in here so the view ships
+     styled with everything else.
+     ----------------------------------------------------------------- */
+  .export-reporting-library {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .export-reporting-header {
+    margin-bottom: 2rem;
+  }
+
+  .export-option {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .export-option h3 {
+    color: var(--text-main);
+    margin-bottom: 0.5rem;
+  }
+
+  .export-option p {
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+
+  .scheduled-reports {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .scheduled-reports h3 {
+    margin-top: 0;
+  }
+
+  .form-group {
+    margin-bottom: 1rem;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .form-group select,
+  .form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-hover);
+    color: var(--text-main);
+    font-family: 'Geist', sans-serif;
+  }
+
+  .form-group select:focus,
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--accent-healthy);
+  }
+
+  .report-history {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+  }
+
+  .report-history h3 {
+    margin-top: 0;
+  }
+
+  /* Same story for the Webhook & Alert Integrations view. Its .form-group
+     rules were byte-identical to the ones above except that they omitted
+     `select`, so they are dropped rather than duplicated; the superset
+     above covers both views. */
+  .webhook-integrations-library {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+
+
+  .webhook-integrations-header {
+    margin-bottom: 2rem;
+  }
+
+
+
+  .webhook-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+
+
+  .webhook-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding: 0 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+
+
+  .webhook-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+
+
+  .webhook-service-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--accent-info);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: white;
+  }
+
+
+
+  .webhook-card-body {
+    padding: 1rem;
+  }
+
+
+
+  .webhook-card-description {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+  }
+
+
+
+  .webhook-setup-steps h4 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    color: var(--text-main);
+  }
+
+
+
+  .webhook-setup-steps ol {
+    margin-left: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-main);
+  }
+
+
+
+  .webhook-setup-steps li {
+    margin-bottom: 0.5rem;
+  }
+
+
+
+  .webhook-config {
+    margin-top: 1.5rem;
+  }
+
+
+
+  .alert-types {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+
+
+  .alert-types label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--text-base);
+    color: var(--text-main);
+  }
+
+
+
+  .alert-types input {
+    width: auto;
+  }
+
+
+
+  .webhook-config .btn {
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+
+  /* ---------------------------------------------------------------------
+     Press states.
+
+     Grouped rather than attached to each :hover so the four interactive
+     controls can't drift apart. 1px, not 2: enough to feel like the
+     control moved under the cursor, small enough not to read as a jump.
+     --------------------------------------------------------------------- */
+  .btn:active,
+  .demo-btn:active,
+  .share-btn:active,
+  .integrations-filter-btn:active,
+  .nav-item:active {
+    transform: translateY(1px);
+  }
+
+  /* ---------------------------------------------------------------------
+     Elevation scale.
+
+     DESIGN.md §5 puts overlays at 100/200. The guided tour was at 1000,
+     an order of magnitude off the rest with nothing between, which is the
+     kind of gap that gets copied by the next overlay someone adds. Named
+     steps instead so the relationship is legible at the call site. Each
+     overlay below reads its step from here.
+     --------------------------------------------------------------------- */
+  :root {
+    --z-sticky: 50;   /* header — above content, below every overlay */
+    --z-overlay: 100; /* dimming layers (drawer scrim) */
+    --z-drawer: 110;  /* panel above its own scrim */
+    --z-tooltip: 150; /* anchored popovers */
+    --z-toast: 200;   /* transient notifications */
+    --z-tour: 300;    /* guided tour: covers the app, never toasts */
+  }
+
+  /* DESIGN.md §6. There was no reduced-motion handling anywhere in the
+     shell, so the pulsing status dot and the toast slide-in ran at full
+     motion regardless of the setting.
+
+     Durations collapse rather than `animation: none`: a toast slid in from
+     `transform: translateX(100%)` must still reach its resting position,
+     and `none` would strand anything whose resting state is the animation's
+     end frame. `iteration-count: 1` is what actually stops the infinite
+     pulse from looping. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

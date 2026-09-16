@@ -59,7 +59,7 @@ const AgencyMode: React.FC = () => {
         </p>
         <div className="flex justify-center mt-4">
           <button
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
             onClick={handleAddAgency}
           >
             Add Agency
@@ -197,7 +197,7 @@ const AgencyMode: React.FC = () => {
         </button>
         <button
           onClick={() => alert('Bulk operations would be shown here.')}
-          className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors flex-1 sm:auto"
+          className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors flex-1 sm:auto"
         >
           Bulk Operations
         </button>

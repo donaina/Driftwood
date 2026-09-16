@@ -61,7 +61,7 @@ const ExportReporting: React.FC = () => {
         </p>
         <div className="flex justify-center mt-4">
           <button
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
             onClick={() => alert('Export options would be shown here in a full implementation.')}
           >
             Export Current View
@@ -179,7 +179,7 @@ const ExportReporting: React.FC = () => {
         <div className="flex justify-end mt-4">
           <button
             onClick={handleScheduleReports}
-            className="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
+            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
           >
             Schedule Reports
           </button>
