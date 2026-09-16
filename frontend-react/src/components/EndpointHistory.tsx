@@ -16,6 +16,11 @@ export interface HistoryItem {
     version: number;
     created_at: string;
     sample_payload: string;
+    /* Where this version came from: 'auto' when Driftwood captured it from live
+       traffic, 'manual' when a human accepted or confirmed it, 'openapi' when it
+       came from an imported spec. Absent on baselines written before the field
+       existed, which read as provisional — see types.BaselineSource*. */
+    source?: string;
   }>;
   observation_count: number;
   locked_version?: number;
@@ -34,6 +39,7 @@ interface EndpointHistoryProps {
   onClearVersionSelection: (endpointKey: string) => void;
   onExportTimeline: (format: string, endpointKey: string) => void;
   onToggleLock: (history: HistoryItem, version: number, lock: boolean) => void;
+  onConfirm: (history: HistoryItem, version: number) => void;
 }
 
 const EndpointHistory: React.FC<EndpointHistoryProps> = ({
@@ -43,6 +49,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   onClearVersionSelection,
   onExportTimeline,
   onToggleLock,
+  onConfirm,
 }) => {
   const endpointKey = `${history.method}:${history.path}`;
 
@@ -82,7 +89,17 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
 
   const renderVersionNode = (version: EnhancedVersion, index: number) => {
-    const { version: versionNumber, created_at, changeType, changeDescription, stabilityScore } = version;
+    const { version: versionNumber, created_at, changeType, changeDescription, stabilityScore, source } = version;
+
+    /* A version captured from live traffic is a guess about the contract: it is
+       what the API returned, not what it promised. While it stays unconfirmed,
+       a field that was already missing when Driftwood first looked is part of
+       the baseline, so drift that predates Driftwood compares as MATCH and is
+       invisible — nothing in the process can tell that apart from a healthy API.
+       Saying so on the node is the whole point: the badge is not decoration, it
+       is the only signal that this contract has not been vouched for. An absent
+       source counts as provisional, matching ContractBaseline.IsProvisional. */
+    const isProvisional = source === undefined || source === '' || source === 'auto';
     const isLocked = history.locked_version === versionNumber;
 
     // Format timestamp
@@ -99,7 +116,8 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       ${changeDescription || 'No detailed change information available'}
 
       ${stabilityScore !== undefined ? `Stability Score: ${(stabilityScore * 100).toFixed(1)}%` : ''}
-      ${isLocked ? '(Currently Locked Baseline)' : ''}`;
+      ${isLocked ? '(Currently Locked Baseline)' : ''}
+      ${isProvisional ? '(Unconfirmed: captured from live traffic, not yet accepted as the contract)' : ''}`;
 
     // Check if this version is selected for comparison
     const isSelected = selectedVersions.includes(versionNumber);
@@ -198,6 +216,24 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
           >
             {isLocked ? '🔒 Locked' : 'Lock'}
           </button>
+          {isProvisional && (
+            /* Confirming is offered on the version itself rather than on the
+               endpoint, because the question "was this the right shape?" is a
+               question about one captured response. Until someone answers it,
+               the node reads as unconfirmed and the comparison it drives is
+               only as trustworthy as that guess. */
+            <button
+              type="button"
+              className="mt-1 px-2 py-1 rounded-lg border border-accent-warning text-accent-warning text-xs transition-colors cursor-pointer hover:bg-bg-hover"
+              title={`Accept v${versionNumber} as the contract for this endpoint. Until you do, drift is measured against a response Driftwood merely observed, so a problem that was already there will not be reported.`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onConfirm(history, versionNumber);
+              }}
+            >
+              Unconfirmed — confirm
+            </button>
+          )}
         </div>
       </div>
     );

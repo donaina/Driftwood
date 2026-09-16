@@ -86,6 +86,23 @@ type ContractDiff struct {
 	Deltas             []DiffDelta `json:"deltas"`
 }
 
+// Where a contract version came from. The three provenances do not carry the
+// same authority, and conflating them is what let Driftwood bless a response it
+// had merely happened to see first as though a human had vouched for it.
+const (
+	// BaselineSourceAuto is a version captured from live traffic. It is the only
+	// source that is a guess: nothing has told Driftwood this response was
+	// correct, so drift that predates Driftwood would be measured against it and
+	// found absent.
+	BaselineSourceAuto = "auto"
+	// BaselineSourceManual is a shape a human accepted, either by promoting a
+	// payload or by confirming an auto-captured version.
+	BaselineSourceManual = "manual"
+	// BaselineSourceSpec is a contract declared by an imported OpenAPI document.
+	// It is the only source with an authority outside this process.
+	BaselineSourceSpec = "openapi"
+)
+
 // ContractBaseline represents a locked/cached contract for an endpoint
 type ContractBaseline struct {
 	ID            string          `json:"id"`
@@ -97,6 +114,21 @@ type ContractBaseline struct {
 	UpdatedAt     time.Time       `json:"updated_at"`
 	Version       int             `json:"version"`
 	RequestCount  int64           `json:"request_count"`
+	// Source is one of the BaselineSource* values, or "" for a baseline written
+	// before this field existed. See IsProvisional.
+	Source string `json:"source"`
+}
+
+// IsProvisional reports whether this version is an unconfirmed guess rather
+// than a contract someone stood behind.
+//
+// An empty Source counts as provisional. Versions predating the field were, in
+// the overwhelming majority, auto-captured from live traffic — the explicit
+// routes existed but had no UI, so almost nothing reached them. Reading "" as
+// confirmed would assert a human vouched for every one of those baselines, which
+// is precisely the claim we cannot make.
+func (c *ContractBaseline) IsProvisional() bool {
+	return c.Source == "" || c.Source == BaselineSourceAuto
 }
 
 // Observation is one sighting of an endpoint — a single request Driftwood
