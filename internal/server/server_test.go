@@ -33,6 +33,13 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
+	// storage.NewStore resolves its persist path from the home directory, and
+	// the proxy auto-saves a baseline for the first JSON response it sees — so
+	// without this the suite reads the developer's real ~/.driftwood and writes
+	// test endpoints into it. Moving HOME to a temp dir makes each test start
+	// from an empty store, which is also what makes the assertions below exact.
+	t.Setenv("HOME", t.TempDir())
+
 	var hits int64
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt64(&hits, 1)
@@ -113,6 +120,40 @@ func TestProxiedRequestIsRecordedAsTraffic(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected /v1/orders to be recorded as traffic; the sniffer never saw it")
+	}
+}
+
+func TestProxiedRequestRecordsAnObservation(t *testing.T) {
+	h := newHarness(t)
+	h.do(t, http.MethodGet, "/v1/orders", nil)
+
+	// Asserted through the real request path rather than by calling AddTraffic,
+	// because the wiring is the point: AddTraffic existing and being correct is
+	// worth nothing if nothing joins it to the endpoint's history. Until it did,
+	// Versions grew only when a human saved a baseline, so the History view had
+	// no data by construction and the stability trend had no series to draw.
+	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	if !ok {
+		t.Fatal("proxied request produced no history entry")
+	}
+	if len(hist.Observations) != 1 {
+		t.Fatalf("observations = %d, want 1", len(hist.Observations))
+	}
+	obs := hist.Observations[0]
+	if obs.StatusCode != http.StatusOK {
+		t.Errorf("observation status = %d, want 200", obs.StatusCode)
+	}
+	if obs.Timestamp.IsZero() {
+		t.Error("observation has no timestamp")
+	}
+	// The contract status is what the dashboard plots per observation. Its exact
+	// value depends on the baseline that existed at the time, so this asserts it
+	// was carried through rather than what it was.
+	if obs.ContractStatus == "" {
+		t.Error("observation recorded no contract status")
+	}
+	if hist.ObservationCount != 1 {
+		t.Errorf("observation_count = %d, want 1", hist.ObservationCount)
 	}
 }
 

@@ -389,3 +389,271 @@ func TestStore_FrequencyBasedRequiredKeys(t *testing.T) {
 func fmtID(i int) string {
 	return "tr_" + string(rune(i+'0'))
 }
+
+// newObsStore builds a Store the way the tests above do, with the fields
+// AddTraffic touches initialised. maxAlerts is set so a test that happens to
+// record a diff does not silently discard the alert it just stored.
+func newObsStore(t *testing.T) *Store {
+	t.Helper()
+	return &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxTraffics: 500,
+		maxAlerts:   200,
+		persistPath: filepath.Join(t.TempDir(), "baselines.json"),
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
+	}
+}
+
+func observation(method, path string, status int, duration int64) types.CapturedTraffic {
+	return types.CapturedTraffic{
+		// These carry no Diff, so no alert is raised and the ID is unused.
+		ID:             "tr_" + method + "_" + path,
+		Method:         method,
+		Path:           path,
+		StatusCode:     status,
+		DurationMs:     duration,
+		ContractStatus: "MATCH",
+	}
+}
+
+func TestStore_AddTraffic_RecordsObservation(t *testing.T) {
+	s := newObsStore(t)
+
+	s.AddTraffic(observation("GET", "/api/users", 200, 12))
+
+	h, ok := s.GetHistory("GET", "/api/users")
+	if !ok {
+		t.Fatal("AddTraffic did not create a history entry")
+	}
+	if len(h.Observations) != 1 {
+		t.Fatalf("observations = %d, want 1", len(h.Observations))
+	}
+	if got := h.Observations[0]; got.StatusCode != 200 || got.DurationMs != 12 || got.ContractStatus != "MATCH" {
+		t.Errorf("observation = %+v, want status 200, duration 12, contract MATCH", got)
+	}
+	if h.ObservationCount != 1 {
+		t.Errorf("observation_count = %d, want 1", h.ObservationCount)
+	}
+}
+
+func TestStore_AddTraffic_DoesNotCreateABaseline(t *testing.T) {
+	s := newObsStore(t)
+
+	s.AddTraffic(observation("GET", "/api/users", 200, 5))
+
+	// An endpoint that has been seen but never accepted is still unbaselined.
+	// This is what makes "Driftwood found traffic it has no contract for" a
+	// state the product can show rather than one it papers over.
+	if _, ok := s.GetBaseline("GET", "/api/users"); ok {
+		t.Error("GetBaseline returned a baseline for an endpoint that only had traffic")
+	}
+	h, _ := s.GetHistory("GET", "/api/users")
+	if len(h.Versions) != 0 {
+		t.Errorf("versions = %d, want 0", len(h.Versions))
+	}
+	if got := len(s.GetAllBaselines()); got != 0 {
+		t.Errorf("GetAllBaselines = %d, want 0", got)
+	}
+}
+
+func TestStore_ObservationWindowIsCapped(t *testing.T) {
+	s := newObsStore(t)
+
+	const total = maxObservations + 10
+	for i := 0; i < total; i++ {
+		s.AddTraffic(observation("GET", "/api/users", 200, int64(i)))
+	}
+
+	h, _ := s.GetHistory("GET", "/api/users")
+	if len(h.Observations) != maxObservations {
+		t.Fatalf("window = %d, want %d", len(h.Observations), maxObservations)
+	}
+	// The count is the true total even though the window forgot the rest...
+	if h.ObservationCount != total {
+		t.Errorf("observation_count = %d, want %d", h.ObservationCount, total)
+	}
+	// ...and the window kept the newest, not the oldest.
+	if first, last := h.Observations[0].DurationMs, h.Observations[maxObservations-1].DurationMs; first != 10 || last != int64(total-1) {
+		t.Errorf("window spans durations %d..%d, want 10..%d", first, last, total-1)
+	}
+}
+
+func TestStore_SaveBaseline_DoesNotCountAsAnObservation(t *testing.T) {
+	s := newObsStore(t)
+
+	for i := 0; i < 3; i++ {
+		if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`); err != nil {
+			t.Fatalf("SaveBaseline failed: %v", err)
+		}
+	}
+
+	h, _ := s.GetHistory("GET", "/api/users")
+	if h.ObservationCount != 0 {
+		t.Errorf("observation_count = %d after 3 baseline saves, want 0", h.ObservationCount)
+	}
+
+	// And a real observation is not displaced by a later save.
+	s.AddTraffic(observation("GET", "/api/users", 200, 5))
+	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 2, "name": "Bob"}`); err != nil {
+		t.Fatalf("SaveBaseline failed: %v", err)
+	}
+	h, _ = s.GetHistory("GET", "/api/users")
+	if h.ObservationCount != 1 || len(h.Observations) != 1 {
+		t.Errorf("count = %d, observations = %d after save, want 1 and 1",
+			h.ObservationCount, len(h.Observations))
+	}
+	// Three saves in the loop above, plus the one just now.
+	if len(h.Versions) != 4 {
+		t.Errorf("versions = %d, want 4", len(h.Versions))
+	}
+}
+
+func TestStore_ObservationsAreNotPersisted(t *testing.T) {
+	s := newObsStore(t)
+	s.AddTraffic(observation("GET", "/api/users", 200, 7))
+	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`); err != nil {
+		t.Fatalf("SaveBaseline failed: %v", err)
+	}
+
+	// The file holds contracts. Traffic telemetry is per-process, the same way
+	// the traffic ring buffer is, so a restart starts from zero observations
+	// rather than from a snapshot of some previous run.
+	raw, err := os.ReadFile(s.persistPath)
+	if err != nil {
+		t.Fatalf("reading persist file: %v", err)
+	}
+	var onDisk map[string]*types.EndpointHistory
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshalling persist file: %v", err)
+	}
+	entry := onDisk["GET:/api/users"]
+	if entry == nil {
+		t.Fatal("endpoint missing from persist file")
+	}
+	if len(entry.Versions) != 1 {
+		t.Errorf("persisted versions = %d, want 1", len(entry.Versions))
+	}
+	if len(entry.Observations) != 0 || entry.ObservationCount != 0 {
+		t.Errorf("persisted %d observations / count %d, want 0 and 0",
+			len(entry.Observations), entry.ObservationCount)
+	}
+
+	// Same through a real reload.
+	reloaded := &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxAlerts:   200,
+		persistPath: s.persistPath,
+	}
+	if err := reloaded.loadHistoriesFromFile(); err != nil {
+		t.Fatalf("loadHistoriesFromFile: %v", err)
+	}
+	h, ok := reloaded.GetHistory("GET", "/api/users")
+	if !ok {
+		t.Fatal("endpoint did not survive reload")
+	}
+	if len(h.Observations) != 0 || h.ObservationCount != 0 {
+		t.Errorf("after reload: %d observations / count %d, want 0 and 0",
+			len(h.Observations), h.ObservationCount)
+	}
+	if len(h.Versions) != 1 {
+		t.Errorf("after reload: versions = %d, want 1", len(h.Versions))
+	}
+}
+
+func TestStore_GetHistory_ObservationsAreACopy(t *testing.T) {
+	s := newObsStore(t)
+	s.AddTraffic(observation("GET", "/api/users", 200, 1))
+
+	before, _ := s.GetHistory("GET", "/api/users")
+	s.AddTraffic(observation("GET", "/api/users", 500, 2))
+
+	if len(before.Observations) != 1 {
+		t.Errorf("a previously returned history grew to %d observations", len(before.Observations))
+	}
+
+	// Appending to what the store handed back must not reach into the store.
+	after, _ := s.GetHistory("GET", "/api/users")
+	after.Observations[0].StatusCode = 0
+	after.Observations = append(after.Observations, types.Observation{StatusCode: 999})
+
+	again, _ := s.GetHistory("GET", "/api/users")
+	if len(again.Observations) != 2 {
+		t.Errorf("store now holds %d observations, want 2", len(again.Observations))
+	}
+	if again.Observations[0].StatusCode != 200 {
+		t.Errorf("store observation was mutated through the returned copy: status = %d",
+			again.Observations[0].StatusCode)
+	}
+}
+
+func TestStore_GetAllHistories_ObservationsAreACopy(t *testing.T) {
+	s := newObsStore(t)
+	s.AddTraffic(observation("GET", "/api/users", 200, 1))
+
+	list := s.GetAllHistories()
+	if len(list) != 1 {
+		t.Fatalf("histories = %d, want 1", len(list))
+	}
+	list[0].Observations = append(list[0].Observations, types.Observation{StatusCode: 999})
+
+	again := s.GetAllHistories()
+	if len(again[0].Observations) != 1 {
+		t.Errorf("store now holds %d observations, want 1", len(again[0].Observations))
+	}
+}
+
+func TestStore_DeleteBaseline_KeepsObservations(t *testing.T) {
+	s := newObsStore(t)
+	s.AddTraffic(observation("GET", "/api/users", 200, 1))
+	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`); err != nil {
+		t.Fatalf("SaveBaseline failed: %v", err)
+	}
+
+	s.DeleteBaseline("GET", "/api/users")
+
+	if _, ok := s.GetBaseline("GET", "/api/users"); ok {
+		t.Error("baseline still present after DeleteBaseline")
+	}
+	h, ok := s.GetHistory("GET", "/api/users")
+	if !ok {
+		t.Fatal("DeleteBaseline discarded the endpoint's history")
+	}
+	if len(h.Versions) != 0 || h.LockedVersion != 0 {
+		t.Errorf("versions = %d, lock = %d, want 0 and 0", len(h.Versions), h.LockedVersion)
+	}
+	if len(h.Observations) != 1 || h.ObservationCount != 1 {
+		t.Errorf("observations = %d, count = %d, want 1 and 1",
+			len(h.Observations), h.ObservationCount)
+	}
+}
+
+func TestStore_ConcurrentTrafficAndReads(t *testing.T) {
+	s := newObsStore(t)
+	s.AddTraffic(observation("GET", "/api/users", 200, 1))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 500; i++ {
+			s.AddTraffic(observation("GET", "/api/users", 200, int64(i)))
+		}
+	}()
+
+	for i := 0; i < 500; i++ {
+		if h, ok := s.GetHistory("GET", "/api/users"); ok {
+			for range h.Observations {
+			}
+		}
+		for _, h := range s.GetAllHistories() {
+			for range h.Observations {
+			}
+		}
+	}
+	<-done
+}

@@ -99,15 +99,37 @@ type ContractBaseline struct {
 	RequestCount  int64           `json:"request_count"`
 }
 
+// Observation is one sighting of an endpoint — a single request Driftwood
+// sniffed and checked against that endpoint's contract.
+//
+// Observations and Versions are deliberately separate. A Version is a shape
+// somebody accepted; an Observation is the endpoint being seen again. Driftwood
+// watches for a contract to *drift*, which is a claim about behaviour over
+// time, so it needs the second series: with only Versions there is nothing to
+// say an endpoint has been stable for a week, and nothing to draw a trend from.
+type Observation struct {
+	Timestamp      time.Time `json:"timestamp"`
+	StatusCode     int       `json:"status_code"`
+	DurationMs     int64     `json:"duration_ms"`
+	ContractStatus string    `json:"contract_status"`
+}
+
 // EndpointHistory stores versioned history for a single endpoint
 type EndpointHistory struct {
 	Method        string             `json:"method"`
 	Path          string             `json:"path"`
 	Versions      []*ContractBaseline `json:"versions"`
 	LockedVersion int                `json:"locked_version"` // 0 = latest, else specific version
-	ObservationCount int64           `json:"observation_count"`
-	CreatedAt     time.Time          `json:"created_at"`
-	UpdatedAt     time.Time          `json:"updated_at"`
+	// ObservationCount is the true total number of sightings, including those
+	// aged out of Observations. It used to be incremented by SaveBaseline, so
+	// it counted baseline saves — a number that only moved when a human clicked
+	// a button, under a name that promised a measurement of traffic.
+	ObservationCount int64 `json:"observation_count"`
+	// Observations is a bounded window of recent sightings, oldest first.
+	// Bounded because this grows once per proxied request.
+	Observations []Observation `json:"observations"`
+	CreatedAt    time.Time     `json:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at"`
 }
 
 // CapturedTraffic holds full metadata for an intercepted HTTP transaction

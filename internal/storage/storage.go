@@ -64,6 +64,12 @@ func (s *Store) UpdateConfig(cfg types.ProxyConfig) {
 	s.config = cfg
 }
 
+// maxObservations bounds the per-endpoint series. It is a ring buffer, not a
+// running total: the stability trend shows a window of recent behaviour, and an
+// unbounded series would grow once per proxied request for the life of the
+// process. The true total lives in ObservationCount.
+const maxObservations = 50
+
 func (s *Store) AddTraffic(t types.CapturedTraffic) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,6 +97,57 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 			s.alertOrder = s.alertOrder[1:]
 		}
 	}
+
+	s.recordObservationLocked(t)
+}
+
+// recordObservationLocked appends one sighting to the endpoint's history. The
+// caller must hold s.mu.
+//
+// This is the join between the two halves of the product. Everything downstream
+// of it was previously guesswork: the Version History view had no data by
+// construction because Versions only grow when a human accepts a shape,
+// ObservationCount counted baseline saves rather than observations, the
+// per-endpoint trend had no series to draw, and the lock had nothing to pin
+// because it pins an entry in a list that never grew on its own.
+func (s *Store) recordObservationLocked(t types.CapturedTraffic) {
+	key := fmt.Sprintf("%s:%s", t.Method, t.Path)
+	at := t.Timestamp
+	if at.IsZero() {
+		at = time.Now()
+	}
+
+	h, exists := s.histories[key]
+	if !exists {
+		// An endpoint that has been seen but never baselined still has a
+		// history worth showing — that it is unbaselined is itself the finding.
+		// Creating the entry does not create a baseline: GetBaseline guards on
+		// len(Versions) == 0, not on the map entry existing, so this endpoint
+		// reads as unbaselined exactly as before.
+		h = &types.EndpointHistory{
+			Method:    t.Method,
+			Path:      t.Path,
+			Versions:  make([]*types.ContractBaseline, 0),
+			CreatedAt: at,
+			UpdatedAt: at,
+		}
+		s.histories[key] = h
+	}
+
+	h.Observations = append(h.Observations, types.Observation{
+		Timestamp:      at,
+		StatusCode:     t.StatusCode,
+		DurationMs:     t.DurationMs,
+		ContractStatus: t.ContractStatus,
+	})
+	if len(h.Observations) > maxObservations {
+		// Copy the tail rather than reslicing forward: reslicing keeps the whole
+		// backing array alive and would leak it one entry per request forever.
+		// This allocates once per maxObservations requests.
+		h.Observations = append([]types.Observation(nil), h.Observations[len(h.Observations)-maxObservations:]...)
+	}
+	h.ObservationCount++
+	h.UpdatedAt = at
 }
 
 func (s *Store) UpdateAlertAIExplanation(trafficID string, explanation map[string]interface{}) error {
@@ -164,7 +221,22 @@ func (s *Store) GetHistory(method, path string) (*types.EndpointHistory, bool) {
 		vc.Schema = deepCopySchema(v.Schema)
 		copy.Versions[i] = &vc
 	}
+	// Observations needs its own copy too. Unlike Versions, which only grows
+	// when somebody saves a baseline, this slice is appended to on the request
+	// path — so a caller handed the backing array is holding memory the store
+	// keeps writing into, and a caller who appends to the returned slice writes
+	// into the store's series.
+	copy.Observations = copyObservations(h.Observations)
 	return &copy, true
+}
+
+// copyObservations returns an independent copy. Always a non-nil slice, so an
+// endpoint with no observations serialises as [] and a client can iterate it
+// without a null check.
+func copyObservations(in []types.Observation) []types.Observation {
+	out := make([]types.Observation, len(in))
+	copy(out, in)
+	return out
 }
 
 // GetAllHistories returns all endpoint histories (copies)
@@ -181,6 +253,7 @@ func (s *Store) GetAllHistories() []*types.EndpointHistory {
 			vc.Schema = deepCopySchema(v.Schema)
 			copy.Versions[i] = &vc
 		}
+		copy.Observations = copyObservations(h.Observations)
 		list = append(list, &copy)
 	}
 	return list
@@ -234,23 +307,25 @@ func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.Contrac
 
 	if !exists {
 		h = &types.EndpointHistory{
-			Method:           method,
-			Path:             path,
-			Versions:         make([]*types.ContractBaseline, 0),
-			LockedVersion:    0,
-			ObservationCount: 0,
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			Method:        method,
+			Path:          path,
+			Versions:      make([]*types.ContractBaseline, 0),
+			LockedVersion: 0,
+			CreatedAt:     now,
+			UpdatedAt:     now,
 		}
 		s.histories[key] = h
 	}
 
-	// Update frequency-based required keys if this is an object
+	// Strip per-field sample values before persisting the schema. They are
+	// redundant with SamplePayload, which holds the whole response verbatim, and
+	// keeping them would duplicate the payload inside the schema tree for every
+	// field at every level. This is not what ObservationCount counted — that
+	// increment used to live in this loop, which is why the count moved only
+	// when a human saved a baseline.
 	if inferredSchema.Type == types.TypeObject && inferredSchema.Properties != nil {
-		h.ObservationCount++
 		for k := range inferredSchema.Properties {
-			// Track field presence frequency
-			inferredSchema.Properties[k].SampleValue = nil // we'll track separately
+			inferredSchema.Properties[k].SampleValue = nil
 		}
 	}
 
@@ -282,7 +357,7 @@ func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.Contrac
 
 	// Marshal under lock
 	var data []byte
-	data, err = json.MarshalIndent(s.histories, "", "  ")
+	data, err = json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
 	s.mu.Unlock()
 
 	if err != nil {
@@ -312,19 +387,32 @@ func (s *Store) SetLockedVersion(method, path string, version int) error {
 	h.LockedVersion = version
 	h.UpdatedAt = time.Now()
 
-	data, err := json.MarshalIndent(s.histories, "", "  ")
+	data, err := json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
 	if err != nil {
 		return err
 	}
 	return atomicWriteFile(s.persistPath, data, 0600)
 }
 
+// DeleteBaseline forgets an endpoint's accepted contract, not the endpoint.
+//
+// It used to delete the whole history entry, which was the same thing while
+// entries only existed for baselined endpoints. Now that an entry also holds the
+// observation series, deleting it would throw away the traffic measurement too —
+// the user asked to forget a contract, not to forget they are serving that path.
+// The entry survives with no versions, so the endpoint reads as unbaselined
+// again (GetBaseline and GetAllBaselines both guard on len(Versions) == 0) while
+// its history stays visible.
 func (s *Store) DeleteBaseline(method, path string) {
 	s.mu.Lock()
 	key := fmt.Sprintf("%s:%s", method, path)
-	delete(s.histories, key)
+	if h, exists := s.histories[key]; exists {
+		h.Versions = make([]*types.ContractBaseline, 0)
+		h.LockedVersion = 0
+		h.UpdatedAt = time.Now()
+	}
 
-	data, err := json.MarshalIndent(s.histories, "", "  ")
+	data, err := json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
 	s.mu.Unlock()
 
 	if err != nil {
@@ -359,6 +447,27 @@ func (s *Store) GetAlerts(limit int) []types.Alert {
 	}
 
 	return res
+}
+
+// historiesForPersistLocked returns the contract state to write to disk, with
+// the observation window stripped. The caller must hold s.mu.
+//
+// Observations are runtime telemetry, not contract: they accumulate once per
+// proxied request and are written on baseline saves, so persisting them would
+// put an arbitrary snapshot of live traffic into a file that otherwise holds
+// nothing but accepted contracts — and would restore a stale window and a stale
+// count on restart. In-memory-only is also what s.traffics already does, so the
+// two traffic series now agree on their lifetime: a fresh process has observed
+// nothing, and says so.
+func (s *Store) historiesForPersistLocked() map[string]*types.EndpointHistory {
+	out := make(map[string]*types.EndpointHistory, len(s.histories))
+	for k, h := range s.histories {
+		hc := *h
+		hc.Observations = nil
+		hc.ObservationCount = 0
+		out[k] = &hc
+	}
+	return out
 }
 
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
