@@ -13,7 +13,6 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'src/main.tsx'),
         scenario: resolve(__dirname, 'src/main-scenario.tsx'),
         history: resolve(__dirname, 'src/main-history.tsx'),
         integrations: resolve(__dirname, 'src/main-integrations.tsx'),

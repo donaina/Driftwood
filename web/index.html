@@ -260,126 +260,58 @@
 
     <!-- View 1: Live Traffic Stream -->
       <div class="view-panel active" id="view-traffic">
-        <!-- Dashboard Overview -->
-        <div class="space-y-8">
-          <!-- Header -->
-          <div class="text-center py-12">
-            <h2 class="text-3xl font-bold text-text-main mb-4">
-              API Contract Monitoring Dashboard
-            </h2>
-            <p class="text-text-muted max-w-xl mx-auto">
-              Continuously monitor your API contracts, detect breaking changes early,
-              and keep your services reliable.
+        <div class="content-header">
+          <div>
+            <h1 class="content-title">Live Network Traffic</h1>
+            <p class="content-subtitle">
+              Every request Driftwood has sniffed, checked against its endpoint's baseline contract.
             </p>
-            <div class="flex justify-center mt-4">
-              <button
-                class="px-6 py-3 rounded-lg bg-accent-info text-white hover:bg-accent-info/90 transition-colors"
-                id="tryDemoBtn"
-              >
-                Try Demo →
-              </button>
-            </div>
           </div>
+        </div>
 
-          <!-- Three-Step Overview (Inspired by Zova) -->
-          <div class="bg-bg-card py-12">
-            <div class="max-w-4xl mx-auto px-4">
-              <h2 class="text-2xl font-semibold text-text-main mb-6 text-center">
-                How Driftwood Works
-              </h2>
-              <div class="grid gap-6 sm:grid-cols-3 items-start">
-                <!-- Step 1 -->
-                <div class="flex flex-col items-center space-y-4 text-center p-6 bg-bg-hover rounded-lg">
-                  <div class="w-12 h-12 bg-accent-info/20 rounded-flex items-center justify-center mb-4">
-                    <span class="text-accent-info text-2xl font-bold">01</span>
-                  </div>
-                  <h3 class="text-lg font-semibold text-text-main">Connect Your API</h3>
-                  <p class="text-text-sm text-text-muted max-w-md">
-                    Point Driftwood at your API backend to begin monitoring contract stability.
-                  </p>
-                </div>
-
-                <!-- Step 2 -->
-                <div class="flex flex-col items-center space-y-4 text-center p-6 bg-bg-hover rounded-lg">
-                  <div class="w-12 h-12 bg-accent-warning/20 rounded-flex items-center justify-center mb-4">
-                    <span class="text-accent-warning text-2xl font-bold">02</span>
-                  </div>
-                  <h3 class="text-lg font-semibold text-text-main">Detect Endpoints</h3>
-                  <p class="text-text-sm text-text-muted max-w-md">
-                    Let Driftwood automatically discover and learn your API's contract from live traffic.
-                  </p>
-                </div>
-
-                <!-- Step 3 -->
-                <div class="flex flex-col items-center space-y-4 text-center p-6 bg-bg-hover rounded-lg">
-                  <div class="w-12 h-12 bg-accent-healthy/20 rounded-flex items-center justify-center mb-4">
-                    <span class="text-accent-healthy text-2xl font-bold">03</span>
-                  </div>
-                  <h3 class="text-lg font-semibold text-text-main">Get Alerted</h3>
-                  <p class="text-text-sm text-text-muted max-w-md">
-                    Establish your baseline contract and get alerted to any breaking changes.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Current Traffic Table -->
-          <div class="bg-bg-card rounded-xl border border-border-color p-6">
-            <h3 class="text-xl font-semibold text-text-main mb-4">
-              Live API Traffic
-            </h2>
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-border-color">
-                <thead class="bg-bg-hover">
-                  <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
-                      Method
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
-                      Path
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
-                      Duration
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
-                      Contract Status
-                    </th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
-                      Time
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-border-color" id="traffic-table-body">
-                  <tr>
-                    <td colspan="6" class="px-6 py-12 text-center">
-                      <div class="space-y-4">
-                        <div class="flex flex-col items-center space-y-3">
-                          <div class="h-12 w-12 rounded-full bg-accent-info/20 flex items-center justify-center">
-                            <span class="text-accent-info text-2xl font-bold">●</span>
-                          </div>
-                          <p class="text-text-muted">
-                            No API traffic detected yet
-                          </p>
-                          <p class="text-text-sm text-text-muted">
-                            Point Driftwood at your API to start monitoring contract stability
-                          </p>
-                        </div>
-                        <button
-                          class="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-                          id="tryDemoBtn"
-                        >
-                          Try Demo →
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+        <div class="traffic-table-container">
+          <div class="table-scroll">
+            <table>
+              <!-- Column widths are DESIGN.md §5. Path is deliberately the one
+                   col with no width: it is the only value that needs to flex. -->
+              <colgroup>
+                <col class="col-method">
+                <col>
+                <col class="col-status">
+                <col class="col-duration">
+                <col class="col-contract">
+                <col class="col-spark">
+                <col class="col-time">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Path</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                  <th>Contract</th>
+                  <th>Trend</th>
+                  <th class="cell-time">Time</th>
+                </tr>
+              </thead>
+              <tbody id="traffic-table-body">
+                <tr>
+                  <td colspan="7">
+                    <div class="empty-state">
+                      <svg class="empty-state-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M2 12h3.5l2.5-6.5 4 13 2.5-6.5H22"/>
+                      </svg>
+                      <p class="empty-state-title">No API traffic detected yet</p>
+                      <p class="empty-state-body">
+                        Point Driftwood at your API to start monitoring contract stability,
+                        or trigger a demo request to see how drift is caught.
+                      </p>
+                      <button class="btn" id="emptyStateDemoBtn">Trigger Demo Traffic</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -525,7 +457,7 @@
             </div>
             <button class="btn btn-primary" id="setup-use-demo-btn" style="margin-top: 0.5rem;">
               Use Demo Simulator →
-            </div>
+            </button>
           </div>
 
           <div class="step" id="setup-step-2" style="display: none;">
@@ -549,17 +481,17 @@
             <h3>Setup Complete!</h3>
             <p>Driftwood is now monitoring your API for contract changes</p>
             <div style="margin-bottom: 2rem;">
-              <div style="display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap;">
-                <div style="text-align: center;">
-                  <div style="font-size: var(--text-3xl); margin-bottom: 0.5rem;">●</div>
+              <div class="setup-summary">
+                <div class="setup-summary-item">
+                  <svg class="setup-summary-icon" viewBox="0 0 16 16" aria-hidden="true"><polyline points="1.5 8 4.75 8 6.75 3.75 9.25 12.25 11.25 8 14.5 8"/></svg>
                   <div>Monitoring Active</div>
                 </div>
-                <div style="text-align: center;">
-                  <div style="font-size: var(--text-3xl); margin-bottom: 0.5rem;">📊</div>
+                <div class="setup-summary-item">
+                  <svg class="setup-summary-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75 14.25 5 8 8.25 1.75 5 8 1.75Z"/><path d="M1.75 8.4 8 11.65 14.25 8.4"/><path d="M1.75 11.4 8 14.65 14.25 11.4"/></svg>
                   <div>Baseline Saved</div>
                 </div>
-                <div style="text-align: center;">
-                  <div style="font-size: var(--text-3xl); margin-bottom: 0.5rem;">🔔</div>
+                <div class="setup-summary-item">
+                  <svg class="setup-summary-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25 14.5 13.25H1.5L8 2.25Z"/><path d="M8 6.5v3"/><path d="M8 11.5v.01"/></svg>
                   <div>Alerts Ready</div>
                 </div>
               </div>
@@ -616,6 +548,13 @@
     let selectedTraffic = null;
     let eventSource = null;
 
+    // The first-paint empty state is authored in the traffic view's markup.
+    // Capture it before the first render overwrites the tbody, so clearing
+    // traffic can restore the same thing rather than a second, thinner copy
+    // of it that would drift from the original. This script sits after the
+    // tbody in document order, so the element is already parsed here.
+    const EMPTY_TRAFFIC_ROW = document.getElementById('traffic-table-body').innerHTML;
+
 
     window.addEventListener('DOMContentLoaded', () => {
       // Check if we should show setup wizard first
@@ -634,6 +573,13 @@
           // Event listeners for navigation and buttons
           document.getElementById('alert-counter-btn').addEventListener('click', () => switchTab('alerts'));
           document.getElementById('triggerTestRequestBtn').addEventListener('click', triggerTestRequest);
+          // Both empty-state CTAs were dead markup: #tryDemoBtn existed twice
+          // with no listener on either. Same action as the header button.
+          // Re-queried after each render because renderTrafficTable replaces
+          // the tbody, which destroys and recreates this button.
+          document.getElementById('traffic-table-body').addEventListener('click', (e) => {
+            if (e.target.closest('#emptyStateDemoBtn')) triggerTestRequest();
+          });
           document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
           document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
           document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
@@ -738,10 +684,59 @@
       loadAlerts();
     }
 
+    // DESIGN.md §5's signature element: a per-row duration trend. The series
+    // is this endpoint's OWN recent durations (same method + path), so the
+    // line answers "is this request slow for this route" rather than putting
+    // unrelated endpoints on one scale.
+    const SPARK_POINTS = 12;
+
+    function drawRowSparkline(req) {
+      // trafficHistory is newest-first (unshift), so slicing gives the most
+      // recent window and reversing puts it in chronological order.
+      const series = trafficHistory
+        .filter(h => h.method === req.method && h.path === req.path)
+        .slice(0, SPARK_POINTS)
+        .map(h => h.duration_ms)
+        .reverse();
+
+      // A single request is not a trend. Say so rather than drawing a flat
+      // line, which would read as "steady" instead of "no history yet".
+      if (series.length < 2) {
+        return '<span class="spark-empty">—</span>';
+      }
+
+      const W = 120, H = 24, PAD = 2;
+      const min = Math.min.apply(null, series);
+      const max = Math.max.apply(null, series);
+      const span = (max - min) || 1;
+      const stepX = (W - PAD * 2) / (series.length - 1);
+
+      const points = series.map(function (v, i) {
+        const x = PAD + i * stepX;
+        const y = H - PAD - ((v - min) / span) * (H - PAD * 2);
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+
+      // Amber when the newest request sits well above this endpoint's own
+      // median for the window. This is a computed signal about the data, not
+      // a decorative repeat of the Contract column's colour.
+      const sorted = series.slice().sort(function (a, b) { return a - b; });
+      const median = sorted[Math.floor(sorted.length / 2)];
+      const latest = series[series.length - 1];
+      const stroke = latest > median * 1.5 ? 'var(--accent-warning)' : 'var(--accent-info)';
+
+      // non-scaling-stroke keeps the 1.5px line honest while
+      // preserveAspectRatio lets the geometry fill the column.
+      return '<svg class="row-sparkline" viewBox="0 0 ' + W + ' ' + H + '" ' +
+             'preserveAspectRatio="none" aria-hidden="true">' +
+             '<polyline points="' + points + '" stroke="' + stroke + '" ' +
+             'vector-effect="non-scaling-stroke"/></svg>';
+    }
+
     function renderTrafficTable() {
       const tbody = document.getElementById('traffic-table-body');
       if (trafficHistory.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-muted); padding: 2rem;">No network requests sniffed yet.</td></tr>`;
+        tbody.innerHTML = EMPTY_TRAFFIC_ROW;
         return;
       }
 
@@ -760,9 +755,10 @@
             <td><span class="method-badge ${methodClass}">${t.method}</span></td>
             <td style="font-family: 'JetBrains Mono', monospace; font-size: var(--text-base);">${t.path}</td>
             <td><span style="color: ${t.status_code < 400 ? 'var(--accent-healthy)' : 'var(--accent-breaking)'}">${t.status_code}</span></td>
-            <td style="color: var(--text-muted);">${t.duration_ms}ms</td>
+            <td style="color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">${t.duration_ms}ms</td>
             <td><span class="contract-badge ${badgeClass}">${badgeText}</span></td>
-            <td style="color: var(--text-muted);">${timeStr}</td>
+            <td>${drawRowSparkline(t)}</td>
+            <td class="cell-time" style="color: var(--text-muted);">${timeStr}</td>
           </tr>
         `;
       }).join('');
@@ -2342,7 +2338,6 @@ window.showHistoryLibrary = function() {
 <!-- Agency Mode -->
 <div id="agency-react-root" style="display:none;"></div>
 
-    <script type="module" src="/main.js"></script>
     <script type="module" src="/thresholds.js"></script>
     <script type="module" src="/agency.js"></script>
     <script type="module" src="/scenario.js"></script>
