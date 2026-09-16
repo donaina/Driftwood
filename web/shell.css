@@ -450,6 +450,25 @@
     flex-direction: column;
   }
 
+  /* React-backed destinations. Their root is a sibling of the .view-panel
+     elements inside <main>, not a child of one, because each show*Library hides
+     every .view-panel — a nested root would hide itself along with them. As a
+     sibling it still lands in the content column, and this gives it a panel's
+     box and the same gutter.
+
+     The overflow-y is inert as the shell is currently built: body is
+     min-height:100vh rather than height:100vh, so .app-container's flex:1 and
+     min-height:0 never bind, the shell grows to its content, and the document
+     itself is the scroller. It is kept because it is what a height-bounded
+     shell would need and it changes nothing today — but do not read it as
+     evidence that this panel scrolls on its own, because it does not. */
+  .react-panel {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+  }
+
   /* Table Styles */
   .traffic-table-container {
     background: var(--bg-card);

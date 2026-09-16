@@ -22,6 +22,7 @@ type Store struct {
 	maxTraffics  int
 	maxAlerts    int
 	persistPath  string
+	configPath   string
 	persistDir   string
 	writeMx      sync.Mutex // separate lock for file writes
 }
@@ -39,6 +40,7 @@ func NewStore(targetURL, proxyPort string) *Store {
 		maxTraffics: 500,
 		maxAlerts:   200,
 		persistPath: filepath.Join(persistDir, "baselines.json"),
+		configPath:  filepath.Join(persistDir, "config.json"),
 		persistDir:  persistDir,
 		config: types.ProxyConfig{
 			TargetURL:        targetURL,
@@ -58,10 +60,69 @@ func (s *Store) GetConfig() types.ProxyConfig {
 	return s.config
 }
 
-func (s *Store) UpdateConfig(cfg types.ProxyConfig) {
+// UpdateConfig applies a configuration change and writes it to disk, so the
+// settings the dashboard offers survive a restart.
+//
+// It used to mutate memory and nothing else, which meant the target URL and the
+// auto-save checkbox silently reverted to their command-line values every time
+// the process restarted — a settings panel whose settings were not settings.
+func (s *Store) UpdateConfig(cfg types.ProxyConfig) error {
+	s.mu.Lock()
+	s.config = cfg
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	s.mu.Unlock()
+
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := atomicWriteFile(s.configPath, data, 0600); err != nil {
+		return fmt.Errorf("persist config: %w", err)
+	}
+	return nil
+}
+
+// ApplyRememberedConfig overlays the configuration saved from the dashboard onto
+// the store's own, and is called once at startup, before the proxy is built.
+//
+// The two flags say whether the caller passed --target / --port explicitly. A
+// value typed on the command line is a decision about this run and outranks the
+// remembered preference; a value left at its default is not a decision at all,
+// which is why explicitness is passed in rather than inferred by comparing
+// against the default. Without that distinction, launching with the default
+// target would silently discard a target the user set in the dashboard.
+//
+// A missing file is normal and not an error. A corrupt one is reported, moved
+// aside, and replaced by the defaults rather than being allowed to prevent
+// startup.
+func (s *Store) ApplyRememberedConfig(targetFromFlag, portFromFlag bool) error {
+	data, err := os.ReadFile(s.configPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	var saved types.ProxyConfig
+	if err := json.Unmarshal(data, &saved); err != nil {
+		_ = os.Rename(s.configPath, s.configPath+".corrupt."+time.Now().Format("20060102-150405"))
+		return fmt.Errorf("unreadable saved config, moved aside: %w", err)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.config = cfg
+	if !targetFromFlag && saved.TargetURL != "" {
+		s.config.TargetURL = saved.TargetURL
+	}
+	if !portFromFlag && saved.ProxyPort != "" {
+		s.config.ProxyPort = saved.ProxyPort
+	}
+	// The three booleans are preferences, not command-line values, so the saved
+	// ones always apply: there is no flag that could outrank them.
+	s.config.AutoSaveBaseline = saved.AutoSaveBaseline
+	s.config.InterceptJSON = saved.InterceptJSON
+	s.config.DevMockMode = saved.DevMockMode
+	return nil
 }
 
 // maxObservations bounds the per-endpoint series. It is a ring buffer, not a

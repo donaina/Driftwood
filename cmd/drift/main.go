@@ -31,28 +31,42 @@ func main() {
 	port := flag.String("port", "8787", "Driftwood Proxy & Web Server Port")
 	flag.Parse()
 
+	// Which flags the user actually typed. A flag left at its default is not a
+	// decision, so it must not outrank a setting the dashboard saved — otherwise
+	// launching with the default target would silently discard the target the
+	// user had configured.
+	given := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
+
 	log.Println("==================================================")
 	log.Println("⚡ Driftwood - Real-Time API Contract Drift Sniffer")
 	log.Println("==================================================")
 
 	// Initialize components
 	store := storage.NewStore(*target, *port)
+	if err := store.ApplyRememberedConfig(given["target"], given["port"]); err != nil {
+		log.Printf("[Driftwood] %v — continuing with the command-line defaults", err)
+	}
+	// Everything below reads the effective config, not the flags: once the saved
+	// settings are overlaid, the flags are only one of its inputs.
+	cfg := store.GetConfig()
+
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
 	// Use NewProxyForTest to allow private IPs (like 127.0.0.1) for local testing and VPS deployment
 
-	prx, err := proxy.NewProxyForTest(*target, store, hub, mockCtrl)
+	prx, err := proxy.NewProxyForTest(cfg.TargetURL, store, hub, mockCtrl)
 	if err != nil {
 		log.Fatalf("Failed to initialize proxy: %v", err)
 	}
 
 	srv := server.NewServer(store, hub, prx, mockCtrl)
 	// Bind to 0.0.0.0 (all interfaces) for external access
-	addr := "0.0.0.0:" + *port
+	addr := "0.0.0.0:" + cfg.ProxyPort
 
-	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://localhost:%s", *port)
-	log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", *target)
-	log.Printf("[Driftwood] Built-in Mock Simulator: http://localhost:%s/_driftwood/mock/users", *port)
+	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://localhost:%s", cfg.ProxyPort)
+	log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", cfg.TargetURL)
+	log.Printf("[Driftwood] Built-in Mock Simulator: http://localhost:%s/_driftwood/mock/users", cfg.ProxyPort)
 
 	httpServer := &http.Server{
 		Addr:         addr,

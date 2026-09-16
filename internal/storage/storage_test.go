@@ -395,6 +395,7 @@ func fmtID(i int) string {
 // record a diff does not silently discard the alert it just stored.
 func newObsStore(t *testing.T) *Store {
 	t.Helper()
+	dir := t.TempDir()
 	return &Store{
 		traffics:    make([]types.CapturedTraffic, 0),
 		histories:   make(map[string]*types.EndpointHistory),
@@ -402,8 +403,9 @@ func newObsStore(t *testing.T) *Store {
 		alertOrder:  make([]string, 0),
 		maxTraffics: 500,
 		maxAlerts:   200,
-		persistPath: filepath.Join(t.TempDir(), "baselines.json"),
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		persistPath: filepath.Join(dir, "baselines.json"),
+		configPath:  filepath.Join(dir, "config.json"),
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000", ProxyPort: "8787"},
 	}
 }
 
@@ -656,4 +658,171 @@ func TestStore_ConcurrentTrafficAndReads(t *testing.T) {
 		}
 	}
 	<-done
+}
+
+func TestStore_SetLockedVersion_PinsAndSurvivesReload(t *testing.T) {
+	s := newObsStore(t)
+	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`); err != nil {
+		t.Fatalf("SaveBaseline v1: %v", err)
+	}
+	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice", "role": "admin"}`); err != nil {
+		t.Fatalf("SaveBaseline v2: %v", err)
+	}
+
+	// Unpinned, the endpoint is compared against its latest version.
+	if b, _ := s.GetBaseline("GET", "/api/users"); b.Version != 2 {
+		t.Fatalf("unpinned baseline version = %d, want 2", b.Version)
+	}
+
+	if err := s.SetLockedVersion("GET", "/api/users", 1); err != nil {
+		t.Fatalf("SetLockedVersion: %v", err)
+	}
+	// Pinning is what makes the lock an operation rather than a badge: v2 is
+	// still an accepted version, but v1 is the contract the endpoint is held to.
+	b, ok := s.GetBaseline("GET", "/api/users")
+	if !ok {
+		t.Fatal("GetBaseline found nothing after locking")
+	}
+	if b.Version != 1 {
+		t.Errorf("locked baseline version = %d, want 1", b.Version)
+	}
+	if b.SamplePayload != `{"id": 1, "name": "Alice"}` {
+		t.Errorf("locked payload = %q, want the v1 payload", b.SamplePayload)
+	}
+
+	reloaded := &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxAlerts:   200,
+		persistPath: s.persistPath,
+	}
+	if err := reloaded.loadHistoriesFromFile(); err != nil {
+		t.Fatalf("loadHistoriesFromFile: %v", err)
+	}
+	if b, _ := reloaded.GetBaseline("GET", "/api/users"); b.Version != 1 {
+		t.Errorf("after reload: baseline version = %d, want 1 (the pin did not persist)", b.Version)
+	}
+
+	// 0 releases the pin and the endpoint tracks its latest version again.
+	if err := reloaded.SetLockedVersion("GET", "/api/users", 0); err != nil {
+		t.Fatalf("releasing the lock: %v", err)
+	}
+	if b, _ := reloaded.GetBaseline("GET", "/api/users"); b.Version != 2 {
+		t.Errorf("after release: baseline version = %d, want 2", b.Version)
+	}
+}
+
+func TestStore_SetLockedVersion_RejectsUnknownVersion(t *testing.T) {
+	s := newObsStore(t)
+	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`); err != nil {
+		t.Fatalf("SaveBaseline: %v", err)
+	}
+
+	if err := s.SetLockedVersion("GET", "/api/users", 7); err == nil {
+		t.Error("locking to a version that does not exist should fail")
+	}
+	if err := s.SetLockedVersion("GET", "/nowhere", 1); err == nil {
+		t.Error("locking an endpoint with no history should fail")
+	}
+	if b, _ := s.GetBaseline("GET", "/api/users"); b.Version != 1 {
+		t.Errorf("a rejected lock changed the baseline to version %d", b.Version)
+	}
+}
+
+func TestStore_UpdateConfig_Persists(t *testing.T) {
+	s := newObsStore(t)
+	cfg := s.GetConfig()
+	cfg.TargetURL = "http://localhost:4242"
+	cfg.AutoSaveBaseline = false
+
+	if err := s.UpdateConfig(cfg); err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+
+	// A fresh store, same directory, no flags: the saved settings come back.
+	// This is what a restart looks like, and it is the whole point — UpdateConfig
+	// used to mutate memory only, so every setting reverted on restart.
+	restarted := &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxAlerts:   200,
+		persistPath: s.persistPath,
+		configPath:  s.configPath,
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000", ProxyPort: "8787", AutoSaveBaseline: true},
+	}
+	if err := restarted.ApplyRememberedConfig(false, false); err != nil {
+		t.Fatalf("ApplyRememberedConfig: %v", err)
+	}
+	got := restarted.GetConfig()
+	if got.TargetURL != "http://localhost:4242" {
+		t.Errorf("target = %q, want the saved http://localhost:4242", got.TargetURL)
+	}
+	if got.AutoSaveBaseline {
+		t.Error("auto_save_baseline = true, want the saved false")
+	}
+}
+
+func TestStore_ApplyRememberedConfig_ExplicitFlagsWin(t *testing.T) {
+	s := newObsStore(t)
+	cfg := s.GetConfig()
+	cfg.TargetURL = "http://saved.example:9000"
+	cfg.ProxyPort = "9999"
+	if err := s.UpdateConfig(cfg); err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+
+	// A flag the user actually typed is a decision about this run and outranks
+	// the remembered preference; one left at its default is not a decision, so
+	// the saved value stands. Which is which is passed in, because comparing
+	// against the default would read "explicitly set to the default" as silence.
+	flagged := &Store{
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		persistPath: s.persistPath,
+		configPath:  s.configPath,
+		config:      types.ProxyConfig{TargetURL: "http://typed.example:1234", ProxyPort: "8787"},
+	}
+	if err := flagged.ApplyRememberedConfig(true, false); err != nil {
+		t.Fatalf("ApplyRememberedConfig: %v", err)
+	}
+	got := flagged.GetConfig()
+	if got.TargetURL != "http://typed.example:1234" {
+		t.Errorf("target = %q, want the explicit flag value", got.TargetURL)
+	}
+	if got.ProxyPort != "9999" {
+		t.Errorf("port = %q, want the saved 9999", got.ProxyPort)
+	}
+}
+
+func TestStore_ApplyRememberedConfig_MissingAndCorruptFiles(t *testing.T) {
+	s := newObsStore(t)
+
+	// Missing is the normal first run, not an error.
+	if err := s.ApplyRememberedConfig(false, false); err != nil {
+		t.Errorf("missing config file returned an error: %v", err)
+	}
+	if got := s.GetConfig().TargetURL; got != "http://localhost:3000" {
+		t.Errorf("target = %q, want the default to survive", got)
+	}
+
+	if err := os.WriteFile(s.configPath, []byte("{not json"), 0600); err != nil {
+		t.Fatalf("writing a corrupt config: %v", err)
+	}
+	if err := s.ApplyRememberedConfig(false, false); err == nil {
+		t.Error("a corrupt config file should be reported")
+	}
+	// Reported, moved aside, and startup continues on the defaults rather than
+	// being blocked by a file the user cannot see or edit.
+	if got := s.GetConfig().TargetURL; got != "http://localhost:3000" {
+		t.Errorf("target after a corrupt file = %q, want the default", got)
+	}
+	matches, _ := filepath.Glob(s.configPath + ".corrupt.*")
+	if len(matches) != 1 {
+		t.Errorf("corrupt config files matching %q = %d, want 1", s.configPath+".corrupt.*", len(matches))
+	}
 }

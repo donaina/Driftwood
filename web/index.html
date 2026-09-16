@@ -340,7 +340,7 @@
       </div>
 
       <!-- View 5b: Alert Thresholds -->
-      <div id="thresholds-react-root" style="display:none;">
+      <div id="thresholds-react-root" class="react-panel">
         <div style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); max-width: 600px;">
           <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Custom Alert Thresholds</h3>
           <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
@@ -418,6 +418,25 @@
           </div>
         </div>
       </div>
+
+      <!-- React-backed destinations. These are siblings of the .view-panel
+           elements above, not children of one, because each show*Library hides
+           every .view-panel and a nested root would hide itself along with them.
+           They were body-level, which put them BELOW the whole app shell: the
+           content column stayed empty and the view rendered full-width under the
+           sidebar, so Version History looked like a page appended to the app
+           rather than a destination inside it. Inside <main> they land in the
+           content column, and .react-panel gives them a panel's box. -->
+      <div id="history-react-root" class="react-panel"></div>
+
+      <!-- Scenario Library -->
+      <div id="scenario-react-root" class="react-panel"></div>
+
+      <!-- Interactive Integration Guides -->
+      <div id="integrations-react-root" class="react-panel"></div>
+
+      <!-- Webhook & Alert Integrations -->
+      <div id="webhook-react-root" class="react-panel"></div>
     </main>
   </div>
 
@@ -852,8 +871,8 @@
       showToast('Config Saved', 'Proxy settings updated.');
     }
 
-    /* Every React view mounts into its own body-level "*-react-root", which is
-       a SIBLING of the .view-panel elements, not a child of one — so hiding the
+    /* Every React view mounts into its own "*-react-root", which is a SIBLING of
+       the .view-panel elements inside <main>, not a child of one — so hiding the
        panels does not hide the React views. Each show*Library used to hand-list
        the roots it remembered to hide, and no two lists agreed: navigating from
        Version History to Alerts left the History view on screen underneath it,
@@ -1832,18 +1851,6 @@ window.showHistoryLibrary = function() {
     </div>
   </div>
 </div>
-
-  <!-- Version History -->
-  <div id="history-react-root" style="display:none;"></div>
-
-  <!-- Scenario Library -->
-  <div id="scenario-react-root" style="display:none;"></div>
-
-  <!-- Interactive Integration Guides -->
-  <div id="integrations-react-root" style="display:none;"></div>
-
-<!-- Webhook & Alert Integrations -->
-<div id="webhook-react-root" style="display:none;"></div>
 
     <script type="module" src="./thresholds.js"></script>
     <script type="module" src="./scenario.js"></script>
