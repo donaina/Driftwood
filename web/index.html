@@ -109,7 +109,7 @@
                     <div style="font-weight: 600;">Normal Baseline</div>
                     <div style="font-size: 0.85rem; color: var(--text-muted);">Standard API response</div>
                   </div>
-                  <div style="background: var(--accent-healthy); color: #09090B; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
+                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
                 </div>
               </button>
             </div>
@@ -121,7 +121,7 @@
                     <div style="font-weight: 600;">Type Mismatch</div>
                     <div style="font-size: 0.85rem; color: var(--text-muted);">int → string (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
                 </div>
               </button>
             </div>
@@ -133,7 +133,7 @@
                     <div style="font-weight: 600;">Missing Field</div>
                     <div style="font-size: 0.85rem; color: var(--text-muted);">Removed required field (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
                 </div>
               </button>
             </div>
@@ -145,7 +145,7 @@
                     <div style="font-weight: 600;">Null Violation</div>
                     <div style="font-size: 0.85rem; color: var(--text-muted);">Added null to required field (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
                 </div>
               </button>
             </div>
@@ -157,7 +157,7 @@
                     <div style="font-weight: 600;">Added Field</div>
                     <div style="font-size: 0.85rem; color: var(--text-muted);">Added optional field (Safe)</div>
                   </div>
-                  <div style="background: var(--accent-healthy); color: #09090B; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
+                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
                 </div>
               </button>
             </div>
@@ -171,7 +171,7 @@
       <!-- Setup Wizard (shown on first visit) -->
       <div class="view-panel" id="view-setup">
         <div style="text-align: center; padding: 3rem;">
-          <div style="font-size: 2.5rem; margin-bottom: 1rem; background: var(--accent-info); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: inline-block;">
+          <div style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--text-main); display: inline-block;">
             Driftwood
           </div>
           <h1 style="font-size: 1.8rem; margin-bottom: 1.5rem; font-weight: 600;">Welcome to API Contract Monitoring</h1>
@@ -749,7 +749,7 @@
           <tr onclick="openDrawer('${t.id}')">
             <td><span class="method-badge ${methodClass}">${t.method}</span></td>
             <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">${t.path}</td>
-            <td><span style="color: ${t.status_code < 400 ? '#34d399' : '#fca5a5'}">${t.status_code}</span></td>
+            <td><span style="color: ${t.status_code < 400 ? 'var(--accent-healthy)' : 'var(--accent-breaking)'}">${t.status_code}</span></td>
             <td style="color: var(--text-muted);">${t.duration_ms}ms</td>
             <td><span class="contract-badge ${badgeClass}">${badgeText}</span></td>
             <td style="color: var(--text-muted);">${timeStr}</td>
@@ -796,7 +796,7 @@
         if (a.AIExplanation && Object.keys(a.AIExplanation).length > 0) {
           const ai = a.AIExplanation;
           aiExplanationHTML = `
-            <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(0, 201, 167, 0.1); border-left: 3px solid var(--accent-healthy); border-radius: 4px; font-size: 0.85rem;">
+            <div style="margin-top: 0.5rem; padding: 0.75rem; background: color-mix(in srgb, var(--accent-healthy) 10%, transparent); border-left: 3px solid var(--accent-healthy); border-radius: 4px; font-size: 0.85rem;">
               <div style="font-weight: 600; margin-bottom: 0.25rem;">AI Explanation:</div>
               <div><strong>Summary:</strong> ${escapeHtml(ai.summary || '')}</div>
               <div><strong>Impact:</strong> ${escapeHtml(ai.impact || '')}</div>
@@ -1083,7 +1083,7 @@ function renderHistories(histories) {
 
         if (isLocked) {
           nodeColor = 'var(--accent-info)'; // Data Sky for locked version
-          nodeBackground = 'rgba(90, 200, 250, 0.1)';
+          nodeBackground = 'color-mix(in srgb, var(--accent-info) 10%, transparent)';
           borderColor = 'var(--accent-info)';
           nodeSymbol = '🔒'; // Lock symbol for currently locked version
         } else {
@@ -1091,19 +1091,19 @@ function renderHistories(histories) {
           switch (changeType) {
             case 'healthy':
               nodeColor = 'var(--accent-healthy)'; // Vital Teal
-              nodeBackground = 'rgba(0, 201, 167, 0.1)';
+              nodeBackground = 'color-mix(in srgb, var(--accent-healthy) 10%, transparent)';
               borderColor = 'var(--accent-healthy)';
               nodeSymbol = '●';
               break;
             case 'breaking':
               nodeColor = 'var(--accent-breaking)'; // Fault Red
-              nodeBackground = 'rgba(255, 59, 48, 0.1)';
+              nodeBackground = 'color-mix(in srgb, var(--accent-breaking) 10%, transparent)';
               borderColor = 'var(--accent-breaking)';
               nodeSymbol = '■';
               break;
             case 'warning':
               nodeColor = 'var(--accent-warning)'; // Caution Amber
-              nodeBackground = 'rgba(255, 159, 10, 0.1)';
+              nodeBackground = 'color-mix(in srgb, var(--accent-warning) 10%, transparent)';
               borderColor = 'var(--accent-warning)';
               nodeSymbol = '▲';
               break;
@@ -1158,7 +1158,7 @@ function renderHistories(histories) {
                 font-size: 0.9rem;
                 cursor: help;
                 position: relative;
-                ${isSelected ? 'border-color: var(--accent-info); box-shadow: 0 0 0 3px rgba(90, 200, 250, 0.5);' : ''}
+                ${isSelected ? 'border-color: var(--accent-healthy); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-healthy) 35%, transparent);' : ''}
               " title="${tooltipContent.trim()}">
                 ${nodeSymbol}
                 ${isLocked ? '<div style="position: absolute; bottom: -5px; right: -5px; width: 12px; height: 12px; background: var(--accent-info); border-radius: 50%;"></div>' : ''}
