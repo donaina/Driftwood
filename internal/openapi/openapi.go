@@ -365,7 +365,7 @@ func resolveRef(ref string, comps Components) (*Schema, error) {
 }
 
 func (s *OpenAPISpec) ImportToStorage(store interface {
-	SaveBaselineFrom(method, path, samplePayload, source string) (*types.ContractBaseline, error)
+	SaveBaselineWithSchema(method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error)
 }) error {
 	contracts, err := s.ExtractContracts()
 	if err != nil {
@@ -386,11 +386,17 @@ func (s *OpenAPISpec) ImportToStorage(store interface {
 
 		sample := generateSample(schemaNode)
 
+		// The parsed schema goes to storage as it is, rather than being
+		// regenerated there from the sample. The sample was generated *from* this
+		// node, so inference over it can only recover less: it loses the
+		// document's `required` list and the formats it declared, and replaces
+		// both with what one example happened to contain.
+		//
 		// A spec is a declared contract, so these versions arrive already
 		// vouched for — not by a person clicking, but by the document the API
 		// owner published. They must not read as provisional, or the dashboard
 		// would ask the user to confirm what they just told us.
-		_, err := store.SaveBaselineFrom(c.Method, c.Path, sample, types.BaselineSourceSpec)
+		_, err := store.SaveBaselineWithSchema(c.Method, c.Path, sample, schemaNode, types.BaselineSourceSpec)
 		if err != nil {
 			return fmt.Errorf("save baseline for %s %s: %w", c.Method, c.Path, err)
 		}

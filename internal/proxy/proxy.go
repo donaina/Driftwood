@@ -367,7 +367,19 @@ func (p *Proxy) processAndStoreTraffic(
 				contractStatus = "BASELINE_SET"
 			}
 		} else {
-			d, err := diff.CompareJSON(baseline.SamplePayload, respBody)
+			// Compared against the stored schema, not a re-inference of the
+			// stored sample. Re-inferring discards everything the baseline knows
+			// beyond the shape of one response — an imported spec's `required`
+			// list most of all — and silently replaces it with "every key in the
+			// sample is required". Falls back to the sample when a baseline
+			// predates having a schema stored.
+			var d *types.ContractDiff
+			var err error
+			if baseline.Schema != nil {
+				d, err = diff.CompareJSONWithSchema(baseline.Schema, respBody)
+			} else {
+				d, err = diff.CompareJSON(baseline.SamplePayload, respBody)
+			}
 			if err == nil {
 				contractDiff = d
 				if d.HasBreakingChanges {

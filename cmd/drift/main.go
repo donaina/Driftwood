@@ -107,14 +107,7 @@ func main() {
 		}
 	}()
 
-	// Seed initial baseline for demo simulator so user has instant out-of-the-box baseline contract
-	// Only seed if baselines don't already exist (don't overwrite user-locked ones)
-	if _, exists := store.GetBaseline("GET", "/_driftwood/mock/users"); !exists {
-		_, _ = store.SaveBaseline("GET", "/_driftwood/mock/users", `{"id": 99812, "username": "alex_dev", "email": "alex@company.com", "score": 98.5, "is_active": true, "roles": ["admin", "developer"]}`)
-	}
-	if _, exists := store.GetBaseline("GET", "/api/users"); !exists {
-		_, _ = store.SaveBaseline("GET", "/api/users", `{"id": 99812, "username": "alex_dev", "email": "alex@company.com", "score": 98.5, "is_active": true, "roles": ["admin", "developer"]}`)
-	}
+	seedDemoBaselines(store)
 
 	<-serverCtx.Done()
 	fmt.Println("Driftwood server stopped.")
@@ -168,4 +161,30 @@ func handleImport(args []string) {
 	for _, c := range contracts {
 		log.Printf("  %s %s (operation: %s)", c.Method, c.Path, c.OperationID)
 	}
+}
+
+// demoBaselinePath is the only endpoint Driftwood seeds a contract for: the
+// mock simulator it serves itself.
+const demoBaselinePath = "/_driftwood/mock/users"
+
+const demoBaselinePayload = `{"id": 99812, "username": "alex_dev", "email": "alex@company.com", "score": 98.5, "is_active": true, "roles": ["admin", "developer"]}`
+
+// seedDemoBaselines gives the built-in mock simulator a contract, so the demo
+// has something to compare against out of the box.
+//
+// The one endpoint it may touch is the mock, which Driftwood serves itself —
+// that is what makes seeding it a fixture rather than an invention. There used
+// to be a second seed, for /api/users: a real path on the user's own API, given
+// a contract fabricated here that no response had ever produced. One healthy
+// GET /api/users returning 200 application/json then reported
+// BREAKING / REMOVED_FIELD / $.username and raised an alert, because the real
+// response did not contain a field Driftwood had invented. The first thing the
+// product did to a new user's API was accuse it of breaking.
+//
+// Only seeds when no baseline exists, so a locked one is never overwritten.
+func seedDemoBaselines(store *storage.Store) {
+	if _, exists := store.GetBaseline("GET", demoBaselinePath); exists {
+		return
+	}
+	_, _ = store.SaveBaseline("GET", demoBaselinePath, demoBaselinePayload)
 }

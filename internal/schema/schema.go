@@ -88,6 +88,19 @@ func Infer(val interface{}) *types.JSONSchemaNode {
 	case uint64:
 		return &types.JSONSchemaNode{Type: types.TypeInteger, SampleValue: int64(v)}
 	case map[string]interface{}:
+		// Every key in this sample is recorded as required, which is stronger
+		// than the evidence supports: one response cannot distinguish a field
+		// the API always sends from one it happens to send today. The
+		// consequence is that removing an optional field is reported as
+		// BREAKING rather than as a warning.
+		//
+		// The alternative — marking nothing required — would be wrong in the
+		// other direction and worse, since a genuinely mandatory field vanishing
+		// is the case this product exists to catch. What would settle it is
+		// evidence across sightings: a key present in every observation of an
+		// endpoint is required as far as we can tell, one that comes and goes is
+		// not. The observation series records that requests happened, not which
+		// keys each response carried, so that inference is not available yet.
 		props := make(map[string]*types.JSONSchemaNode)
 		reqKeys := make([]string, 0, len(v))
 

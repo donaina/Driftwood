@@ -213,8 +213,8 @@ func TestSchemaToNode(t *testing.T) {
 			"User": {
 				Type: "object",
 				Properties: map[string]*Schema{
-					"id": {Type: "integer"},
-					"name": {Type: "string"},
+					"id":    {Type: "integer"},
+					"name":  {Type: "string"},
 					"email": {Type: "string", Format: "email"},
 				},
 				Required: []string{"id", "name"},
@@ -280,7 +280,7 @@ func TestSchemaToNode_Array(t *testing.T) {
 func TestSchemaToNode_AllOf(t *testing.T) {
 	comps := Components{
 		Schemas: map[string]*Schema{
-			"Base": {Type: "object", Properties: map[string]*Schema{"id": {Type: "integer"}}},
+			"Base":     {Type: "object", Properties: map[string]*Schema{"id": {Type: "integer"}}},
 			"Extended": {Type: "object", Properties: map[string]*Schema{"name": {Type: "string"}}},
 		},
 	}
@@ -399,19 +399,102 @@ func TestImportToStorage(t *testing.T) {
 	if got := store.sources[key]; got != types.BaselineSourceSpec {
 		t.Errorf("source for %s = %q, want %q", key, got, types.BaselineSourceSpec)
 	}
+
+	// The document's own schema must reach storage rather than being regenerated
+	// from the sample. The sample is generated *from* this node, so inference
+	// over it recovers less than the node holds — the `required` list above being
+	// the part that matters, since a property it omits is a property the API is
+	// allowed to stop sending.
+	declared, ok := store.schemas[key]
+	if !ok {
+		t.Fatalf("the parsed schema for %s was not passed through to storage", key)
+	}
+	// This fixture's spec declares no `required` list, so the answer is empty.
+	// That emptiness is the evidence: inference over the generated sample would
+	// have reported every key it wrote, ["id", "name"], so a non-empty list here
+	// would mean the declared schema had been regenerated from the sample.
+	if len(declared.RequiredKeys) != 0 {
+		t.Errorf("required keys = %v, want [] — the document declared none, but inference over the sample would say [id name]",
+			declared.RequiredKeys)
+	}
+}
+
+// A spec that declares a required list and a format is the case the two cannot
+// be told apart in: inference over the generated sample marks every key it wrote
+// as required, which is a stronger claim than the document made.
+func TestImportToStorage_PreservesDeclaredRequiredAndFormat(t *testing.T) {
+	spec := `{
+		"openapi": "3.0.0",
+		"info": {"title": "T", "version": "1"},
+		"paths": {
+			"/users/{id}": {
+				"get": {
+					"responses": {
+						"200": {
+							"description": "ok",
+							"content": {
+								"application/json": {
+									"schema": {
+										"type": "object",
+										"required": ["id"],
+										"properties": {
+											"id": {"type": "integer"},
+											"nickname": {"type": "string"},
+											"joined": {"type": "string", "format": "date-time"}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}`
+
+	s, err := LoadFromBytes([]byte(spec))
+	if err != nil {
+		t.Fatalf("LoadFromBytes failed: %v", err)
+	}
+	store := &mockStore{baselines: make(map[string]string)}
+	if err := s.ImportToStorage(store); err != nil {
+		t.Fatalf("ImportToStorage failed: %v", err)
+	}
+
+	declared := store.schemas["GET:/users/{id}"]
+	if declared == nil {
+		t.Fatal("no schema was stored")
+	}
+	if got := declared.Properties["joined"].Format; got != "date-time" {
+		t.Errorf("joined format = %q, want date-time from the document", got)
+	}
+	required := map[string]bool{}
+	for _, k := range declared.RequiredKeys {
+		required[k] = true
+	}
+	if !required["id"] || required["nickname"] || required["joined"] {
+		t.Errorf("required = %v, want only [id] as the document declared", declared.RequiredKeys)
+	}
 }
 
 type mockStore struct {
 	baselines map[string]string
 	sources   map[string]string
+	schemas   map[string]*types.JSONSchemaNode
 }
 
-func (m *mockStore) SaveBaselineFrom(method, path, samplePayload, source string) (*types.ContractBaseline, error) {
+func (m *mockStore) SaveBaselineWithSchema(method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error) {
 	m.baselines[method+":"+path] = samplePayload
 	if m.sources == nil {
 		m.sources = map[string]string{}
 	}
 	m.sources[method+":"+path] = source
+	if declared != nil {
+		if m.schemas == nil {
+			m.schemas = map[string]*types.JSONSchemaNode{}
+		}
+		m.schemas[method+":"+path] = declared
+	}
 	return &types.ContractBaseline{
 		Method: method, Path: path, SamplePayload: samplePayload, Source: source,
 	}, nil
