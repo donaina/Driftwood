@@ -12,14 +12,16 @@ export default defineConfig({
     // name (below) multiple CSS assets would silently overwrite each other.
     cssCodeSplit: false,
     rollupOptions: {
+      // One entry per React view that web/index.html actually loads. The
+      // agency and exportReporting entries are gone with their components:
+      // both were facades that alerted "would be shown here in a full
+      // implementation", so there was nothing behind them to build.
       input: {
         scenario: resolve(__dirname, 'src/main-scenario.tsx'),
         history: resolve(__dirname, 'src/main-history.tsx'),
         integrations: resolve(__dirname, 'src/main-integrations.tsx'),
-        exportReporting: resolve(__dirname, 'src/main-export-reporting.tsx'),
         webhook: resolve(__dirname, 'src/main-webhook.tsx'),
-        thresholds: resolve(__dirname, 'src/main-thresholds.tsx'),
-        agency: resolve(__dirname, 'src/main-agency.tsx')
+        thresholds: resolve(__dirname, 'src/main-thresholds.tsx')
       },
       output: {
         entryFileNames: '[name].js',

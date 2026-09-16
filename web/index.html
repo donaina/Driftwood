@@ -79,29 +79,9 @@
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25 14.5 13.25H1.5L8 2.25Z"/><path d="M8 6.5v3"/><path d="M8 11.5v.01"/></svg>
           <span class="nav-label">Contract Alerts</span>
         </div>
-        <div class="nav-item" id="nav-integrations" title="Integration Guides">
-          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.75h3.25A2.25 2.25 0 0 1 8 5v8.25a1.75 1.75 0 0 0-1.75-1.75H2.5V2.75Z"/><path d="M13.5 2.75H10.25A2.25 2.25 0 0 0 8 5v8.25a1.75 1.75 0 0 1 1.75-1.75h3.75V2.75Z"/></svg>
-          <span class="nav-label">Integration Guides</span>
-        </div>
         <div class="nav-item" id="nav-settings" title="Proxy Settings">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h2.75M8.75 5h4.75M2.5 11h4.75M10.75 11h2.75"/><circle cx="6.75" cy="5" r="1.55"/><circle cx="9.25" cy="11" r="1.55"/></svg>
           <span class="nav-label">Proxy Settings</span>
-        </div>
-        <div class="nav-item" id="nav-thresholds" title="Alert Thresholds">
-          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.25 12.5a5.75 5.75 0 1 1 11.5 0"/><path d="M8 12.5 11 8.75"/></svg>
-          <span class="nav-label">Alert Thresholds</span>
-        </div>
-        <div class="nav-item" id="nav-export-reporting" title="Export & Reporting">
-          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75v7.5"/><polyline points="5.25 6.5 8 9.25 10.75 6.5"/><path d="M2.25 10.5v2.75h11.5V10.5"/></svg>
-          <span class="nav-label">Export & Reporting</span>
-        </div>
-        <div class="nav-item" id="nav-agency" title="Agency Mode">
-          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.25"/><path d="M1.75 13.25a4.25 4.25 0 0 1 8.5 0"/><path d="M11 3.6a2.25 2.25 0 0 1 0 4.3"/><path d="M12 9.6a4.25 4.25 0 0 1 2.25 3.65"/></svg>
-          <span class="nav-label">Agency Mode</span>
-        </div>
-        <div class="nav-item" id="nav-setup-wizard" title="Setup Wizard">
-          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.75"/><circle cx="8" cy="8" r="2.75"/><path d="M8 8h.01"/></svg>
-          <span class="nav-label">Setup Wizard</span>
         </div>
       </div>
 
@@ -330,11 +310,6 @@
         </div>
       </div>
 
-      <!-- View 3: History -->
-      <div class="view-panel" id="view-history">
-        <div id="history-react-root"></div>
-      </div>
-
       <!-- View 4: Alerts -->
       <div class="view-panel" id="view-alerts">
         <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Detected Contract Violations</h3>
@@ -437,72 +412,9 @@
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
                   </select>
-      <div class="view-panel" id="view-setup-wizard">
-        <div class="setup-wizard">
-          <div class="progress-bar">
-            <div class="progress-fill" id="setup-progress-fill"></div>
-          </div>
-          <div class="progress-text" id="setup-progress-text">Step 1 of 3</div>
-
-          <div class="step" id="setup-step-1">
-            <div class="step-icon primary">1</div>
-            <h3>Connect to Your API</h3>
-            <p>Point Driftwood at your API to start monitoring contract stability</p>
-            <div class="input-group">
-              <label for="setup-target-url">API Backend URL</label>
-              <input type="text" id="setup-target-url" class="search-bar" placeholder="http://localhost:3000" />
-            </div>
-            <div style="margin-top: 1rem; color: var(--text-muted); font-size: var(--text-base);">
-              Or try with our built-in demo simulator:
-            </div>
-            <button class="btn btn-primary" id="setup-use-demo-btn" style="margin-top: 0.5rem;">
-              Use Demo Simulator →
-            </button>
-          </div>
-
-          <div class="step" id="setup-step-2" style="display: none;">
-            <div class="step-icon demo">2</div>
-            <h3>Create Your First Baseline</h3>
-            <p>Let Driftwood observe your API to establish the initial contract</p>
-            <div style="margin-bottom: 1.5rem;">
-              <button class="btn btn-primary" id="setup-create-baseline-btn" style="width: 100%; padding: 1rem;">
-                Start Monitoring & Create Baseline
-              </button>
-            </div>
-            <div style="color: var(--text-muted); font-size: var(--text-base); margin-top: 1rem;">
-              <div>• Driftwood will monitor traffic for 10 seconds</div>
-              <div>• It will learn the expected API contract</div>
-              <div>• Your baseline will be saved for future drift detection</div>
-            </div>
-          </div>
-
-          <div class="step" id="setup-step-3" style="display: none;">
-            <div class="step-icon success">3</div>
-            <h3>Setup Complete!</h3>
-            <p>Driftwood is now monitoring your API for contract changes</p>
-            <div style="margin-bottom: 2rem;">
-              <div class="setup-summary">
-                <div class="setup-summary-item">
-                  <svg class="setup-summary-icon" viewBox="0 0 16 16" aria-hidden="true"><polyline points="1.5 8 4.75 8 6.75 3.75 9.25 12.25 11.25 8 14.5 8"/></svg>
-                  <div>Monitoring Active</div>
-                </div>
-                <div class="setup-summary-item">
-                  <svg class="setup-summary-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75 14.25 5 8 8.25 1.75 5 8 1.75Z"/><path d="M1.75 8.4 8 11.65 14.25 8.4"/><path d="M1.75 11.4 8 14.65 14.25 11.4"/></svg>
-                  <div>Baseline Saved</div>
-                </div>
-                <div class="setup-summary-item">
-                  <svg class="setup-summary-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25 14.5 13.25H1.5L8 2.25Z"/><path d="M8 6.5v3"/><path d="M8 11.5v.01"/></svg>
-                  <div>Alerts Ready</div>
                 </div>
               </div>
             </div>
-            <p style="color: var(--text-muted); max-width: 350px;">
-              Driftwood will now notify you of any breaking changes to your API contract.
-              You can always adjust settings or add more baselines from the Settings panel.
-            </p>
-            <button class="btn btn-primary" id="setup-finish-btn" style="width: 100%; padding: 1rem;">
-              Go to Dashboard
-            </button>
           </div>
         </div>
       </div>
@@ -517,7 +429,7 @@
         <span class="method-badge method-get" id="drawer-method">GET</span>
         <span style="font-weight: 600; margin-left: 0.5rem;" id="drawer-path">/api/users</span>
       </div>
-      <button class="btn" onclick="closeDrawer()">✕ Close</button>
+      <button class="btn" id="closeDrawerBtn">✕ Close</button>
     </div>
     <div class="drawer-body">
       <div class="diff-card" id="drawer-diff-section">
@@ -531,7 +443,7 @@
       <div class="diff-card">
         <div class="diff-card-title">
           <span>Observed Payload JSON</span>
-          <button class="btn" style="font-size: var(--text-xs);" onclick="setAsBaselineFromDrawer()">Set as Baseline</button>
+          <button class="btn" id="setAsBaselineFromDrawerBtn" style="font-size: var(--text-xs);">Set as Baseline</button>
         </div>
         <pre class="code-box" id="drawer-response-body">{}</pre>
       </div>
@@ -570,9 +482,21 @@
           loadConfig();
           initVitals();
 
-          // Event listeners for navigation and buttons
-          document.getElementById('alert-counter-btn').addEventListener('click', () => switchTab('alerts'));
-          document.getElementById('triggerTestRequestBtn').addEventListener('click', triggerTestRequest);
+          /* Every binding goes through on(), which tolerates a missing element
+             instead of throwing. This block is one long chain of unguarded
+             getElementById().addEventListener() calls, so a single absent id
+             aborted every binding after it: #loadHistoriesBtn and #saveConfigBtn
+             are not in the markup, and the four bindings below them survived
+             only because their markup carried duplicate inline onclick copies.
+             Delete those copies and four controls break, silently. */
+          const on = (id, handler) => {
+            const el = document.getElementById(id);
+            if (!el) { console.warn(`[Driftwood] no #${id} to bind`); return; }
+            el.addEventListener('click', handler);
+          };
+
+          on('alert-counter-btn', () => switchTab('alerts'));
+          on('triggerTestRequestBtn', triggerTestRequest);
           // Both empty-state CTAs were dead markup: #tryDemoBtn existed twice
           // with no listener on either. Same action as the header button.
           // Re-queried after each render because renderTrafficTable replaces
@@ -580,24 +504,20 @@
           document.getElementById('traffic-table-body').addEventListener('click', (e) => {
             if (e.target.closest('#emptyStateDemoBtn')) triggerTestRequest();
           });
-          document.getElementById('clearTrafficHistoryBtn').addEventListener('click', clearTrafficHistory);
-          document.getElementById('nav-traffic').addEventListener('click', () => switchTab('traffic'));
-          document.getElementById('nav-baselines').addEventListener('click', () => switchTab('baselines'));
-          document.getElementById('nav-history').addEventListener('click', () => switchTab('history'));
-          document.getElementById('nav-alerts').addEventListener('click', () => switchTab('alerts'));
-          document.getElementById('nav-settings').addEventListener('click', () => switchTab('settings'));
-          document.getElementById('nav-thresholds').addEventListener('click', () => switchTab('thresholds'));
-          document.getElementById('nav-agency').addEventListener('click', () => switchTab('agency'));
-          document.getElementById('mode-NORMAL').addEventListener('click', () => setMockMode('NORMAL'));
-          document.getElementById('mode-TYPE_BREAK').addEventListener('click', () => setMockMode('TYPE_BREAK'));
-          document.getElementById('mode-MISSING_FIELD').addEventListener('click', () => setMockMode('MISSING_FIELD'));
-          document.getElementById('mode-NULL_BREAK').addEventListener('click', () => setMockMode('NULL_BREAK'));
-          document.getElementById('mode-ADDED_FIELD').addEventListener('click', () => setMockMode('ADDED_FIELD'));
-          document.getElementById('loadHistoriesBtn').addEventListener('click', loadHistories);
-          document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
-          document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
-          document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
-          document.getElementById('setAsBaselineFromDrawerBtn').addEventListener('click', setAsBaselineFromDrawer);
+          on('clearTrafficHistoryBtn', clearTrafficHistory);
+          on('nav-traffic', () => switchTab('traffic'));
+          on('nav-baselines', () => switchTab('baselines'));
+          on('nav-history', () => switchTab('history'));
+          on('nav-alerts', () => switchTab('alerts'));
+          on('nav-settings', () => switchTab('settings'));
+          on('mode-NORMAL', () => setMockMode('NORMAL'));
+          on('mode-TYPE_BREAK', () => setMockMode('TYPE_BREAK'));
+          on('mode-MISSING_FIELD', () => setMockMode('MISSING_FIELD'));
+          on('mode-NULL_BREAK', () => setMockMode('NULL_BREAK'));
+          on('mode-ADDED_FIELD', () => setMockMode('ADDED_FIELD'));
+          on('drawer-overlay', closeDrawer);
+          on('closeDrawerBtn', closeDrawer);
+          on('setAsBaselineFromDrawerBtn', setAsBaselineFromDrawer);
         }
       });
     });
@@ -751,9 +671,9 @@
         const timeStr = new Date(t.timestamp).toLocaleTimeString();
 
         return `
-          <tr onclick="openDrawer('${t.id}')">
+          <tr onclick="openDrawer(${jsArg(t.id)})">
             <td><span class="method-badge ${methodClass}">${t.method}</span></td>
-            <td style="font-family: 'JetBrains Mono', monospace; font-size: var(--text-base);">${t.path}</td>
+            <td style="font-family: 'JetBrains Mono', monospace; font-size: var(--text-base);">${escapeHtml(t.path)}</td>
             <td><span style="color: ${t.status_code < 400 ? 'var(--accent-healthy)' : 'var(--accent-breaking)'}">${t.status_code}</span></td>
             <td style="color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">${t.duration_ms}ms</td>
             <td><span class="contract-badge ${badgeClass}">${badgeText}</span></td>
@@ -781,7 +701,7 @@
                 <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${b.path}</span>
                 <span style="font-size: var(--text-xs); color: var(--text-muted); margin-left: 1rem;">v${b.version}</span>
               </div>
-              <button class="btn btn-danger" style="font-size: var(--text-xs);" onclick="deleteBaseline('${b.method}', '${b.path}')">Delete</button>
+              <button class="btn btn-danger" style="font-size: var(--text-xs);" onclick="deleteBaseline(${jsArg(b.method)}, ${jsArg(b.path)})">Delete</button>
             </div>
             <pre class="code-box">${escapeHtml(b.sample_payload)}</pre>
           </div>
@@ -932,33 +852,62 @@
       showToast('Config Saved', 'Proxy settings updated.');
     }
 
+    /* Every React view mounts into its own body-level "*-react-root", which is
+       a SIBLING of the .view-panel elements, not a child of one — so hiding the
+       panels does not hide the React views. Each show*Library used to hand-list
+       the roots it remembered to hide, and no two lists agreed: navigating from
+       Version History to Alerts left the History view on screen underneath it,
+       because nothing in the Alerts path knew history-react-root existed. One
+       sweep, so a new root cannot be forgotten. */
+    function hideReactRoots() {
+      document.querySelectorAll('[id$="-react-root"]').forEach(el => {
+        el.style.display = 'none';
+      });
+    }
+
+    /* Destinations come in two shapes, and conflating them blanked the app.
+       The vanilla ones (traffic, baselines, alerts, settings) own a .view-panel
+       named view-<tab>. The React-backed ones (history, integrations, thresholds)
+       have no panel at all — their show*Library function reveals a *-react-root
+       and mounts into it.
+
+       The old version stripped .active from every nav item and every panel
+       FIRST, then looked up view-<tab>. For a React destination that lookup
+       returned null and threw *after* the strip, so no panel was left active and
+       the whole application rendered empty. Nothing is mutated now until the
+       destination is known to exist. */
     function switchTab(tabName) {
+      // Only 'history' has a nav entry now. Integrations, thresholds, scenario
+      // and webhooks are hidden until they persist something, so listing them
+      // here would route to a view with no way back.
+      const reactViews = {
+        'history': 'showHistoryLibrary'
+      };
+
+      const navEl = document.getElementById(`nav-${tabName}`);
+      const panelEl = document.getElementById(`view-${tabName}`);
+      const mountName = reactViews[tabName];
+
+      if (!navEl || (!panelEl && !mountName)) {
+        console.warn(`[Driftwood] no destination for "${tabName}"; navigation ignored`);
+        return;
+      }
+
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
+      hideReactRoots();
+      navEl.classList.add('active');
 
-      document.getElementById(`nav-${tabName}`).classList.add('active');
-      document.getElementById(`view-${tabName}`).classList.add('active');
-
-      if (tabName === 'history') {
-        showHistoryLibrary();
+      if (mountName) {
+        window[mountName]();
         return;
       }
-      if (tabName === 'integrations') {
-        showIntegrationsLibrary();
-        return;
-      }
-      if (tabName === 'thresholds') {
-        showThresholdsLibrary();
-        return;
-      }
-      if (tabName === 'agency') {
-        showAgencyLibrary();
-        return;
-      }
-      // Load export reporting when switching to export/reporting tab
-      if (tabName === 'export-reporting') {
-        showExportReportingLibrary();
-      }
+      // The show*Library functions hide every panel with an inline
+      // style.display, and an inline style outranks the .active class — so
+      // without clearing it, returning from a React view to a vanilla one left
+      // the panel hidden and the screen blank.
+      panelEl.style.display = '';
+      panelEl.classList.add('active');
     }
 
     // Thresholds functions
@@ -1010,33 +959,6 @@
       }
     }
 
-    // Agency mode functions
-    function loadAgencyConfig() {
-      // In a real implementation, this would load from backend
-      // For now, we'll just show some placeholder data
-      // We could update the UI with real data, but for now we leave it as is.
-    }
-
-    function saveAgencyConfig() {
-      // In a real implementation, this would save to backend
-      showToast('Agency Config Saved', 'Multi-tenancy settings have been saved.');
-    }
-
-    function showClientModal() {
-      // In a real implementation, this would show a modal dialog
-      showToast('Add Client', 'Client onboarding modal would be shown here in a full implementation.');
-    }
-
-    function showAlertRoutingConfig() {
-      // In a real implementation, this would show alert routing configuration
-      showToast('Alert Routing', 'Alert routing configuration modal would be shown here.');
-    }
-
-    function showClientOnboarding() {
-      // In a real implementation, this would show the client onboarding flow
-      showToast('Client Onboarding', 'Client onboarding flow would be started here.');
-    }
-
     function showToast(title, msg) {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
@@ -1054,299 +976,19 @@
       }, 5000);
     }
 
-    // History functions
-    async function loadHistories() {
-      try {
-        const res = await fetch('/_driftwood/api/histories');
-        const histories = await res.json() || [];
-        renderHistories(histories);
-      } catch (err) {
-        console.error(err);
-        document.getElementById('histories-container').innerHTML = `
-          <div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-            Error loading history data
-          </div>
-        `;
-      }
-    }
+    /* The vanilla Version History renderer used to live here — loadHistories,
+       renderHistories, its version nodes, its stability chart and its export
+       handlers, roughly 285 lines. It was a second implementation of what
+       HistoryView.tsx does, left over from the React migration, and it was
+       unreachable: it wrote into #histories-container, which no longer exists,
+       and nothing called loadHistories() once #loadHistoriesBtn went away.
 
-    let selectedVersionsMap = new Map(); // Map endpoint key to array of selected version numbers
+       It is deleted rather than kept as a fallback because it read the same
+       wrong field names the React view did, and derived the same fabricated
+       "Percentage of requests matching the baseline contract" from them. Two
+       copies of a view is how the field-name bug survived this long; one copy
+       cannot drift from itself. */
 
-function renderHistories(histories) {
-      const container = document.getElementById('histories-container');
-      if (histories.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">No baseline contracts found. History will appear as you track API traffic.</div>`;
-        return;
-      }
-
-      // Helper function to render a version node (similar to the enhancement)
-      function renderVersionNode(version, index, sortedVersions, lockedVersion, endpointKey) {
-        const { Version, CreatedAt, SamplePayload, changeType, changeDescription, stabilityScore } = version;
-        const isLocked = Version === lockedVersion;
-
-        // Determine node appearance based on change type
-        let nodeColor, nodeBackground, borderColor, nodeSymbol;
-
-        if (isLocked) {
-          nodeColor = 'var(--accent-info)'; // Data Sky for locked version
-          nodeBackground = 'color-mix(in srgb, var(--accent-info) 10%, transparent)';
-          borderColor = 'var(--accent-info)';
-          nodeSymbol = '🔒'; // Lock symbol for currently locked version
-        } else {
-          // Color-code based on change type from previous version
-          switch (changeType) {
-            case 'healthy':
-              nodeColor = 'var(--accent-healthy)'; // Vital Teal
-              nodeBackground = 'color-mix(in srgb, var(--accent-healthy) 10%, transparent)';
-              borderColor = 'var(--accent-healthy)';
-              nodeSymbol = '●';
-              break;
-            case 'breaking':
-              nodeColor = 'var(--accent-breaking)'; // Fault Red
-              nodeBackground = 'color-mix(in srgb, var(--accent-breaking) 10%, transparent)';
-              borderColor = 'var(--accent-breaking)';
-              nodeSymbol = '■';
-              break;
-            case 'warning':
-              nodeColor = 'var(--accent-warning)'; // Caution Amber
-              nodeBackground = 'color-mix(in srgb, var(--accent-warning) 10%, transparent)';
-              borderColor = 'var(--accent-warning)';
-              nodeSymbol = '▲';
-              break;
-            default:
-              nodeColor = 'var(--text-muted)';
-              nodeBackground = 'var(--bg-hover)';
-              borderColor = 'var(--border-color)';
-              nodeSymbol = '○';
-          }
-        }
-
-        // Format timestamp
-        const date = new Date(CreatedAt);
-        const timeStr = date.toLocaleTimeString();
-        const dateStr = date.toLocaleDateString();
-
-        // Enhanced tooltip with change information
-        const tooltipContent = `
-        Version ${Version}
-        ${dateStr} ${timeStr}
-
-        Change Type: ${changeType ? changeType.charAt(0).toUpperCase() + changeType.slice(1) : 'Unknown'}
-        ${changeDescription || 'No detailed change information available'}
-
-        ${stabilityScore !== undefined ? `Stability Score: ${(stabilityScore * 100).toFixed(1)}%` : ''}
-        ${isLocked ? '(Currently Locked Baseline)' : ''}`;
-
-        // Check if this version is selected for comparison
-        const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
-        const isSelected = selectedVersions.includes(Version);
-
-        return `
-          <div style="text-align: center; min-width: 80px; position: relative; cursor: pointer;">
-            <div style="
-              position: relative;
-              display: inline-flex;
-              flex-direction: column;
-              align-items: center;
-            ">
-              <!-- Version Node -->
-              <div style="
-                width: 40px;
-                height: 40px;
-                border: 2px solid ${borderColor};
-                border-radius: 50%;
-                background: ${nodeBackground};
-                color: ${nodeColor};
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: 600;
-                font-size: var(--text-base);
-                cursor: help;
-                position: relative;
-                ${isSelected ? 'border-color: var(--accent-healthy); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-healthy) 35%, transparent);' : ''}
-              " title="${tooltipContent.trim()}">
-                ${nodeSymbol}
-                ${isLocked ? '<div style="position: absolute; bottom: -5px; right: -5px; width: 12px; height: 12px; background: var(--accent-info); border-radius: 50%;"></div>' : ''}
-              </div>
-
-              <!-- Connector line to next version (except for last version) -->
-              ${index < sortedVersions.length - 1 ? `
-                <div style="
-                  width: 2px;
-                  height: 20px;
-                  background: var(--border-color);
-                  margin: 8px auto 0;
-                "></div>
-              ` : ''}
-            </div>
-
-            <div style="margin-top: 0.5rem; font-size: var(--text-xs); color: var(--text-muted);">
-              v${Version}
-            </div>
-          </div>
-        `;
-      }
-
-      // Helper function to render stability score chart
-      function renderStabilityChart(versions) {
-        // Calculate average stability score for the endpoint
-        const scores = versions.map(v => v.stabilityScore).filter(score => score !== undefined);
-        const avgScore = scores.length > 0 ? (scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
-
-        const color = avgScore >= 0.9 ? 'var(--accent-healthy)' : avgScore >= 0.7 ? 'var(--accent-warning)' : 'var(--accent-breaking)';
-
-        return `
-          <div style="margin-bottom: 1.5rem;">
-            <h3 style="color: var(--text-main); margin-bottom: 0.5rem;">Contract Stability Score</h3>
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
-              <!-- Simple text-based stability indicator for now -->
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span>Current Stability:</span>
-                <span style="font-weight: 600; font-family: 'JetBrains Mono', monospace;">
-                  <span style="color: ${color};">
-                    ${(avgScore * 100).toFixed(1)}%
-                  </span>
-                </span>
-              </div>
-              <div style="margin-top: 0.5rem; font-size: var(--text-base); color: var(--text-muted);">
-                Percentage of requests matching the baseline contract
-              </div>
-            </div>
-          </div>
-        `;
-      }
-
-      // Function to toggle version selection for an endpoint
-      function toggleVersionSelection(endpointKey, version) {
-        const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
-        const index = selectedVersions.indexOf(version);
-        if (index > -1) {
-          // Remove if already selected
-          selectedVersions.splice(index, 1);
-        } else {
-          // Add if not selected, but limit to 2
-          if (selectedVersions.length >= 2) {
-            // Remove the oldest selection (first one)
-            selectedVersions.shift();
-          }
-          selectedVersions.push(version);
-        }
-        selectedVersionsMap.set(endpointKey, selectedVersions);
-        // Re-render the histories to update the UI
-        loadHistories();
-      }
-
-      // Function to clear version selection for an endpoint
-      function clearVersionSelection(endpointKey) {
-        selectedVersionsMap.delete(endpointKey);
-        loadHistories();
-      }
-
-      // Function to export timeline as PNG or SVG (placeholder)
-      function exportTimeline(format, endpointKey) {
-        showToast('Export ${format.toUpperCase()}', `Export functionality for ${format} format is planned for a future update.`);
-        // In a full implementation, this would use html2canvas or similar library
-        // to convert the timeline view to the requested format
-      }
-
-      container.innerHTML = histories.map(h => {
-        // Create a unique key for the endpoint
-        const endpointKey = `${h.Method}:${h.Path}`;
-        // Sort versions by CreatedAt (ascending)
-        const sortedVersions = [...h.Versions].sort((a, b) => new Date(a.CreatedAt) - new Date(b.CreatedAt));
-
-        // Add missing fields to each version for simulation
-        const enhancedVersions = sortedVersions.map((version, index) => {
-          // We don't have changeType or changeDescription from the backend, so we simulate
-          // In a real implementation, these would come from the backend
-          let changeType = undefined;
-          let changeDescription = 'Change details not available (backend enhancement needed)';
-          let stabilityScore = undefined;
-
-          if (index > 0) {
-            // For simplicity, we'll assign a random changeType for demonstration
-            // In reality, this would be computed by comparing with the previous version
-            const changeTypes = ['healthy', 'breaking', 'warning'];
-            changeType = changeTypes[Math.floor(Math.random() * changeTypes.length)];
-            // Simulate a stability score between 0.5 and 1.0
-            stabilityScore = 0.5 + Math.random() * 0.5;
-          } else {
-            // First version has no previous version to compare with
-            changeType = undefined;
-            changeDescription = 'Initial version';
-            stabilityScore = 1.0; // Assume 100% stability for the initial version
-          }
-
-          return {
-            ...version,
-            changeType,
-            changeDescription,
-            stabilityScore
-          };
-        });
-
-        return `
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
-              <div>
-                <span class="method-badge method-${h.Method.toLowerCase()}">${h.Method}</span>
-                <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${escapeHtml(h.Path)}</span>
-              </div>
-              <div style="text-align: right;">
-                <div style="font-size: var(--text-xs); color: var(--text-muted);">Versions: ${enhancedVersions.length}</div>
-                <div style="font-size: var(--text-xs); color: var(--text-muted);">Observations: ${h.ObservationCount}</div>
-              </div>
-            </div>
-
-            ${renderStabilityChart(enhancedVersions)}
-
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-              <div style="padding: 1.5rem;">
-                <!-- Timeline header with controls -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                  <h3 style="color: var(--text-main); margin: 0;">Contract Evolution Timeline</h3>
-                  <div>
-                    <button class="btn btn-sm" onclick="exportTimeline('png', '${endpointKey}')" title="Export as PNG">
-                      📥 PNG
-                    </button>
-                    <button class="btn btn-sm" onclick="exportTimeline('svg', '${endpointKey}')" title="Export as SVG">
-                      📥 SVG
-                    </button>
-                    <button class="btn btn-sm" onclick="clearVersionSelection('${endpointKey}')" title="Clear Selection">
-                      Clear Selection
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Timeline container -->
-                <div style="display: flex; align-items: flex-start;">
-                  ${enhancedVersions.map((version, index) => renderVersionNode(version, index, enhancedVersions, h.LockedVersion, endpointKey)).join('')}
-                </div>
-
-                <!-- Version comparison view -->
-                ${(() => {
-                  const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
-                  if (selectedVersions.length === 2) {
-                    return `
-                      <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                        <h3 style="color: var(--text-main); margin-bottom: 0.5rem;">Version Comparison</h3>
-                        <p>Comparing versions ${selectedVersions[0]} and ${selectedVersions[1]}</p>
-                        <p style="color: var(--text-muted); font-size: var(--text-base);">
-                          Detailed diff view would be shown here in a full implementation.
-                          This would require enhanced backend API to provide version-to-version diff data.
-                        </p>
-                      </div>
-                    `;
-                  }
-                  return '';
-                })()}
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
 
     // Setup Wizard Functions
     async function checkIfSetupNeeded() {
@@ -1360,74 +1002,6 @@ function renderHistories(histories) {
       }
     }
 
-    function showSetupWizard() {
-      // Hide all view panels
-      document.querySelectorAll('.view-panel').forEach(panel => {
-        panel.classList.remove('active');
-      });
-      // Hide all nav items
-      document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-      });
-      // Show setup wizard
-      document.getElementById('view-setup-wizard').classList.add('active');
-    }
-
-    function hideSetupWizard() {
-      document.getElementById('view-setup-wizard').classList.remove('active');
-      // Show traffic view by default
-      switchTab('traffic');
-    }
-
-    function updateSetupProgress(step, text) {
-      document.getElementById('setup-progress-text').textContent = text;
-      const progressPercent = (step - 1) * 33.33; // 0%, 33.33%, 66.66% for steps 1,2,3
-      document.getElementById('setup-progress-fill').style.width = progressPercent + '%';
-
-      // Hide all steps
-      document.querySelectorAll('.setup-wizard .step').forEach(stepEl => {
-        stepEl.style.display = 'none';
-      });
-      // Show current step
-      document.getElementById(`setup-step-${step}`).style.display = 'block';
-    }
-
-    async function handleUseDemo() {
-      updateSetupProgress(2, 'Step 2 of 3');
-
-      // Use demo simulator
-      await setMockMode('NORMAL');
-
-      // Small delay to ensure mode is set
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    async function handleCreateBaseline() {
-      updateSetupProgress(3, 'Step 3 of 3');
-
-      // Start monitoring and create baseline
-      await triggerTestRequest();
-
-      // Wait a bit to collect some traffic
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // Save the config to use demo mode
-      await saveConfig();
-
-      // Trigger a few more requests to establish baseline
-      for (let i = 0; i < 3; i++) {
-        await triggerTestRequest();
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      // Load baselines to verify it was created
-      await loadBaselines();
-    }
-
-    function handleFinishSetup() {
-      hideSetupWizard();
-      showToast('Setup Complete!', 'Driftwood is now monitoring your API');
-    }
 
     // Vital Signs — computed client-side from the live traffic buffer
     function initVitals() {
@@ -1474,8 +1048,28 @@ function renderHistories(histories) {
       }
     }
 
+    /* Escapes text for interpolation into innerHTML.
+       Every value this page renders comes from a sniffed HTTP response — a JSON
+       key, a path, a header — so all of it is attacker-controlled input standing
+       in a page that holds the proxy configuration. Order matters: '&' must go
+       first, or the ampersands introduced by the later rules get escaped twice. */
     function escapeHtml(str) {
-      return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    /* Safe to interpolate as an argument inside an inline handler.
+       escapeHtml alone is not sufficient there: the HTML parser decodes
+       entities before the JS engine ever sees the string, so a quote would
+       still break out of the literal. JSON.stringify does the JS-string
+       escaping (and supplies the quotes); escapeHtml then makes the result
+       safe for the attribute. Call sites read: onclick="fn(${jsArg(x)})". */
+    function jsArg(value) {
+      return escapeHtml(JSON.stringify(String(value)));
     }
 
     // Scenario Library functionality
@@ -1560,6 +1154,10 @@ function renderHistories(histories) {
       const filterButtons = document.querySelectorAll('.scenario-filter-btn');
 
       function renderScenarios(filter = 'all') {
+        // This container is not in the document: the view is React-backed
+        // (scenario-react-root) and this vanilla renderer is superseded. Unguarded, it threw
+        // a TypeError on every page load — one of the four uncaught exceptions.
+        if (!scenarioGrid) return;
         scenarioGrid.innerHTML = '';
 
         const filteredScenarios = filter === 'all'
@@ -1956,7 +1554,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const filterButtons = document.querySelectorAll('.integrations-filter-btn');
 
   function renderIntegrations(filter = 'all') {
-    integrationsGrid.innerHTML = '';
+    // This container is not in the document: the view is React-backed
+        // (integrations-react-root) and this vanilla renderer is superseded. Unguarded, it threw
+        // a TypeError on every page load — one of the four uncaught exceptions.
+        if (!integrationsGrid) return;
+        integrationsGrid.innerHTML = '';
 
     const filteredIntegrations = filter === 'all'
       ? integrations
@@ -2032,98 +1634,24 @@ window.showIntegrationsLibrary = function() {
   document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
-  document.getElementById('webhook-react-root').style.display = 'none';
-  document.getElementById('scenario-react-root').style.display = 'none';
-  document.getElementById('history-react-root').style.display = 'none';
+  hideReactRoots();
   document.getElementById('integrations-react-root').style.display = 'block';
         // Mount React component
         if (window.mountIntegrations) {
           window.mountIntegrations(document.getElementById('integrations-react-root'));
         }
 
-  // Update nav active state
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.remove('active');
-  });
-  document.getElementById('nav-integrations').classList.add('active');
-
-  // We'd add a nav item for integrations in a real implementation
+  // No nav entry: this view is hidden until it is wired to a backend. The
+  // mount function stays so restoring it is a one-line change to switchTab.
 };
 
-// Export & Reporting functionality
-function showExportOptions() {
-  document.getElementById('export-options').style.display = 'block';
-}
 
-function exportAsPNG() {
-  showToast('Export PNG', 'Export functionality for PNG format is planned for a future update.');
-  // In a full implementation, this would use html2canvas or similar library
-  // to convert the current view to PNG
-}
-
-function exportAsSVG() {
-  showToast('Export SVG', 'Export functionality for SVG format is planned for a future update.');
-  // In a full implementation, this would convert the view to SVG
-}
-
-function exportSummaryPDF() {
-  showToast('Export Summary PDF', 'Summary PDF export functionality is planned for a future update.');
-}
-
-function exportTimelinePDF() {
-  showToast('Export Timeline PDF', 'Timeline PDF export functionality is planned for a future update.');
-}
-
-function scheduleReports() {
-  const frequency = document.getElementById('report-frequency').value;
-  const recipients = document.getElementById('report-recipients').value;
-  const reportType = document.getElementById('report-type').value;
-
-  showToast('Reports Scheduled', `Scheduled ${frequency} ${reportType} reports sent to: ${recipients}`);
-  // In a full implementation, this would set up actual scheduled reports via backend
-}
-
-function showExportReportingLibrary() {
-  document.querySelectorAll('.view-panel').forEach(page => {
-    page.style.display = 'none';
-  });
-  document.getElementById('export-reporting-react-root').style.display = 'block';
-        // Mount React component
-        if (window.mountExportReporting) {
-          window.mountExportReporting(document.getElementById('export-reporting-react-root'));
-        }
-
-  // Update nav active state
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.remove('active');
-  });
-  document.getElementById('nav-export-reporting').classList.add('active');
-}
-
-// Add navigation to export/reporting library
-window.showExportReportingLibrary = function() {
-  document.querySelectorAll('.page').forEach(page => {
-    page.style.display = 'none';
-  });
-  document.getElementById('webhook-react-root').style.display = 'none';
-  document.getElementById('scenario-react-root').style.display = 'none';
-  document.getElementById('export-reporting-react-root').style.display = 'block';
-        // Mount React component
-        if (window.mountExportReporting) {
-          window.mountExportReporting(document.getElementById('export-reporting-react-root'));
-        }
-
-  // Update nav active state
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.remove('active');
-  });
-  document.getElementById('nav-export-reporting').classList.add('active');
-};
 
 window.showThresholdsLibrary = function() {
   document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
+  hideReactRoots();
   document.getElementById('thresholds-react-root').style.display = 'block';
 
   // Mount React component
@@ -2131,30 +1659,9 @@ window.showThresholdsLibrary = function() {
     window.mountThresholds(document.getElementById('thresholds-react-root'));
   }
 
-  // Update nav active state
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.remove('active');
-  });
-  document.getElementById('nav-thresholds').classList.add('active');
+  // No nav entry: hidden until wired, same as integrations above.
 };
 
-window.showAgencyLibrary = function() {
-  document.querySelectorAll('.view-panel').forEach(page => {
-    page.style.display = 'none';
-  });
-  document.getElementById('agency-react-root').style.display = 'block';
-
-  // Mount React component
-  if (window.mountAgency) {
-    window.mountAgency(document.getElementById('agency-react-root'));
-  }
-
-  // Update nav active state
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.remove('active');
-  });
-  document.getElementById('nav-agency').classList.add('active');
-};
 
 // Webhook & Alert Integrations functionality
 document.addEventListener('DOMContentLoaded', function() {
@@ -2212,7 +1719,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const webhookGrid = document.getElementById('webhook-grid');
 
   function renderWebhooks() {
-    webhookGrid.innerHTML = '';
+    // This container is not in the document: the view is React-backed
+        // (webhook-react-root) and this vanilla renderer is superseded. Unguarded, it threw
+        // a TypeError on every page load — one of the four uncaught exceptions.
+        if (!webhookGrid) return;
+        webhookGrid.innerHTML = '';
 
     webhookServices.forEach(service => {
       const card = document.createElement('div');
@@ -2247,8 +1758,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <label><input type="checkbox" value="info"> Informational</label>
               </div>
             </div>
-            <button class="btn btn-primary" onclick="saveWebhookConfig('${service.id}')">Save Configuration</button>
-            <button class="btn" onclick="testWebhook('${service.id}')">Test Connection</button>
+            <button class="btn btn-primary" onclick="saveWebhookConfig(${jsArg(service.id)})">Save Configuration</button>
+            <button class="btn" onclick="testWebhook(${jsArg(service.id)})">Test Connection</button>
           </div>
         </div>
       `;
@@ -2276,12 +1787,11 @@ window.showWebhookLibrary = function() {
   document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
+  hideReactRoots();
   document.getElementById('webhook-react-root').style.display = 'block';
-        // Mount React component
-        if (window.mountWebhook) {
-          window.mountWebhook(document.getElementById('webhook-react-root'));
-        }
-  document.getElementById('scenario-react-root').style.display = 'none';
+  if (window.mountWebhook) {
+    window.mountWebhook(document.getElementById('webhook-react-root'));
+  }
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -2295,11 +1805,11 @@ window.showHistoryLibrary = function() {
   document.querySelectorAll('.view-panel').forEach(page => {
     page.style.display = 'none';
   });
+  hideReactRoots();
   document.getElementById('history-react-root').style.display = 'block';
-        // Mount React component
-        if (window.mountHistory) {
-          window.mountHistory(document.getElementById('history-react-root'));
-        }
+  if (window.mountHistory) {
+    window.mountHistory(document.getElementById('history-react-root'));
+  }
 
   // Update nav active state
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -2323,27 +1833,22 @@ window.showHistoryLibrary = function() {
   </div>
 </div>
 
+  <!-- Version History -->
+  <div id="history-react-root" style="display:none;"></div>
+
   <!-- Scenario Library -->
   <div id="scenario-react-root" style="display:none;"></div>
 
   <!-- Interactive Integration Guides -->
   <div id="integrations-react-root" style="display:none;"></div>
 
-  <!-- Export & Reporting -->
-  <div id="export-reporting-react-root" style="display:none;"></div>
-
 <!-- Webhook & Alert Integrations -->
 <div id="webhook-react-root" style="display:none;"></div>
 
-<!-- Agency Mode -->
-<div id="agency-react-root" style="display:none;"></div>
-
     <script type="module" src="./thresholds.js"></script>
-    <script type="module" src="./agency.js"></script>
     <script type="module" src="./scenario.js"></script>
     <script type="module" src="./history.js"></script>
     <script type="module" src="./integrations.js"></script>
-    <script type="module" src="./exportReporting.js"></script>
     <script type="module" src="./webhook.js"></script>
 </body>
 </html>
