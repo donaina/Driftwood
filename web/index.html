@@ -97,19 +97,19 @@
 
       <div class="nav-section">
         <div class="section-title">Contract Drift Simulator</div>
-        <p style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 1.5rem; font-weight: 500;">
+        <p style="font-size: var(--text-base); color: var(--text-main); margin-bottom: 1.5rem; font-weight: 500;">
           Learn how API changes affect contracts by simulating common breaking changes:
         </p>
-        <div class="demo-box" style="border: 1px solid var(--border-color); border-radius: 8px;">
+        <div class="demo-box" style="border: 1px solid var(--border-color); border-radius: var(--radius-md);">
           <div style="display: grid; gap: 1rem;">
             <div class="demo-scenario">
               <button class="demo-btn w-full" id="mode-NORMAL">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <div style="font-weight: 600;">Normal Baseline</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted);">Standard API response</div>
+                    <div style="font-size: var(--text-base); color: var(--text-muted);">Standard API response</div>
                   </div>
-                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
+                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">●</div>
                 </div>
               </button>
             </div>
@@ -119,9 +119,9 @@
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <div style="font-weight: 600;">Type Mismatch</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted);">int → string (Breaking)</div>
+                    <div style="font-size: var(--text-base); color: var(--text-muted);">int → string (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">■</div>
                 </div>
               </button>
             </div>
@@ -131,9 +131,9 @@
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <div style="font-weight: 600;">Missing Field</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted);">Removed required field (Breaking)</div>
+                    <div style="font-size: var(--text-base); color: var(--text-muted);">Removed required field (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">■</div>
                 </div>
               </button>
             </div>
@@ -143,9 +143,9 @@
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <div style="font-weight: 600;">Null Violation</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted);">Added null to required field (Breaking)</div>
+                    <div style="font-size: var(--text-base); color: var(--text-muted);">Added null to required field (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">■</div>
+                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">■</div>
                 </div>
               </button>
             </div>
@@ -155,9 +155,9 @@
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <div>
                     <div style="font-weight: 600;">Added Field</div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted);">Added optional field (Safe)</div>
+                    <div style="font-size: var(--text-base); color: var(--text-muted);">Added optional field (Safe)</div>
                   </div>
-                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">●</div>
+                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">●</div>
                 </div>
               </button>
             </div>
@@ -171,11 +171,11 @@
       <!-- Setup Wizard (shown on first visit) -->
       <div class="view-panel" id="view-setup">
         <div style="text-align: center; padding: 3rem;">
-          <div style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--text-main); display: inline-block;">
+          <div style="font-size: var(--text-4xl); margin-bottom: 1rem; color: var(--text-main); display: inline-block;">
             Driftwood
           </div>
-          <h1 style="font-size: 1.8rem; margin-bottom: 1.5rem; font-weight: 600;">Welcome to API Contract Monitoring</h1>
-          <p style="font-size: 1.1rem; color: var(--text-muted); margin-bottom: 2rem; max-width: 400px; line-height: 1.6;">
+          <h1 style="font-size: var(--text-3xl); margin-bottom: 1.5rem; font-weight: 600;">Welcome to API Contract Monitoring</h1>
+          <p style="font-size: var(--text-lg); color: var(--text-muted); margin-bottom: 2rem; max-width: 400px; line-height: 1.6;">
             Driftwood helps you detect unintended API breaking changes before they reach production. Let's get you set up in under a minute.
           </p>
 
@@ -191,7 +191,7 @@
             <!-- Step 1: Target API -->
             <div class="setup-step-content active" data-step="1">
               <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Where is your API running?</label>
+                <label style="display: block; font-size: var(--text-base); margin-bottom: 0.5rem; color: var(--text-muted);">Where is your API running?</label>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                   <button class="btn" id="detect-localhost">Auto-detect Localhost</button>
                   <button class="btn btn-primary" id="use-manual-url">Enter URL Manually</button>
@@ -206,8 +206,8 @@
             <!-- Step 2: Detect Endpoints -->
             <div class="setup-step-content" data-step="2" style="display: none;">
               <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Detecting API endpoints...</label>
-                <div id="setup-detection-status" style="color: var(--text-muted); font-size: 0.9rem;">
+                <label style="display: block; font-size: var(--text-base); margin-bottom: 0.5rem; color: var(--text-muted);">Detecting API endpoints...</label>
+                <div id="setup-detection-status" style="color: var(--text-muted); font-size: var(--text-base);">
                   Scanning for common endpoints...
                 </div>
                 <div style="margin-top: 1rem; display: flex; justify-content: center;">
@@ -222,8 +222,8 @@
             <!-- Step 3: Set Baselines -->
             <div class="setup-step-content" data-step="3" style="display: none;">
               <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Ready to monitor your API contract?</label>
-                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+                <label style="display: block; font-size: var(--text-base); margin-bottom: 0.5rem; color: var(--text-muted);">Ready to monitor your API contract?</label>
+                <p style="color: var(--text-muted); font-size: var(--text-base); margin-bottom: 1.5rem;">
                   Driftwood will automatically learn the contract from your API's responses and alert you to any breaking changes.
                 </p>
                 <div style="display: flex; gap: 1rem; justify-content: center;">
@@ -240,7 +240,7 @@
             <button class="btn btn-primary" id="setup-next">Next</button>
           </div>
 
-          <div style="margin-top: 2rem; color: var(--text-muted); font-size: 0.9rem;">
+          <div style="margin-top: 2rem; color: var(--text-muted); font-size: var(--text-base);">
             <button class="btn" id="setup-close-wizard" style="text-decoration: underline; background: none; border: none; color: var(--text-muted); padding: 0;">
               I'll configure later
             </button>
@@ -377,9 +377,9 @@
       <!-- View 2: Baselines -->
       <div class="view-panel" id="view-baselines">
         <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-          <h3 style="font-size: 1rem;">Cached API Contract Baselines</h3>
+          <h3 style="font-size: var(--text-md);">Cached API Contract Baselines</h3>
           <a href="/_driftwood/api/export/typescript" download="driftwood-contracts.d.ts" class="btn btn-primary"
-            style="font-size: 0.8rem; text-decoration: none;">
+            style="font-size: var(--text-xs); text-decoration: none;">
             🔷 Export TypeScript Types (.d.ts)
           </a>
         </div>
@@ -395,7 +395,7 @@
 
       <!-- View 4: Alerts -->
       <div class="view-panel" id="view-alerts">
-        <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detected Contract Violations</h3>
+        <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Detected Contract Violations</h3>
         <div id="alerts-container" style="display: grid; gap: 0.75rem;">
           <!-- Dynamically populated -->
         </div>
@@ -404,17 +404,17 @@
       <!-- View 5: Settings -->
       <div class="view-panel" id="view-settings">
         <div
-          style="background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-color); max-width: 550px;">
-          <h3 style="font-size: 1rem; margin-bottom: 1rem;">Proxy Configuration</h3>
+          style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); max-width: 550px;">
+          <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Proxy Configuration</h3>
           <div style="margin-bottom: 1rem;">
-            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Target
+            <label style="font-size: var(--text-base); color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Target
               API Backend URL</label>
             <input type="text" id="target-url-input" class="search-bar" style="width: 100%;"
               value="http://localhost:3000" />
           </div>
           <div style="margin-bottom: 1.5rem;">
             <label
-              style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              style="font-size: var(--text-base); color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
               <input type="checkbox" id="auto-baseline-check" checked /> Auto-lock initial payload as Baseline Contract
             </label>
           </div>
@@ -424,8 +424,8 @@
 
       <!-- View 5b: Alert Thresholds -->
       <div id="thresholds-react-root" style="display:none;">
-        <div style="background: var(--bg-card); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border-color); max-width: 600px;">
-          <h3 style="font-size: 1rem; margin-bottom: 1rem;">Custom Alert Thresholds</h3>
+        <div style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); max-width: 600px;">
+          <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Custom Alert Thresholds</h3>
           <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
             Configure what constitutes breaking vs non-breaking changes for your team's context.
           </p>
@@ -443,26 +443,26 @@
                 Lenient
               </button>
             </div>
-            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
+            <p style="color: var(--text-muted); font-size: var(--text-base); margin-top: 0.5rem;">
               Select a preset to quickly configure threshold settings for different team needs.
             </p>
           </div>
 
           <div style="margin-bottom: 2rem;">
             <h4 style="color: var(--text-main); margin-bottom: 0.5rem;">Per-Change Type Configuration</h4>
-            <div style="background: var(--bg-hover); border-radius: 6px; padding: 1.5rem;">
+            <div style="background: var(--bg-hover); border-radius: var(--radius-sm); padding: 1.5rem;">
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Type Changes (int → string, etc.)</label>
-                  <select id="threshold-type-change" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Type Changes (int → string, etc.)</label>
+                  <select id="threshold-type-change" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
                   </select>
                 </div>
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Required → Optional Fields</label>
-                  <select id="threshold-required-optional" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Required → Optional Fields</label>
+                  <select id="threshold-required-optional" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
@@ -471,16 +471,16 @@
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Added/Removed Fields</label>
-                  <select id="threshold-added-removed" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Added/Removed Fields</label>
+                  <select id="threshold-added-removed" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
                   </select>
                 </div>
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Status Code Changes</label>
-                  <select id="threshold-status-code" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Status Code Changes</label>
+                  <select id="threshold-status-code" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
@@ -489,8 +489,8 @@
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--text-muted);">Header Changes</label>
-                  <select id="threshold-header-changes" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-card); color: var(--text-main);">
+                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Header Changes</label>
+                  <select id="threshold-header-changes" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
@@ -510,7 +510,7 @@
               <label for="setup-target-url">API Backend URL</label>
               <input type="text" id="setup-target-url" class="search-bar" placeholder="http://localhost:3000" />
             </div>
-            <div style="margin-top: 1rem; color: var(--text-muted); font-size: 0.85rem;">
+            <div style="margin-top: 1rem; color: var(--text-muted); font-size: var(--text-base);">
               Or try with our built-in demo simulator:
             </div>
             <button class="btn btn-primary" id="setup-use-demo-btn" style="margin-top: 0.5rem;">
@@ -527,7 +527,7 @@
                 Start Monitoring & Create Baseline
               </button>
             </div>
-            <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 1rem;">
+            <div style="color: var(--text-muted); font-size: var(--text-base); margin-top: 1rem;">
               <div>• Driftwood will monitor traffic for 10 seconds</div>
               <div>• It will learn the expected API contract</div>
               <div>• Your baseline will be saved for future drift detection</div>
@@ -541,15 +541,15 @@
             <div style="margin-bottom: 2rem;">
               <div style="display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap;">
                 <div style="text-align: center;">
-                  <div style="font-size: 2rem; margin-bottom: 0.5rem;">●</div>
+                  <div style="font-size: var(--text-3xl); margin-bottom: 0.5rem;">●</div>
                   <div>Monitoring Active</div>
                 </div>
                 <div style="text-align: center;">
-                  <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
+                  <div style="font-size: var(--text-3xl); margin-bottom: 0.5rem;">📊</div>
                   <div>Baseline Saved</div>
                 </div>
                 <div style="text-align: center;">
-                  <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔔</div>
+                  <div style="font-size: var(--text-3xl); margin-bottom: 0.5rem;">🔔</div>
                   <div>Alerts Ready</div>
                 </div>
               </div>
@@ -589,7 +589,7 @@
       <div class="diff-card">
         <div class="diff-card-title">
           <span>Observed Payload JSON</span>
-          <button class="btn" style="font-size: 0.75rem;" onclick="setAsBaselineFromDrawer()">Set as Baseline</button>
+          <button class="btn" style="font-size: var(--text-xs);" onclick="setAsBaselineFromDrawer()">Set as Baseline</button>
         </div>
         <pre class="code-box" id="drawer-response-body">{}</pre>
       </div>
@@ -748,7 +748,7 @@
         return `
           <tr onclick="openDrawer('${t.id}')">
             <td><span class="method-badge ${methodClass}">${t.method}</span></td>
-            <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">${t.path}</td>
+            <td style="font-family: 'JetBrains Mono', monospace; font-size: var(--text-base);">${t.path}</td>
             <td><span style="color: ${t.status_code < 400 ? 'var(--accent-healthy)' : 'var(--accent-breaking)'}">${t.status_code}</span></td>
             <td style="color: var(--text-muted);">${t.duration_ms}ms</td>
             <td><span class="contract-badge ${badgeClass}">${badgeText}</span></td>
@@ -762,20 +762,20 @@
     function renderBaselines() {
       const container = document.getElementById('baselines-list-container');
       if (baselinesList.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">No baseline contracts set yet. Standard payloads will automatically set baselines when sniffed.</div>`;
+        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">No baseline contracts set yet. Standard payloads will automatically set baselines when sniffed.</div>`;
         return;
       }
 
       container.innerHTML = baselinesList.map(b => {
         return `
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
               <div>
                 <span class="method-badge method-${b.method.toLowerCase()}">${b.method}</span>
                 <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${b.path}</span>
-                <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 1rem;">v${b.version}</span>
+                <span style="font-size: var(--text-xs); color: var(--text-muted); margin-left: 1rem;">v${b.version}</span>
               </div>
-              <button class="btn btn-danger" style="font-size: 0.75rem;" onclick="deleteBaseline('${b.method}', '${b.path}')">Delete</button>
+              <button class="btn btn-danger" style="font-size: var(--text-xs);" onclick="deleteBaseline('${b.method}', '${b.path}')">Delete</button>
             </div>
             <pre class="code-box">${escapeHtml(b.sample_payload)}</pre>
           </div>
@@ -786,7 +786,7 @@
     function renderAlerts() {
       const container = document.getElementById('alerts-container');
       if (alertsHistory.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">No contract violations detected. Your frontend contract is healthy!</div>`;
+        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">No contract violations detected. Your frontend contract is healthy!</div>`;
         return;
       }
 
@@ -796,7 +796,7 @@
         if (a.AIExplanation && Object.keys(a.AIExplanation).length > 0) {
           const ai = a.AIExplanation;
           aiExplanationHTML = `
-            <div style="margin-top: 0.5rem; padding: 0.75rem; background: color-mix(in srgb, var(--accent-healthy) 10%, transparent); border-left: 3px solid var(--accent-healthy); border-radius: 4px; font-size: 0.85rem;">
+            <div style="margin-top: 0.5rem; padding: 0.75rem; background: color-mix(in srgb, var(--accent-healthy) 10%, transparent); border-left: 3px solid var(--accent-healthy); border-radius: var(--radius-xs); font-size: var(--text-base);">
               <div style="font-weight: 600; margin-bottom: 0.25rem;">AI Explanation:</div>
               <div><strong>Summary:</strong> ${escapeHtml(ai.summary || '')}</div>
               <div><strong>Impact:</strong> ${escapeHtml(ai.impact || '')}</div>
@@ -810,7 +810,7 @@
           <div class="${severityClass}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
               <span class="delta-path">${a.json_path}</span>
-              <span style="font-weight: 700; font-size: 0.75rem; text-transform: uppercase;">${a.severity}</span>
+              <span style="font-weight: 700; font-size: var(--text-xs); text-transform: uppercase;">${a.severity}</span>
             </div>
             <div>${escapeHtml(a.message)}</div>
             ${aiExplanationHTML}
@@ -1036,10 +1036,10 @@
       const toast = document.createElement('div');
       toast.className = 'toast breaking';
       toast.innerHTML = `
-        <div style="font-size: 1.25rem; color: var(--accent-breaking);">■</div>
+        <div style="font-size: var(--text-xl); color: var(--accent-breaking);">■</div>
         <div>
           <div style="font-weight: 700; margin-bottom: 0.2rem; color: var(--text-main);">${escapeHtml(title)}</div>
-          <div style="font-size: 0.85rem; color: var(--text-muted);">${escapeHtml(msg)}</div>
+          <div style="font-size: var(--text-base); color: var(--text-muted);">${escapeHtml(msg)}</div>
         </div>
       `;
       container.appendChild(toast);
@@ -1057,7 +1057,7 @@
       } catch (err) {
         console.error(err);
         document.getElementById('histories-container').innerHTML = `
-          <div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+          <div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
             Error loading history data
           </div>
         `;
@@ -1069,7 +1069,7 @@
 function renderHistories(histories) {
       const container = document.getElementById('histories-container');
       if (histories.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">No baseline contracts found. History will appear as you track API traffic.</div>`;
+        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">No baseline contracts found. History will appear as you track API traffic.</div>`;
         return;
       }
 
@@ -1155,7 +1155,7 @@ function renderHistories(histories) {
                 align-items: center;
                 justify-content: center;
                 font-weight: 600;
-                font-size: 0.9rem;
+                font-size: var(--text-base);
                 cursor: help;
                 position: relative;
                 ${isSelected ? 'border-color: var(--accent-healthy); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-healthy) 35%, transparent);' : ''}
@@ -1175,7 +1175,7 @@ function renderHistories(histories) {
               ` : ''}
             </div>
 
-            <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-muted);">
+            <div style="margin-top: 0.5rem; font-size: var(--text-xs); color: var(--text-muted);">
               v${Version}
             </div>
           </div>
@@ -1193,7 +1193,7 @@ function renderHistories(histories) {
         return `
           <div style="margin-bottom: 1.5rem;">
             <h3 style="color: var(--text-main); margin-bottom: 0.5rem;">Contract Stability Score</h3>
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
               <!-- Simple text-based stability indicator for now -->
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span>Current Stability:</span>
@@ -1203,7 +1203,7 @@ function renderHistories(histories) {
                   </span>
                 </span>
               </div>
-              <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
+              <div style="margin-top: 0.5rem; font-size: var(--text-base); color: var(--text-muted);">
                 Percentage of requests matching the baseline contract
               </div>
             </div>
@@ -1281,21 +1281,21 @@ function renderHistories(histories) {
         });
 
         return `
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
               <div>
                 <span class="method-badge method-${h.Method.toLowerCase()}">${h.Method}</span>
                 <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${escapeHtml(h.Path)}</span>
               </div>
               <div style="text-align: right;">
-                <div style="font-size: 0.75rem; color: var(--text-muted);">Versions: ${enhancedVersions.length}</div>
-                <div style="font-size: 0.75rem; color: var(--text-muted);">Observations: ${h.ObservationCount}</div>
+                <div style="font-size: var(--text-xs); color: var(--text-muted);">Versions: ${enhancedVersions.length}</div>
+                <div style="font-size: var(--text-xs); color: var(--text-muted);">Observations: ${h.ObservationCount}</div>
               </div>
             </div>
 
             ${renderStabilityChart(enhancedVersions)}
 
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
               <div style="padding: 1.5rem;">
                 <!-- Timeline header with controls -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -1323,10 +1323,10 @@ function renderHistories(histories) {
                   const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
                   if (selectedVersions.length === 2) {
                     return `
-                      <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+                      <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                         <h3 style="color: var(--text-main); margin-bottom: 0.5rem;">Version Comparison</h3>
                         <p>Comparing versions ${selectedVersions[0]} and ${selectedVersions[1]}</p>
-                        <p style="color: var(--text-muted); font-size: 0.85rem;">
+                        <p style="color: var(--text-muted); font-size: var(--text-base);">
                           Detailed diff view would be shown here in a full implementation.
                           This would require enhanced backend API to provide version-to-version diff data.
                         </p>

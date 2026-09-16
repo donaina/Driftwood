@@ -105,17 +105,17 @@
     background: var(--accent-healthy);
     width: 34px;
     height: 34px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 800;
     color: var(--bg-main);
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
   }
 
   .brand-title {
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 600;
     letter-spacing: -0.02em;
     font-family: 'Geist', sans-serif;
@@ -128,7 +128,7 @@
     gap: 0.5rem;
     padding: 0.35rem 0.75rem;
     border-radius: 9999px;
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     background: color-mix(in srgb, var(--accent-healthy) 10%, transparent);
     color: var(--accent-healthy);
@@ -157,8 +157,8 @@
     border: 1px solid color-mix(in srgb, var(--accent-breaking) 30%, transparent);
     color: var(--accent-breaking);
     padding: 0.35rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
     font-weight: 600;
     cursor: pointer;
   }
@@ -168,8 +168,8 @@
     color: var(--text-main);
     border: 1px solid var(--border-color);
     padding: 0.5rem 0.9rem;
-    border-radius: 6px;
-    font-size: 0.85rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     display: inline-flex;
@@ -218,7 +218,7 @@
   }
 
   .vital-item label {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -227,7 +227,7 @@
   }
 
   .vital-value {
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 600;
     color: var(--text-main);
     margin-bottom: 0.25rem;
@@ -237,7 +237,7 @@
   .vital-sparkline {
     height: 20px;
     background: var(--bg-hover);
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     margin-top: 0.25rem;
   }
 
@@ -278,7 +278,7 @@
   }
 
   .section-title {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -291,9 +291,9 @@
     align-items: center;
     gap: 0.65rem;
     padding: 0.6rem 0.8rem;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     margin-bottom: 0.25rem;
@@ -314,13 +314,13 @@
   .demo-box {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 0.85rem;
     margin-top: 0.5rem;
   }
 
   .demo-box label {
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     display: block;
     margin-bottom: 0.5rem;
@@ -335,9 +335,9 @@
   .demo-btn {
     width: 100%;
     text-align: left;
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     padding: 0.45rem 0.6rem;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     border: 1px solid var(--border-color);
     background: var(--surface-3);
     color: var(--text-main);
@@ -373,17 +373,17 @@
   }
 
   .content-title {
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 
   .search-bar {
     background: var(--surface-3);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 0.4rem 0.8rem;
     color: var(--text-main);
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     width: 260px;
     outline: none;
   }
@@ -409,7 +409,7 @@
   .traffic-table-container {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   }
@@ -418,7 +418,7 @@
     width: 100%;
     border-collapse: collapse;
     text-align: left;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
   }
 
   th {
@@ -443,9 +443,9 @@
   .method-badge {
     font-family: 'JetBrains Mono', monospace;
     font-weight: 700;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     text-transform: uppercase;
   }
 
@@ -476,7 +476,7 @@
     padding: 0.25rem 0.6rem;
     border-radius: 9999px;
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 
   .badge-match {
@@ -560,12 +560,12 @@
   .diff-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1rem;
   }
 
   .diff-card-title {
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -580,9 +580,9 @@
     background: color-mix(in srgb, var(--accent-breaking) 10%, transparent);
     border-left: 4px solid var(--accent-breaking);
     padding: 0.75rem;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     margin-bottom: 0.5rem;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
   }
 
   .delta-item.warning {
@@ -604,10 +604,10 @@
   .code-box {
     background: var(--bg-main);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     padding: 1rem;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     white-space: pre-wrap;
     word-break: break-all;
     color: var(--text-main);
@@ -631,7 +631,7 @@
     border: 1px solid var(--accent-info);
     color: var(--text-main);
     padding: 1rem 1.25rem;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
     display: flex;
     align-items: flex-start;
@@ -672,10 +672,10 @@
   }
 
   .setup-step {
-    font-size: 0.9rem;
+    font-size: var(--text-base);
     color: var(--text-muted);
     padding: 0.5rem 1rem;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     position: relative;
   }
 
@@ -705,7 +705,7 @@
   #setup-target-url {
     width: 100%;
     padding: 0.75rem;
-    font-size: 0.9rem;
+    font-size: var(--text-base);
   }
 
   #setup-detection-status {
@@ -731,7 +731,7 @@
 
   .guided-tour-content {
   background: var(--bg-card);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 2.5rem;
   max-width: 500px;
   width: 90%;
@@ -741,7 +741,7 @@
   .guided-tour-content h3 {
   margin-top: 0;
   color: var(--text-main);
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   }
 
   .guided-tour-content p {
@@ -754,7 +754,7 @@
   color: var(--bg-main);
   border: none;
   padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
   cursor: pointer;
   width: 100%;
@@ -800,7 +800,7 @@
   border-radius: 50%;
   text-align: center;
   line-height: 16px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: bold;
   }
 
@@ -818,7 +818,7 @@
   background: var(--bg-card);
   color: var(--text-main);
   text-align: center;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px;
   position: absolute;
   z-index: 100;
@@ -849,7 +849,7 @@
   border: 1px solid var(--border-color);
   color: var(--text-main);
   padding: 0.5rem 1rem;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -891,7 +891,7 @@
   text-align: center;
   padding: 2rem;
   background: var(--bg-card);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   max-width: 500px;
   margin: 2rem auto;
@@ -900,7 +900,7 @@
   .setup-wizard h2 {
   color: var(--text-main);
   margin-bottom: 1.5rem;
-  font-size: 1.75rem;
+  font-size: var(--text-2xl);
   }
 
   .setup-wizard p {
@@ -919,12 +919,12 @@
   .setup-wizard .step-icon {
   width: 60px;
   height: 60px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 1rem;
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   }
 
   .setup-wizard .step-icon.primary {
@@ -945,7 +945,7 @@
   .setup-wizard .step h3 {
   color: var(--text-main);
   margin-bottom: 0.75rem;
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   }
 
   .setup-wizard .step p {
@@ -964,7 +964,7 @@
 
   .setup-wizard .input-group label {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   margin-bottom: 0.5rem;
   text-align: left;
   }
@@ -972,10 +972,10 @@
   .setup-wizard .input-group input {
   background: var(--bg-hover);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-main);
   padding: 0.75rem 1rem;
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   width: 100%;
   }
 
@@ -998,7 +998,7 @@
   width: 100%;
   height: 4px;
   background: var(--bg-hover);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
   margin: 2rem 0;
   }
@@ -1012,7 +1012,7 @@
 
   .setup-wizard .progress-text {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   margin-top: 0.5rem;
   }
 
@@ -1020,7 +1020,7 @@
   .integration-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   }
 
@@ -1040,9 +1040,9 @@
   .integration-card-badge {
   background: var(--accent-info);
   color: white;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   }
 
@@ -1069,7 +1069,7 @@
   }
 
   .integration-detail-label {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1077,12 +1077,12 @@
   }
 
   .integration-detail-value {
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   color: var(--text-main);
   font-family: 'JetBrains Mono', monospace;
   background: var(--bg-hover);
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   }
 
   .integration-code-box {
@@ -1090,7 +1090,7 @@
   }
 
   .integration-code-title {
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1100,10 +1100,10 @@
   .integration-code-box pre {
   background: var(--bg-hover);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 1rem;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   overflow-x: auto;
   color: var(--text-main);
   }
@@ -1128,8 +1128,8 @@
   border: 1px solid var(--border-color);
   color: var(--text-muted);
   padding: 0.4rem 0.8rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-xs);
+  font-size: var(--text-base);
   cursor: pointer;
   transition: all 0.15s ease;
   }
@@ -1165,7 +1165,7 @@
   .export-option {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1.5rem;
     margin-bottom: 1rem;
   }
@@ -1183,7 +1183,7 @@
   .scheduled-reports {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1.5rem;
     margin-bottom: 2rem;
   }
@@ -1208,7 +1208,7 @@
     width: 100%;
     padding: 0.75rem;
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: var(--bg-hover);
     color: var(--text-main);
     font-family: 'Geist', sans-serif;
@@ -1223,7 +1223,7 @@
   .report-history {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     padding: 1.5rem;
   }
 
@@ -1252,7 +1252,7 @@
   .webhook-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     margin-bottom: 1.5rem;
   }
@@ -1346,7 +1346,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.85rem;
+    font-size: var(--text-base);
     color: var(--text-main);
   }
 
