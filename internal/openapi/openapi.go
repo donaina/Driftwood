@@ -365,7 +365,7 @@ func resolveRef(ref string, comps Components) (*Schema, error) {
 }
 
 func (s *OpenAPISpec) ImportToStorage(store interface {
-	SaveBaseline(method, path, samplePayload string) (*types.ContractBaseline, error)
+	SaveBaselineFrom(method, path, samplePayload, source string) (*types.ContractBaseline, error)
 }) error {
 	contracts, err := s.ExtractContracts()
 	if err != nil {
@@ -386,7 +386,11 @@ func (s *OpenAPISpec) ImportToStorage(store interface {
 
 		sample := generateSample(schemaNode)
 
-		_, err := store.SaveBaseline(c.Method, c.Path, sample)
+		// A spec is a declared contract, so these versions arrive already
+		// vouched for — not by a person clicking, but by the document the API
+		// owner published. They must not read as provisional, or the dashboard
+		// would ask the user to confirm what they just told us.
+		_, err := store.SaveBaselineFrom(c.Method, c.Path, sample, types.BaselineSourceSpec)
 		if err != nil {
 			return fmt.Errorf("save baseline for %s %s: %w", c.Method, c.Path, err)
 		}

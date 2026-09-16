@@ -1,10 +1,12 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 // These tests exist because Router's dispatch table had none, and that is the
@@ -32,6 +35,13 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+
+	// storage.NewStore resolves its persist path from the home directory, and
+	// the proxy auto-saves a baseline for the first JSON response it sees — so
+	// without this the suite reads the developer's real ~/.driftwood and writes
+	// test endpoints into it. Moving HOME to a temp dir makes each test start
+	// from an empty store, which is also what makes the assertions below exact.
+	t.Setenv("HOME", t.TempDir())
 
 	var hits int64
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +93,23 @@ func (h *harness) do(t *testing.T, method, path string, hdr map[string]string) *
 
 func (h *harness) hitCount() int64 { return atomic.LoadInt64(h.hits) }
 
+// postJSON sends a control-API request with a JSON body. The control namespace
+// is never proxied, so this cannot exercise the backend by accident.
+func (h *harness) postJSON(t *testing.T, path string, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, h.router.URL+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest(POST %s): %v", path, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
+}
+
 // The regression Phase 1 exists for: an endpoint outside the control namespace
 // reaches the target API and is recorded, whatever its prefix.
 func TestAnyNonControlPathIsProxied(t *testing.T) {
@@ -113,6 +140,155 @@ func TestProxiedRequestIsRecordedAsTraffic(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected /v1/orders to be recorded as traffic; the sniffer never saw it")
+	}
+}
+
+func TestProxiedRequestRecordsAnObservation(t *testing.T) {
+	h := newHarness(t)
+	h.do(t, http.MethodGet, "/v1/orders", nil)
+
+	// Asserted through the real request path rather than by calling AddTraffic,
+	// because the wiring is the point: AddTraffic existing and being correct is
+	// worth nothing if nothing joins it to the endpoint's history. Until it did,
+	// Versions grew only when a human saved a baseline, so the History view had
+	// no data by construction and the stability trend had no series to draw.
+	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	if !ok {
+		t.Fatal("proxied request produced no history entry")
+	}
+	if len(hist.Observations) != 1 {
+		t.Fatalf("observations = %d, want 1", len(hist.Observations))
+	}
+	obs := hist.Observations[0]
+	if obs.StatusCode != http.StatusOK {
+		t.Errorf("observation status = %d, want 200", obs.StatusCode)
+	}
+	if obs.Timestamp.IsZero() {
+		t.Error("observation has no timestamp")
+	}
+	// The contract status is what the dashboard plots per observation. Its exact
+	// value depends on the baseline that existed at the time, so this asserts it
+	// was carried through rather than what it was.
+	if obs.ContractStatus == "" {
+		t.Error("observation recorded no contract status")
+	}
+	if hist.ObservationCount != 1 {
+		t.Errorf("observation_count = %d, want 1", hist.ObservationCount)
+	}
+}
+
+// The lock is the product's differentiator and, until this route existed, the
+// only feature with no way to reach it: SetLockedVersion had zero callers, so
+// the dashboard's lock badge could never light up and "hold this endpoint to the
+// contract I approved" was not an operation a user could perform.
+func TestLockBaselineRoutePinsAndReleases(t *testing.T) {
+	h := newHarness(t)
+
+	for _, payload := range []string{
+		`{"id":1,"name":"Alice"}`,
+		`{"id":1,"name":"Alice","role":"admin"}`,
+	} {
+		resp := h.postJSON(t, "/_driftwood/api/baselines",
+			`{"method":"GET","path":"/api/users","payload":`+strconv.Quote(payload)+`}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("saving a baseline: status = %d, want 200", resp.StatusCode)
+		}
+	}
+
+	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 2 {
+		t.Fatalf("unpinned baseline version = %d, want 2", b.Version)
+	}
+
+	locked := h.postJSON(t, "/_driftwood/api/baselines/lock",
+		`{"method":"GET","path":"/api/users","version":1}`)
+	if locked.StatusCode != http.StatusOK {
+		t.Fatalf("locking: status = %d, want 200", locked.StatusCode)
+	}
+	// The response is the updated history, so the view that asked for the lock
+	// does not have to re-fetch everything to learn whether it took.
+	var hist types.EndpointHistory
+	if err := json.NewDecoder(locked.Body).Decode(&hist); err != nil {
+		t.Fatalf("decoding the locked history: %v", err)
+	}
+	if hist.LockedVersion != 1 {
+		t.Errorf("locked_version in response = %d, want 1", hist.LockedVersion)
+	}
+	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 1 {
+		t.Errorf("baseline version after locking = %d, want 1", b.Version)
+	}
+
+	released := h.postJSON(t, "/_driftwood/api/baselines/lock",
+		`{"method":"GET","path":"/api/users","version":0}`)
+	if released.StatusCode != http.StatusOK {
+		t.Fatalf("releasing: status = %d, want 200", released.StatusCode)
+	}
+	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 2 {
+		t.Errorf("baseline version after release = %d, want 2", b.Version)
+	}
+}
+
+func TestLockBaselineRouteRejectsBadInput(t *testing.T) {
+	h := newHarness(t)
+	h.postJSON(t, "/_driftwood/api/baselines",
+		`{"method":"GET","path":"/api/users","payload":"{\"id\":1}"}`)
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"a version that does not exist", `{"method":"GET","path":"/api/users","version":9}`},
+		{"an endpoint with no history", `{"method":"GET","path":"/nowhere","version":1}`},
+	}
+	for _, tc := range cases {
+		if resp := h.postJSON(t, "/_driftwood/api/baselines/lock", tc.body); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("locking with %s: status = %d, want 400", tc.name, resp.StatusCode)
+		}
+	}
+
+	// A rejected lock must not have moved anything.
+	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 1 {
+		t.Errorf("baseline version = %d after rejected locks, want 1", b.Version)
+	}
+}
+
+func TestConfigRouteKeepsTheListeningPort(t *testing.T) {
+	h := newHarness(t)
+
+	// The dashboard has no port field; it sends a hardcoded 8787. Trusting that
+	// would persist 8787 over the port the process is actually bound to, and the
+	// next start would move to it — for anyone who had launched with --port.
+	h.postJSON(t, "/_driftwood/api/config",
+		`{"target_url":"http://localhost:4242","proxy_port":"8787","auto_save_baseline":false,"intercept_json":true}`)
+
+	cfg := h.store.GetConfig()
+	if cfg.ProxyPort != "8787" {
+		t.Errorf("port = %q, want the harness's 8787", cfg.ProxyPort)
+	}
+	if cfg.TargetURL != "http://localhost:4242" {
+		t.Errorf("target = %q, want the posted value", cfg.TargetURL)
+	}
+	if cfg.AutoSaveBaseline {
+		t.Error("auto_save_baseline = true, want the posted false")
+	}
+}
+
+func TestConfigRouteReportsWhenItCannotPersist(t *testing.T) {
+	h := newHarness(t)
+
+	// Make the config directory unwritable so the write genuinely fails. The
+	// restore is registered after the harness's temp dir, so it runs first and
+	// the cleanup can still remove it.
+	dir := filepath.Join(os.Getenv("HOME"), ".driftwood")
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatalf("making the config directory unwritable: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+	// Reporting this is the point. The route used to accept a configuration,
+	// change nothing durable, and answer 200 — so a settings panel that never
+	// persisted anything looked exactly like one that did.
+	if resp := h.postJSON(t, "/_driftwood/api/config", `{"target_url":"http://localhost:4242"}`); resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d with an unwritable config directory, want 500", resp.StatusCode)
 	}
 }
 
@@ -329,4 +505,83 @@ func truncate(s string) string {
 		return s[:200] + "..."
 	}
 	return s
+}
+
+// The confirm route is what turns a captured response into a contract. It is
+// the only control that can distinguish an already-drifted API from a healthy
+// one, because Driftwood cannot know whether the first response it saw was
+// correct — so the route has to actually move the version out of provisional.
+func TestConfirmBaselineRouteAcceptsACapturedVersion(t *testing.T) {
+	h := newHarness(t)
+
+	// Recorded the way the proxy records a first sighting, not the way the
+	// promote route does: auto, which is what makes it provisional.
+	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1,"name":"Alice"}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("seeding a captured baseline: %v", err)
+	}
+	if b, _ := h.store.GetBaseline("GET", "/api/users"); !b.IsProvisional() {
+		t.Fatal("the seeded baseline is not provisional, so this test proves nothing")
+	}
+
+	resp := h.postJSON(t, "/_driftwood/api/baselines/confirm",
+		`{"method":"GET","path":"/api/users","version":1}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("confirming: status = %d, want 200", resp.StatusCode)
+	}
+
+	// The response is the updated history, so the view that asked does not have
+	// to re-fetch everything to learn whether it took.
+	var hist types.EndpointHistory
+	if err := json.NewDecoder(resp.Body).Decode(&hist); err != nil {
+		t.Fatalf("decoding the confirmed history: %v", err)
+	}
+	if len(hist.Versions) != 1 {
+		t.Fatalf("versions in response = %d, want 1", len(hist.Versions))
+	}
+	if hist.Versions[0].IsProvisional() {
+		t.Error("the version is still provisional after the route confirmed it")
+	}
+}
+
+func TestConfirmBaselineRouteRejectsBadInput(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("seeding a captured baseline: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"a version that does not exist", `{"method":"GET","path":"/api/users","version":9}`},
+		{"version zero", `{"method":"GET","path":"/api/users","version":0}`},
+		{"an endpoint with no history", `{"method":"GET","path":"/nowhere","version":1}`},
+	}
+	for _, tc := range cases {
+		if resp := h.postJSON(t, "/_driftwood/api/baselines/confirm", tc.body); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("confirming with %s: status = %d, want 400", tc.name, resp.StatusCode)
+		}
+	}
+}
+
+// The auto-save trap, asserted through the real request path: the first
+// response Driftwood ever sees becomes the contract, and it must be marked as
+// the guess it is. If this version reads as confirmed, then an API that was
+// already drifted when Driftwood was first pointed at it measures as MATCH
+// forever and nothing on screen suggests otherwise.
+func TestAutoSavedBaselineIsProvisional(t *testing.T) {
+	h := newHarness(t)
+	h.do(t, http.MethodGet, "/v1/orders", nil)
+
+	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	if !ok {
+		t.Fatal("proxied request produced no history entry")
+	}
+	if len(hist.Versions) != 1 {
+		t.Fatalf("versions = %d, want 1 (the first sighting becomes the baseline)", len(hist.Versions))
+	}
+	if !hist.Versions[0].IsProvisional() {
+		t.Errorf("auto-captured baseline source = %q, want it to read as provisional",
+			hist.Versions[0].Source)
+	}
 }

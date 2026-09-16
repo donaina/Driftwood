@@ -358,7 +358,12 @@ func (p *Proxy) processAndStoreTraffic(
 		if !exists {
 			cfg := p.store.GetConfig()
 			if cfg.AutoSaveBaseline {
-				_, _ = p.store.SaveBaseline(method, path, respBody)
+				// Recorded as auto, which is what makes the version read as
+				// provisional: this response was never checked against anything,
+				// so it is evidence of what the API returns, not of what it
+				// promised. Confirming it in the dashboard is what turns it into
+				// a contract.
+				_, _ = p.store.SaveBaselineFrom(method, path, respBody, types.BaselineSourceAuto)
 				contractStatus = "BASELINE_SET"
 			}
 		} else {

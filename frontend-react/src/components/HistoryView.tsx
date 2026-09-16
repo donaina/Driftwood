@@ -11,6 +11,7 @@ const HistoryView: React.FC = () => {
   const [histories, setHistories] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [selectedVersionsMap, setSelectedVersionsMap] = useState<Map<string, number[]>>(new Map());
 
   useEffect(() => {
@@ -62,6 +63,77 @@ const HistoryView: React.FC = () => {
       newMap.delete(endpointKey);
       return newMap;
     });
+  };
+
+  /* Pin or release an endpoint's contract version.
+
+     A failure here gets its own banner rather than the page-level error state:
+     that state replaces the whole view, so a lock that did not take would hide
+     the history the user was reading in order to tell them the lock did not
+     take. The version passed for a release is 0, which is what the API reads as
+     "track the latest" — versions are numbered from 1, so 0 cannot collide with
+     a real one. */
+  const handleToggleLock = async (history: HistoryItem, version: number, lock: boolean) => {
+    setActionError(null);
+    try {
+      const res = await fetch('/_driftwood/api/baselines/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: history.method,
+          path: history.path,
+          version: lock ? version : 0,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`${res.status} ${(await res.text()).trim()}`);
+      }
+      const updated: HistoryItem = await res.json();
+      setHistories((prev) =>
+        prev.map((h) =>
+          h.method === updated.method && h.path === updated.path ? updated : h
+        )
+      );
+    } catch (err) {
+      console.error(err);
+      setActionError(
+        `Could not ${lock ? 'lock' : 'release'} ${history.method} ${history.path} at v${version}: ${err}`
+      );
+    }
+  };
+
+  /* Accept a captured response as the contract.
+
+     This is the one control that can tell an already-drifted API apart from a
+     healthy one, and it is a person's call rather than the program's: Driftwood
+     has no way to know whether the first response it saw was correct. */
+  const handleConfirm = async (history: HistoryItem, version: number) => {
+    setActionError(null);
+    try {
+      const res = await fetch('/_driftwood/api/baselines/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: history.method,
+          path: history.path,
+          version,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`${res.status} ${(await res.text()).trim()}`);
+      }
+      const updated: HistoryItem = await res.json();
+      setHistories((prev) =>
+        prev.map((h) =>
+          h.method === updated.method && h.path === updated.path ? updated : h
+        )
+      );
+    } catch (err) {
+      console.error(err);
+      setActionError(
+        `Could not confirm ${history.method} ${history.path} v${version}: ${err}`
+      );
+    }
   };
 
   const handleExportTimeline = (format: string, endpointKey: string) => {
@@ -149,6 +221,11 @@ const HistoryView: React.FC = () => {
           🔄 Refresh History
         </button>
       </div>
+      {actionError && (
+        <div className="bg-bg-card rounded-xl border border-accent-breaking p-4 text-accent-breaking">
+          {actionError}
+        </div>
+      )}
       <div className="space-y-6">
         {histories.map((history) => {
           const endpointKey = `${history.method}:${history.path}`;
@@ -160,6 +237,8 @@ const HistoryView: React.FC = () => {
               onToggleVersionSelection={handleToggleVersionSelection}
               onClearVersionSelection={handleClearVersionSelection}
               onExportTimeline={handleExportTimeline}
+              onToggleLock={handleToggleLock}
+              onConfirm={handleConfirm}
             />
           );
         })}

@@ -392,15 +392,27 @@ func TestImportToStorage(t *testing.T) {
 	if _, ok := store.baselines[key]; !ok {
 		t.Errorf("missing baseline for %s", key)
 	}
+
+	// An imported spec is a declared contract, so it must not land as
+	// provisional — the dashboard would otherwise ask the user to confirm the
+	// document they just handed us.
+	if got := store.sources[key]; got != types.BaselineSourceSpec {
+		t.Errorf("source for %s = %q, want %q", key, got, types.BaselineSourceSpec)
+	}
 }
 
 type mockStore struct {
 	baselines map[string]string
+	sources   map[string]string
 }
 
-func (m *mockStore) SaveBaseline(method, path, samplePayload string) (*types.ContractBaseline, error) {
+func (m *mockStore) SaveBaselineFrom(method, path, samplePayload, source string) (*types.ContractBaseline, error) {
 	m.baselines[method+":"+path] = samplePayload
+	if m.sources == nil {
+		m.sources = map[string]string{}
+	}
+	m.sources[method+":"+path] = source
 	return &types.ContractBaseline{
-		Method: method, Path: path, SamplePayload: samplePayload,
+		Method: method, Path: path, SamplePayload: samplePayload, Source: source,
 	}, nil
 }

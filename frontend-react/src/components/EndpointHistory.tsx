@@ -16,6 +16,11 @@ export interface HistoryItem {
     version: number;
     created_at: string;
     sample_payload: string;
+    /* Where this version came from: 'auto' when Driftwood captured it from live
+       traffic, 'manual' when a human accepted or confirmed it, 'openapi' when it
+       came from an imported spec. Absent on baselines written before the field
+       existed, which read as provisional — see types.BaselineSource*. */
+    source?: string;
   }>;
   observation_count: number;
   locked_version?: number;
@@ -33,6 +38,8 @@ interface EndpointHistoryProps {
   onToggleVersionSelection: (endpointKey: string, version: number) => void;
   onClearVersionSelection: (endpointKey: string) => void;
   onExportTimeline: (format: string, endpointKey: string) => void;
+  onToggleLock: (history: HistoryItem, version: number, lock: boolean) => void;
+  onConfirm: (history: HistoryItem, version: number) => void;
 }
 
 const EndpointHistory: React.FC<EndpointHistoryProps> = ({
@@ -41,6 +48,8 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   onToggleVersionSelection,
   onClearVersionSelection,
   onExportTimeline,
+  onToggleLock,
+  onConfirm,
 }) => {
   const endpointKey = `${history.method}:${history.path}`;
 
@@ -80,7 +89,17 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   const selectedVersions = selectedVersionsMap.get(endpointKey) || [];
 
   const renderVersionNode = (version: EnhancedVersion, index: number) => {
-    const { version: versionNumber, created_at, changeType, changeDescription, stabilityScore } = version;
+    const { version: versionNumber, created_at, changeType, changeDescription, stabilityScore, source } = version;
+
+    /* A version captured from live traffic is a guess about the contract: it is
+       what the API returned, not what it promised. While it stays unconfirmed,
+       a field that was already missing when Driftwood first looked is part of
+       the baseline, so drift that predates Driftwood compares as MATCH and is
+       invisible — nothing in the process can tell that apart from a healthy API.
+       Saying so on the node is the whole point: the badge is not decoration, it
+       is the only signal that this contract has not been vouched for. An absent
+       source counts as provisional, matching ContractBaseline.IsProvisional. */
+    const isProvisional = source === undefined || source === '' || source === 'auto';
     const isLocked = history.locked_version === versionNumber;
 
     // Format timestamp
@@ -97,7 +116,8 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       ${changeDescription || 'No detailed change information available'}
 
       ${stabilityScore !== undefined ? `Stability Score: ${(stabilityScore * 100).toFixed(1)}%` : ''}
-      ${isLocked ? '(Currently Locked Baseline)' : ''}`;
+      ${isLocked ? '(Currently Locked Baseline)' : ''}
+      ${isProvisional ? '(Unconfirmed: captured from live traffic, not yet accepted as the contract)' : ''}`;
 
     // Check if this version is selected for comparison
     const isSelected = selectedVersions.includes(versionNumber);
@@ -169,6 +189,51 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
           <div className="mt-2 text-xs text-text-muted">
             v{versionNumber}
           </div>
+          {/* Locking is a separate act from accepting a version. Accepting a new
+              shape records it; pinning decides which accepted shape the endpoint
+              is still held to — so that promoting v4 does not quietly become the
+              thing every later response is compared against. The button is a
+              button rather than a click handler on the node because the node
+              already means "select for comparison", and one target with two
+              meanings is how the badge ended up decorative. */}
+          <button
+            type="button"
+            className={`mt-2 px-2 py-1 rounded-lg border text-xs transition-colors cursor-pointer ${
+              isLocked
+                ? 'border-accent-info text-accent-info'
+                : 'border-border-color text-text-muted hover:bg-bg-hover hover:text-text-main'
+            }`}
+            aria-pressed={isLocked}
+            title={
+              isLocked
+                ? `Release v${versionNumber}: this endpoint will track its latest version again`
+                : `Hold this endpoint to v${versionNumber} as its contract`
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleLock(history, versionNumber, !isLocked);
+            }}
+          >
+            {isLocked ? '🔒 Locked' : 'Lock'}
+          </button>
+          {isProvisional && (
+            /* Confirming is offered on the version itself rather than on the
+               endpoint, because the question "was this the right shape?" is a
+               question about one captured response. Until someone answers it,
+               the node reads as unconfirmed and the comparison it drives is
+               only as trustworthy as that guess. */
+            <button
+              type="button"
+              className="mt-1 px-2 py-1 rounded-lg border border-accent-warning text-accent-warning text-xs transition-colors cursor-pointer hover:bg-bg-hover"
+              title={`Accept v${versionNumber} as the contract for this endpoint. Until you do, drift is measured against a response Driftwood merely observed, so a problem that was already there will not be reported.`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onConfirm(history, versionNumber);
+              }}
+            >
+              Unconfirmed — confirm
+            </button>
+          )}
         </div>
       </div>
     );
@@ -204,6 +269,38 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       </div>
     );
   };
+
+  /* An endpoint Driftwood has seen traffic for but holds no contract on. This
+     is a state worth showing rather than a card to leave blank: it is the
+     difference between "nothing is happening on this API" and "this API is
+     being served right now and I have never been told what its contract is",
+     and it is the state every endpoint starts in. */
+  if (history.versions.length === 0) {
+    return (
+      <div className="bg-bg-card rounded-xl border border-border-color p-6">
+        <div className="flex justify-between items-start">
+          <div className="flex items-center space-x-3">
+            <span className={`method-badge method-${history.method.toLowerCase()}`}>
+              {history.method}
+            </span>
+            <span className="font-mono ml-2 font-semibold">
+              {history.path}
+            </span>
+          </div>
+          <div className="text-right space-y-1">
+            <div className="text-sm text-text-muted">
+              Observations: {history.observation_count}
+            </div>
+          </div>
+        </div>
+        <p className="mt-4 text-text-muted">
+          No contract accepted for this endpoint yet. Driftwood is recording
+          traffic here, but it has nothing to compare it against, so it cannot
+          tell you whether this endpoint has drifted.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-bg-card rounded-xl border border-border-color p-6">
