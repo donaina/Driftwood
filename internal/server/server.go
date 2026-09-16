@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/donaina/driftwood/internal/contract"
@@ -346,8 +348,36 @@ func (s *Server) handleExportTypeScript(w http.ResponseWriter, r *http.Request) 
 	if len(baselines) == 0 {
 		sb.WriteString("// No baseline contracts locked yet.\n")
 	} else {
+		// Sorted, because the output is a file a user keeps in their repository:
+		// GetAllBaselines walks a map, so an unsorted export reordered itself
+		// between runs and showed up as a diff with no change behind it. The
+		// sort also makes the disambiguation below deterministic — a suffix
+		// handed out in map order would move between endpoints from one export
+		// to the next.
+		sort.Slice(baselines, func(i, j int) bool {
+			if baselines[i].Method != baselines[j].Method {
+				return baselines[i].Method < baselines[j].Method
+			}
+			return baselines[i].Path < baselines[j].Path
+		})
+
+		used := make(map[string]bool, len(baselines))
 		for _, b := range baselines {
 			name := strings.Title(strings.ToLower(b.Method)) + cleanInterfaceName(b.Path) + "Response"
+			// Two paths can normalize to one name — /api/users/{id} and
+			// /api/users/id both give UsersId — and two interfaces of the same
+			// name with different shapes is a file that does not compile.
+			if used[name] {
+				for n := 2; ; n++ {
+					candidate := name + strconv.Itoa(n)
+					if !used[candidate] {
+						name = candidate
+						break
+					}
+				}
+			}
+			used[name] = true
+
 			ts := contract.GenerateTypeScriptInterfaces(name, b.Schema)
 			sb.WriteString(ts)
 			sb.WriteString("\n")
@@ -359,23 +389,36 @@ func (s *Server) handleExportTypeScript(w http.ResponseWriter, r *http.Request) 
 	_, _ = w.Write([]byte(sb.String()))
 }
 
+// isIdentifierChar reports whether r may appear in a TypeScript identifier.
+func isIdentifierChar(r rune) bool {
+	return r == '_' || r == '$' ||
+		('0' <= r && r <= '9') || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
+}
+
+// cleanInterfaceName turns a URL path into the middle part of an interface name.
+//
+// Only identifier characters may survive: the result is interpolated into
+// `export interface %s`, so anything else produces a .d.ts that does not parse.
+// That was not true before — a parameter marker was stripped only in its
+// Express form, so GET /api/users/{id} declared
+// `export interface GetUsers{Id}Response`. Rather than add the second form to
+// the list of characters to remove, this keeps what is legal and treats
+// everything else (braces, colons, dots, percent escapes) as a word separator,
+// which covers route syntaxes nobody has thought of yet.
 func cleanInterfaceName(path string) string {
-	parts := strings.Split(path, "/")
-	var res string
-	for _, p := range parts {
+	var res strings.Builder
+	for _, p := range strings.Split(path, "/") {
 		if p == "" || p == "_driftwood" || p == "mock" || p == "api" {
 			continue
 		}
-		p = strings.ReplaceAll(p, ":", "")
-		p = strings.ReplaceAll(p, "-", "_")
-		if len(p) > 0 {
-			res += strings.Title(p)
+		for _, word := range strings.FieldsFunc(p, func(r rune) bool { return !isIdentifierChar(r) }) {
+			res.WriteString(strings.Title(word))
 		}
 	}
-	if res == "" {
-		res = "Endpoint"
+	if res.Len() == 0 {
+		return "Endpoint"
 	}
-	return res
+	return res.String()
 }
 
 func (s *Server) handleMockMode(w http.ResponseWriter, r *http.Request) {

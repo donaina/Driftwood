@@ -365,14 +365,35 @@ func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.Contrac
 
 // SaveBaselineFrom records a new contract version and states where it came
 // from, so a version captured from live traffic can be told apart from one
-// somebody vouched for.
+// somebody vouched for. The schema is inferred from the payload, which is the
+// best available answer when the payload is all the evidence there is.
 func (s *Store) SaveBaselineFrom(method, path, samplePayload, source string) (*types.ContractBaseline, error) {
+	return s.SaveBaselineWithSchema(method, path, samplePayload, nil, source)
+}
+
+// SaveBaselineWithSchema records a new contract version whose schema the caller
+// already has, falling back to inference when declared is nil.
+//
+// A declared schema says things a sample cannot. An OpenAPI document states
+// which properties are required and what string formats its fields carry, and
+// both were being discarded here: this function re-inferred the schema from the
+// payload, so an imported contract's `required` list was replaced by "every key
+// in the generated example" — every optional property became mandatory, and the
+// list the document published was unreadable everywhere downstream. Passing the
+// parsed schema through is what makes the import mean what the document said.
+func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error) {
 	s.mu.Lock()
 
+	// The payload is validated even when a schema is supplied: it is stored
+	// verbatim as SamplePayload and served to the dashboard, so a malformed one
+	// is a corrupt record no matter where the schema came from.
 	inferredSchema, err := schema.InferFromJSON(samplePayload)
 	if err != nil {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("invalid payload JSON: %w", err)
+	}
+	if declared != nil {
+		inferredSchema = declared
 	}
 
 	key := fmt.Sprintf("%s:%s", method, path)
@@ -397,7 +418,11 @@ func (s *Store) SaveBaselineFrom(method, path, samplePayload, source string) (*t
 	// field at every level. This is not what ObservationCount counted — that
 	// increment used to live in this loop, which is why the count moved only
 	// when a human saved a baseline.
-	if inferredSchema.Type == types.TypeObject && inferredSchema.Properties != nil {
+	//
+	// Only for an inferred schema, which this function owns and just built. A
+	// declared one belongs to the caller and is stored as given; editing its tree
+	// would be a side effect on the spec the caller is still holding.
+	if declared == nil && inferredSchema.Type == types.TypeObject && inferredSchema.Properties != nil {
 		for k := range inferredSchema.Properties {
 			inferredSchema.Properties[k].SampleValue = nil
 		}

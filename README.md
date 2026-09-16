@@ -23,12 +23,35 @@ The backend team changes a database column type or schema payload without notify
   - **Type Mutations**: Detects `integer` ➔ `string` (`99812` ➔ `"99812"`).
   - **Field Removals**: Flags missing required keys in response bodies.
   - **Nullability Violations**: Detects when non-null properties suddenly return `null`.
+  - **Format Changes**: Detects when a string's shape changes from one known format to another (`2024-01-31` ➔ a UUID), which a type check alone cannot see.
   - **Additive Changes**: Tracks newly introduced non-breaking properties.
 - **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from locked baseline schemas.
 - **JavaScript & Node.js Native Support**: Installable via `npx` / `npm` and importable into Express/Fastify/Next.js applications.
 - **Embedded Web Dashboard**: Native single-binary web interface accessible at `http://localhost:8787` with real-time SSE updates.
 - **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Removed Field`, `Nullability Violation`) to test contract alerts instantly.
 - **Persistent Contract Storage**: Saved baseline contracts persist across restarts in `~/.driftwood/baselines.json`.
+
+---
+
+## Severity model
+
+Every difference between a response and its baseline is recorded as a **delta** on the traffic
+record, so nothing is dropped. Severity decides what happens beyond that:
+
+| Severity | What it covers | What it does |
+| --- | --- | --- |
+| `BREAKING` | A required property is gone; a type changed; a non-nullable property returned `null`; a string's format changed from one known shape to another (`date` ➔ `uuid`). | Raises an alert and marks the request `BREAKING`. |
+| `WARNING` | A property the baseline did not require is gone; `integer` widened to `number`; a value stopped matching any known format. | Marks the request `WARNING`. Does not alert. |
+| `INFO` | The response gained something: a new property, or a value that now matches a known format. | Counted as healthy — the request still reads `MATCH`. |
+
+Whether a removed property is `BREAKING` or `WARNING` depends on what the baseline promised. A
+contract imported from an OpenAPI document uses that document's `required` list, so a property
+outside it is reported as a warning rather than as a broken promise. A baseline inferred from
+traffic has a weaker claim to make: one response cannot distinguish a field the API always sends
+from one it happened to send that day, so every key observed is treated as required.
+
+An additive change keeps every promise the baseline made, so it is tracked and shown but never
+alerted on.
 
 ---
 

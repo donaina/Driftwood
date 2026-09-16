@@ -45,6 +45,7 @@ const (
 	KindAddedField        DiffKind = "ADDED_FIELD"
 	KindNullabilityChange DiffKind = "NULLABILITY_CHANGE"
 	KindArrayTypeMismatch DiffKind = "ARRAY_ITEM_MISMATCH"
+	KindFormatChange      DiffKind = "FORMAT_CHANGE"
 )
 
 // DiffDelta details a single change between baseline and observed payload
