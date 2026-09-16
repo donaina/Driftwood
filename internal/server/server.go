@@ -98,6 +98,8 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleDeleteBaseline(w, r)
 		case proxy.ControlPrefix + "/api/baselines/lock":
 			s.handleLockBaseline(w, r)
+		case proxy.ControlPrefix + "/api/baselines/confirm":
+			s.handleConfirmBaseline(w, r)
 		case proxy.ControlPrefix + "/api/config":
 			s.handleConfig(w, r)
 		case proxy.ControlPrefix + "/api/alerts":
@@ -242,6 +244,48 @@ func (s *Server) handleLockBaseline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.hub.Publish("baseline_locked", map[string]interface{}{
+		"method":  req.Method,
+		"path":    req.Path,
+		"version": req.Version,
+	})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(hist)
+}
+
+// handleConfirmBaseline promotes a provisional version to a contract somebody
+// stands behind.
+//
+// A version captured from live traffic is a guess about the API's contract, and
+// while it stays unconfirmed Driftwood compares against that guess — so drift
+// that predates Driftwood measures as MATCH and stays invisible. Confirming is
+// the only thing that can distinguish the two, which is why it is a deliberate
+// act with its own route rather than a side effect of anything else.
+func (s *Server) handleConfirmBaseline(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Method  string `json:"method"`
+		Path    string `json:"path"`
+		Version int    `json:"version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.ConfirmBaseline(req.Method, req.Path, req.Version); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	hist, ok := s.store.GetHistory(req.Method, req.Path)
+	if !ok {
+		http.Error(w, "endpoint not found", http.StatusNotFound)
+		return
+	}
+	s.hub.Publish("baseline_confirmed", map[string]interface{}{
 		"method":  req.Method,
 		"path":    req.Path,
 		"version": req.Version,

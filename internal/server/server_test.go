@@ -506,3 +506,82 @@ func truncate(s string) string {
 	}
 	return s
 }
+
+// The confirm route is what turns a captured response into a contract. It is
+// the only control that can distinguish an already-drifted API from a healthy
+// one, because Driftwood cannot know whether the first response it saw was
+// correct — so the route has to actually move the version out of provisional.
+func TestConfirmBaselineRouteAcceptsACapturedVersion(t *testing.T) {
+	h := newHarness(t)
+
+	// Recorded the way the proxy records a first sighting, not the way the
+	// promote route does: auto, which is what makes it provisional.
+	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1,"name":"Alice"}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("seeding a captured baseline: %v", err)
+	}
+	if b, _ := h.store.GetBaseline("GET", "/api/users"); !b.IsProvisional() {
+		t.Fatal("the seeded baseline is not provisional, so this test proves nothing")
+	}
+
+	resp := h.postJSON(t, "/_driftwood/api/baselines/confirm",
+		`{"method":"GET","path":"/api/users","version":1}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("confirming: status = %d, want 200", resp.StatusCode)
+	}
+
+	// The response is the updated history, so the view that asked does not have
+	// to re-fetch everything to learn whether it took.
+	var hist types.EndpointHistory
+	if err := json.NewDecoder(resp.Body).Decode(&hist); err != nil {
+		t.Fatalf("decoding the confirmed history: %v", err)
+	}
+	if len(hist.Versions) != 1 {
+		t.Fatalf("versions in response = %d, want 1", len(hist.Versions))
+	}
+	if hist.Versions[0].IsProvisional() {
+		t.Error("the version is still provisional after the route confirmed it")
+	}
+}
+
+func TestConfirmBaselineRouteRejectsBadInput(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("seeding a captured baseline: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"a version that does not exist", `{"method":"GET","path":"/api/users","version":9}`},
+		{"version zero", `{"method":"GET","path":"/api/users","version":0}`},
+		{"an endpoint with no history", `{"method":"GET","path":"/nowhere","version":1}`},
+	}
+	for _, tc := range cases {
+		if resp := h.postJSON(t, "/_driftwood/api/baselines/confirm", tc.body); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("confirming with %s: status = %d, want 400", tc.name, resp.StatusCode)
+		}
+	}
+}
+
+// The auto-save trap, asserted through the real request path: the first
+// response Driftwood ever sees becomes the contract, and it must be marked as
+// the guess it is. If this version reads as confirmed, then an API that was
+// already drifted when Driftwood was first pointed at it measures as MATCH
+// forever and nothing on screen suggests otherwise.
+func TestAutoSavedBaselineIsProvisional(t *testing.T) {
+	h := newHarness(t)
+	h.do(t, http.MethodGet, "/v1/orders", nil)
+
+	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	if !ok {
+		t.Fatal("proxied request produced no history entry")
+	}
+	if len(hist.Versions) != 1 {
+		t.Fatalf("versions = %d, want 1 (the first sighting becomes the baseline)", len(hist.Versions))
+	}
+	if !hist.Versions[0].IsProvisional() {
+		t.Errorf("auto-captured baseline source = %q, want it to read as provisional",
+			hist.Versions[0].Source)
+	}
+}

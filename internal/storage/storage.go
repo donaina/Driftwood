@@ -353,7 +353,20 @@ func deepCopySchema(node *types.JSONSchemaNode) *types.JSONSchemaNode {
 	return &copy
 }
 
+// SaveBaseline records a version from a shape a human supplied or accepted.
+//
+// Callers that know a stronger provenance than "a person meant this" should say
+// so through SaveBaselineFrom instead — an imported OpenAPI document is a
+// declared contract, and recording it as merely manual would leave the dashboard
+// asking the user to confirm something they had already stated.
 func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.ContractBaseline, error) {
+	return s.SaveBaselineFrom(method, path, samplePayload, types.BaselineSourceManual)
+}
+
+// SaveBaselineFrom records a new contract version and states where it came
+// from, so a version captured from live traffic can be told apart from one
+// somebody vouched for.
+func (s *Store) SaveBaselineFrom(method, path, samplePayload, source string) (*types.ContractBaseline, error) {
 	s.mu.Lock()
 
 	inferredSchema, err := schema.InferFromJSON(samplePayload)
@@ -406,6 +419,7 @@ func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.Contrac
 		UpdatedAt:     now,
 		Version:       version,
 		RequestCount:  reqCount,
+		Source:        source,
 	}
 
 	if len(h.Versions) > 0 {
@@ -446,6 +460,47 @@ func (s *Store) SetLockedVersion(method, path string, version int) error {
 		return fmt.Errorf("invalid version %d (have %d versions)", version, len(h.Versions))
 	}
 	h.LockedVersion = version
+	h.UpdatedAt = time.Now()
+
+	data, err := json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(s.persistPath, data, 0600)
+}
+
+// ConfirmBaseline turns a provisional version into one a human stands behind.
+//
+// This is the act that closes the auto-save trap. Driftwood cannot know whether
+// the first response it ever saw was correct, and when that response is captured
+// as the contract, drift that was already present is measured against it and
+// comes back MATCH forever. Nothing in the process can detect that; only a
+// person can, and only if they are told the contract is a guess. Confirming is
+// how they say it is not.
+//
+// The version must be named explicitly. Zero is not accepted as "the latest":
+// confirming a version the caller did not name is how a guess gets blessed by
+// someone who was looking somewhere else.
+func (s *Store) ConfirmBaseline(method, path string, version int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s", method, path)
+	h, exists := s.histories[key]
+	if !exists {
+		return fmt.Errorf("endpoint not found")
+	}
+	if version <= 0 || version > len(h.Versions) {
+		return fmt.Errorf("invalid version %d (have %d versions)", version, len(h.Versions))
+	}
+
+	cb := h.Versions[version-1]
+	if !cb.IsProvisional() {
+		// Already vouched for, or declared by a spec. Nothing to do, and an error
+		// would report a failure for a state the caller asked for and already has.
+		return nil
+	}
+	cb.Source = types.BaselineSourceManual
 	h.UpdatedAt = time.Now()
 
 	data, err := json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")

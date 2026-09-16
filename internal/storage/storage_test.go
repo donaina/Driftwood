@@ -826,3 +826,137 @@ func TestStore_ApplyRememberedConfig_MissingAndCorruptFiles(t *testing.T) {
 		t.Errorf("corrupt config files matching %q = %d, want 1", s.configPath+".corrupt.*", len(matches))
 	}
 }
+
+/* Provenance, and the auto-save trap it closes.
+
+   A version captured from live traffic is a guess: Driftwood saw one response
+   and inferred a contract from it. If the API was already drifted when that
+   happened, the drift is inside the baseline, so every later response matches
+   it and the endpoint reads healthy forever. Nothing in the process can detect
+   that — only a person can, and only if the version is marked as unconfirmed.
+   These tests pin the marking, not a detection we cannot do. */
+
+func TestStore_SaveBaseline_RecordsItsSource(t *testing.T) {
+	s := newObsStore(t)
+
+	manual, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`)
+	if err != nil {
+		t.Fatalf("SaveBaseline: %v", err)
+	}
+	if manual.Source != types.BaselineSourceManual {
+		t.Errorf("SaveBaseline source = %q, want %q", manual.Source, types.BaselineSourceManual)
+	}
+	if manual.IsProvisional() {
+		t.Error("a version a human saved reads as provisional")
+	}
+
+	auto, err := s.SaveBaselineFrom("GET", "/api/orders", `{"id": 2}`, types.BaselineSourceAuto)
+	if err != nil {
+		t.Fatalf("SaveBaselineFrom: %v", err)
+	}
+	if !auto.IsProvisional() {
+		t.Error("a version captured from live traffic does not read as provisional")
+	}
+}
+
+func TestStore_LegacyBaselineWithoutSourceReadsAsProvisional(t *testing.T) {
+	// Baselines written before Source existed carry no value. They were, in
+	// nearly every case, auto-captured — the promote route had no UI — so
+	// reading them as confirmed would assert a human vouched for each one.
+	legacy := &types.ContractBaseline{Version: 1}
+	if !legacy.IsProvisional() {
+		t.Error("a baseline with no source reads as confirmed")
+	}
+	spec := &types.ContractBaseline{Version: 1, Source: types.BaselineSourceSpec}
+	if spec.IsProvisional() {
+		t.Error("an imported spec reads as provisional")
+	}
+}
+
+func TestStore_ConfirmBaseline_UnmarksProvisional(t *testing.T) {
+	s := newObsStore(t)
+	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("SaveBaselineFrom: %v", err)
+	}
+
+	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+		t.Fatalf("ConfirmBaseline: %v", err)
+	}
+
+	hist, ok := s.GetHistory("GET", "/api/users")
+	if !ok {
+		t.Fatal("history for GET /api/users not found")
+	}
+	if hist.Versions[0].IsProvisional() {
+		t.Error("version still provisional after confirm")
+	}
+	if hist.Versions[0].Source != types.BaselineSourceManual {
+		t.Errorf("source after confirm = %q, want %q", hist.Versions[0].Source, types.BaselineSourceManual)
+	}
+}
+
+func TestStore_ConfirmBaseline_SurvivesReload(t *testing.T) {
+	s := newObsStore(t)
+	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("SaveBaselineFrom: %v", err)
+	}
+	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+		t.Fatalf("ConfirmBaseline: %v", err)
+	}
+
+	reloaded := newObsStore(t)
+	reloaded.persistPath = s.persistPath
+	reloaded.configPath = s.configPath
+	if err := reloaded.loadHistoriesFromFile(); err != nil {
+		t.Fatalf("loadHistoriesFromFile: %v", err)
+	}
+
+	hist, ok := reloaded.GetHistory("GET", "/api/users")
+	if !ok {
+		t.Fatal("history did not survive a reload")
+	}
+	if hist.Versions[0].IsProvisional() {
+		t.Error("the confirmation was not persisted, so a restart un-confirms the contract")
+	}
+}
+
+func TestStore_ConfirmBaseline_RejectsBadInput(t *testing.T) {
+	s := newObsStore(t)
+	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("SaveBaselineFrom: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		method  string
+		path    string
+		version int
+	}{
+		{"unknown endpoint", "GET", "/api/nope", 1},
+		{"version past the end", "GET", "/api/users", 2},
+		{"version zero is not 'the latest'", "GET", "/api/users", 0},
+		{"negative version", "GET", "/api/users", -1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := s.ConfirmBaseline(tc.method, tc.path, tc.version); err == nil {
+				t.Errorf("ConfirmBaseline(%s %s, %d) = nil, want an error", tc.method, tc.path, tc.version)
+			}
+		})
+	}
+}
+
+func TestStore_ConfirmBaseline_IsIdempotentOnAConfirmedVersion(t *testing.T) {
+	// Confirming twice asks for a state the caller already has. Reporting an
+	// error would turn a successful end state into a failure message.
+	s := newObsStore(t)
+	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+		t.Fatalf("SaveBaselineFrom: %v", err)
+	}
+	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+		t.Fatalf("first ConfirmBaseline: %v", err)
+	}
+	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+		t.Errorf("second ConfirmBaseline = %v, want nil", err)
+	}
+}
