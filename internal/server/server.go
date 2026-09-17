@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -296,6 +297,23 @@ func (s *Server) handleConfirmBaseline(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(hist)
 }
 
+// isLoopbackRequest reports whether the request came from this machine.
+//
+// It is the trust boundary for retargeting, and the only one available: the
+// dashboard has no login, so "who is asking" has to be answered by where the
+// connection came from. An operator at their own browser is naming the API they
+// want sniffed; the same string arriving from off-box is an instruction from
+// someone who may not be entitled to give it, and Driftwood runs inside
+// networks worth reaching.
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var cfg types.ProxyConfig
@@ -311,6 +329,16 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		// the next start by anyone who had launched on a different port.
 		cfg.ProxyPort = s.store.GetConfig().ProxyPort
 
+		// Retargeted before it is persisted, so a target the proxy refuses is
+		// never written down. Checking afterwards left the config panel
+		// describing an endpoint that was not the one in use, and discarding the
+		// error entirely meant a body of `{}` decoded to a zero config and
+		// silently wiped the saved settings.
+		if err := s.proxy.SetTarget(cfg.TargetURL, isLoopbackRequest(r)); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
 		if err := s.store.UpdateConfig(cfg); err != nil {
 			// The change is live but will not survive a restart. Saying so is the
 			// point: silently accepting a setting that does not persist is how the
@@ -318,7 +346,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		_ = s.proxy.SetTarget(cfg.TargetURL)
 		s.hub.Publish("config_updated", cfg)
 	}
 

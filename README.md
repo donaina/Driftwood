@@ -27,7 +27,7 @@ The backend team changes a database column type or schema payload without notify
   - **Additive Changes**: Tracks newly introduced non-breaking properties.
 - **AI Change Explanations (optional)**: A sidecar service reads the structural diff and writes a short explanation of it — what changed, what it is likely to break, and what to do next. It runs alongside Driftwood rather than inside it; alerts are complete without it, and the binary never waits on it.
 - **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from locked baseline schemas.
-- **JavaScript & Node.js Native Support**: Installable via `npx` / `npm` and importable into Express/Fastify/Next.js applications.
+- **JavaScript & Node.js Native Support**: Installable via `npx` / `npm`, with a module that starts and stops the proxy from a Node process.
 - **Embedded Web Dashboard**: Native single-binary web interface at `http://localhost:8787/_driftwood/` with real-time SSE updates.
 - **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Removed Field`, `Nullability Violation`) to test contract alerts instantly.
 - **Persistent Contract Storage**: Saved baseline contracts persist across restarts in `~/.driftwood/baselines.json`.
@@ -37,7 +37,10 @@ The backend team changes a database column type or schema payload without notify
 ## Severity model
 
 Every difference between a response and its baseline is recorded as a **delta** on the traffic
-record, so nothing is dropped. Severity decides what happens beyond that:
+record, and severity decides what happens beyond that. The one exception is a field whose name
+marks it as volatile — a request ID, a trace ID, a timestamp — which is set aside before the
+comparison. Its value changes on every call by design, so a difference there is not drift, and
+a field that is nothing but noise cannot be reported as a broken contract.
 
 | Severity | What it covers | What it does |
 | --- | --- | --- |
@@ -195,7 +198,6 @@ export interface GetUsersResponse {
 │   └── src/             # Components, one entry per view the dashboard mounts
 ├── internal/
 │   ├── capture/         # Network traffic payload & header sanitization
-│   ├── config/          # Configuration loader
 │   ├── contract/        # TypeScript interface generator & contract exports
 │   ├── diff/            # Real-time JSON schema diffing engine & tests
 │   ├── events/          # Server-Sent Events (SSE) broadcasting hub

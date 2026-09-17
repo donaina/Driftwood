@@ -763,8 +763,8 @@
           <div class="panel panel--flush">
             <div class="baseline-head">
               <div>
-                <span class="method-badge method-${b.method.toLowerCase()}">${b.method}</span>
-                <span class="mono strong sp-left-sm">${b.path}</span>
+                <span class="method-badge method-${b.method.toLowerCase()}">${escapeHtml(b.method)}</span>
+                <span class="mono strong sp-left-sm">${escapeHtml(b.path)}</span>
                 <span class="type-xs muted sp-left-md">v${b.version}</span>
               </div>
               <button class="btn btn-danger type-xs" onclick="deleteBaseline(${jsArg(b.method)}, ${jsArg(b.path)})">Delete</button>
@@ -866,7 +866,7 @@
       if (selectedTraffic.diff && selectedTraffic.diff.deltas && selectedTraffic.diff.deltas.length > 0) {
         deltasContainer.innerHTML = selectedTraffic.diff.deltas.map(d => `
           <div class="delta-item ${d.severity.toLowerCase()}">
-            <div class="delta-path">${d.json_path}</div>
+            <div class="delta-path">${escapeHtml(d.json_path)}</div>
             <div class="sp-top-xs">${escapeHtml(d.message)}</div>
           </div>
         `).join('');
@@ -989,11 +989,18 @@
       const target_url = document.getElementById('target-url-input').value;
       const auto_save_baseline = document.getElementById('auto-baseline-check').checked;
 
-      await fetch('/_driftwood/api/config', {
+      // The server validates the target and refuses a retarget that arrived from
+      // off-box, so this can now fail for a reason worth reading. Announcing
+      // "Saved" regardless is how the panel came to look like it worked.
+      const res = await fetch('/_driftwood/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_url, auto_save_baseline, proxy_port: "8787", intercept_json: true })
       });
+      if (!res.ok) {
+        showToast('Config Not Saved', (await res.text()).trim());
+        return;
+      }
       showToast('Config Saved', 'Proxy settings updated.');
     }
 
