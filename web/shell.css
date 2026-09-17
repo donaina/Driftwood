@@ -113,7 +113,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 800;
+    font-weight: 600;
     color: var(--bg-main);
     font-size: var(--text-lg);
   }
@@ -153,6 +153,8 @@
     gap: 1rem;
   }
 
+  /* A <button>, so it needs the button defaults reset. Its tinted fill and
+     border are the pill §4 describes for a breaking badge. */
   .alert-counter {
     display: flex;
     align-items: center;
@@ -162,6 +164,7 @@
     color: var(--accent-breaking);
     padding: 0.35rem 0.75rem;
     border-radius: var(--radius-sm);
+    font-family: inherit;
     font-size: var(--text-base);
     font-weight: 600;
     cursor: pointer;
@@ -284,17 +287,26 @@
 
   .section-title {
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
     margin-bottom: 0.75rem;
   }
 
+  /* A real <button>, not a <div> with an onclick. As a div it could not be
+     reached by Tab at all, so the entire navigation was unreachable from the
+     keyboard — the one thing on the page a keyboard user needs first. The
+     reset below is what a button brings with it that a div does not. */
   .nav-item {
     display: flex;
     align-items: center;
     gap: 0.65rem;
+    width: 100%;
+    background: none;
+    border: none;
+    font-family: inherit;
+    text-align: left;
     /* The 3px is reserved on every item, transparent when inactive, so
        selecting a nav item changes its colour and not its text position.
        Padding-left is reduced by the same 3px to keep idle geometry as it
@@ -313,8 +325,13 @@
 
   /* Icon geometry lives here rather than in attributes on each <svg> so the
      ten nav icons stay a single line of markup each and the active state's
-     colour is inherited via currentColor. */
-  .nav-icon {
+     colour is inherited via currentColor. `.btn-icon` is the same geometry
+     for an icon sitting inside a button label — the two places the shell had
+     an emoji glyph instead of a drawn one (the TypeScript export link's 🔷
+     and the drawer's ✕) now use it, which is also what DESIGN.md §7 asks
+     for: no emoji in UI chrome. */
+  .nav-icon,
+  .btn-icon {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
@@ -620,7 +637,7 @@
 
   .method-badge {
     font-family: 'JetBrains Mono', monospace;
-    font-weight: 700;
+    font-weight: 500;
     font-size: var(--text-xs);
     padding: 0.2rem 0.5rem;
     border-radius: var(--radius-xs);
@@ -744,7 +761,7 @@
 
   .diff-card-title {
     font-size: var(--text-base);
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
@@ -1128,7 +1145,7 @@
   text-align: center;
   line-height: 16px;
   font-size: var(--text-xs);
-  font-weight: bold;
+  font-weight: 600;
   }
 
   .help-tooltip .help-icon:hover {
@@ -1705,6 +1722,433 @@
   .integrations-filter-btn:active,
   .nav-item:active {
     transform: translateY(1px);
+  }
+
+  /* =====================================================================
+     Shell primitives.
+
+     The shell markup carried 109 inline `style=` attributes. Most were the
+     same handful of declarations written out again at every site, and that
+     is why DESIGN.md's type scale was not actually enforced: a value set
+     inline cannot be changed in one place, so every drift in it had to be
+     re-decided by hand at each of the 109 call sites.
+
+     These are primitives, not components — `.row-between` says what the box
+     does, not what it is for. Naming them by role (`.demo-row`) would have
+     multiplied them by the number of places a row happens to appear.
+
+     None of these may collide with a Tailwind utility name. This block is
+     layered into `shell`, which is declared after `utilities`, so a `.mb-1`
+     here would silently beat Tailwind's `.mb-1` inside the React views.
+     ===================================================================== */
+
+  /* --- Text ---------------------------------------------------------- */
+  .meta {                    /* the muted explanatory line beside a label */
+    font-size: var(--text-base);
+    color: var(--text-muted);
+  }
+
+  .muted { color: var(--text-muted); }
+
+  /* §3 caps display at weight 600 and says "never bold". The shell had two
+     font-weight:700 sites; this is the only weight above 500 it needs. */
+  .strong { font-weight: 600; }
+
+  .mono { font-family: var(--font-mono); }
+
+  /* §3's "Density-7 rule": every metric, path and timestamp is mono. */
+  .metric {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+  }
+
+  .label-caps {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Size-only helpers, named `type-*` rather than `text-*`: `text-xs`,
+     `text-lg` and friends are Tailwind utilities, and a same-named class in
+     this layer would silently win inside the React views. */
+  .type-xs { font-size: var(--text-xs); }
+  .type-sm { font-size: var(--text-sm); }
+  .type-md { font-size: var(--text-md); }
+  .type-lg { font-size: var(--text-lg); }
+  .type-xl { font-size: var(--text-xl); }
+
+  .align-center { text-align: center; }
+
+  /* --- Layout -------------------------------------------------------- */
+  .row-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .row-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .row-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .row-wrap--tight { gap: 0.5rem; }
+
+  /* A run of buttons in a centred row — the wizard's nav and the simulator's
+     action rows. */
+  .row-actions {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .row-actions--center { justify-content: center; }
+
+  .stack { display: grid; gap: 1rem; }
+  .stack-tight { display: grid; gap: 0.75rem; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  /* --- Spacing -------------------------------------------------------
+     For the sites whose margin has no semantic home. Where one exists the
+     margin is folded into that class instead, so this stays small.
+     ------------------------------------------------------------------- */
+  .sp-top-xs { margin-top: 0.25rem; }
+  .sp-top-sm { margin-top: 0.5rem; }
+  .sp-top-md { margin-top: 1rem; }
+  .sp-top-lg { margin-top: 2rem; }
+  .sp-bottom-xs { margin-bottom: 0.25rem; }
+  .sp-bottom-sm { margin-bottom: 0.5rem; }
+  .sp-bottom-md { margin-bottom: 1rem; }
+  .sp-bottom-lg { margin-bottom: 1.5rem; }
+  .sp-bottom-xl { margin-bottom: 2rem; }
+  .sp-left-sm { margin-left: 0.5rem; }
+  .sp-left-md { margin-left: 1rem; }
+
+  /* --- Surfaces ------------------------------------------------------ */
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+  }
+
+  /* §4: "Settings panel max-width 550px." */
+  .panel--narrow { max-width: 550px; }
+  .panel--wide { max-width: 600px; }
+
+  .panel--flush { padding: 1rem; }
+
+  .note {                    /* a quiet full-width message block */
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+  }
+
+  .inset {
+    background: var(--bg-hover);
+    border-radius: var(--radius-sm);
+    padding: 1.5rem;
+  }
+
+  /* The setup wizard's AI-explanation block. Accent bar on a tinted ground,
+     the same shape §4 gives a delta. */
+  .callout {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: color-mix(in srgb, var(--accent-healthy) 10%, transparent);
+    border-left: 3px solid var(--accent-healthy);
+    border-radius: var(--radius-xs);
+    font-size: var(--text-base);
+  }
+
+  /* --- Fields --------------------------------------------------------
+     Replaces five copies of an identical <select> style. Note it does NOT
+     match `.form-group select, .form-group input` above, which uses
+     radius-sm on --bg-hover where this uses radius-xs on --bg-card. The two
+     are the same control and should not differ; unifying them changes how
+     the React views look, so it is recorded here rather than done silently
+     in a refinement pass.
+     ------------------------------------------------------------------- */
+  .field-label {
+    display: block;
+    font-size: var(--text-base);
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .field-label--tight { margin-bottom: 0.25rem; }
+
+  .field-label--inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    margin-bottom: 0;
+  }
+
+  .field-input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xs);
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: var(--text-base);
+  }
+
+  /* --- Signals -------------------------------------------------------
+     The 24px status disc on each simulator row. Shape carries the meaning
+     as well as colour (§4's dual coding): a filled disc for a healthy
+     contract, a filled square glyph for a breaking one.
+     ------------------------------------------------------------------- */
+  .signal-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    color: var(--bg-main);
+    font-size: var(--text-xs);
+  }
+
+  .signal-dot--healthy { background: var(--accent-healthy); }
+  .signal-dot--breaking { background: var(--accent-breaking); }
+
+  .status-ok { color: var(--accent-healthy); }
+  .status-bad { color: var(--accent-breaking); }
+
+  .delta-ok {
+    color: var(--accent-healthy);
+    font-weight: 500;
+  }
+
+  /* A button that should read as a link — the wizard's "I'll configure
+     later". Reset in full rather than overriding `.btn`, so it does not
+     depend on which of the two wins. */
+  .link-quiet {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-muted);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  /* --- Named one-offs ------------------------------------------------
+     Each of these is a box that appears once and had its look written
+     inline. Named so the value lives here rather than at the call site.
+     ------------------------------------------------------------------- */
+  .sidebar-note {          /* the simulator's intro line in the sidebar */
+    font-size: var(--text-base);
+    font-weight: 500;
+    color: var(--text-main);
+    margin-bottom: 1.5rem;
+  }
+
+  .subhead {               /* h4 under a panel heading */
+    color: var(--text-main);
+    margin-bottom: 0.5rem;
+  }
+
+  .view-title {
+    font-size: var(--text-md);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 1rem;
+  }
+
+  .view-title--flush { margin-bottom: 0; }
+
+  .baseline-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .toast-title {
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 0.25rem;
+  }
+
+  .search-bar--block { width: 100%; }
+
+  /* --- Setup wizard --------------------------------------------------
+     §3 caps brand at 1.25rem and values at 1.5rem, and asks hierarchy to
+     come from weight and colour rather than size jumps. The wizard opened
+     with a 40px wordmark above a 32px heading above 18px body — three size
+     jumps, all three over the cap.
+     ------------------------------------------------------------------- */
+  .setup-wordmark {
+    display: inline-block;
+    font-size: var(--text-xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-main);
+    margin-bottom: 1rem;
+  }
+
+  .setup-title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.5rem;
+  }
+
+  .setup-lead {
+    font-size: var(--text-md);
+    color: var(--text-muted);
+    line-height: 1.6;
+    max-width: 400px;
+    margin: 0 auto 2rem;
+  }
+
+  .setup-shell { text-align: center; padding: 3rem; }
+
+  .setup-field { margin-bottom: 1.5rem; }
+
+  .setup-section { margin-bottom: 2rem; }
+
+  /* §4: "Skeleton rows matching table dimensions — shimmering Hairline bars.
+     No circular spinners anywhere." The wizard's detection step used a
+     .vital-ring, which is a donut gauge, as a spinner. Three bars that
+     shimmer read as loading without claiming to measure anything. */
+  .skeleton-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .skeleton-bar {
+    height: 8px;
+    border-radius: var(--radius-xs);
+    background: linear-gradient(
+      90deg,
+      var(--bg-hover) 0%,
+      var(--surface-3) 50%,
+      var(--bg-hover) 100%
+    );
+    background-size: 200% 100%;
+    animation: driftwood-shimmer 1.6s ease-in-out infinite;
+  }
+
+  .skeleton-bar:nth-child(2) { width: 72%; }
+  .skeleton-bar:nth-child(3) { width: 48%; }
+
+  /* The list variant, sized to a table row so a loading view and the loaded
+     view it precedes are the same shape. `.skeleton-bars` is a block of three
+     hairlines for the drawer and wizard; this is a column of rows for a view
+     that is about to render cards. */
+  .skeleton-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .skeleton-row {
+    height: 44px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(
+      90deg,
+      var(--bg-hover) 0%,
+      var(--surface-3) 50%,
+      var(--bg-hover) 100%
+    );
+    background-size: 200% 100%;
+    animation: driftwood-shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* A ragged bottom edge, so the block reads as content of unknown length
+     rather than as a table someone forgot to fill in. */
+  .skeleton-row:last-child { width: 60%; }
+
+  /* §3 caps every weight at 600, but Tailwind's preflight ships
+     `b, strong { font-weight: bolder }`, which resolves to 700 against a 400
+     parent — so every <strong> landed above the cap and no class on the
+     element could say otherwise. Cap the elements themselves. */
+  b,
+  strong {
+    font-weight: 600;
+  }
+
+  @keyframes driftwood-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  /* ---------------------------------------------------------------------
+     Focus visibility.
+
+     DESIGN.md §4: "focus ring is 1px Vital Teal border swap — no box-shadow
+     ring". Only four selectors had any :focus rule — the search bar, the
+     setup wizard input, and .form-group's controls — so every button, nav
+     item and link fell back to the UA default. On a #09090B surface Chrome's
+     default ring is very nearly invisible, which is the whole surface.
+
+     Inputs get the border swap §4 names. Everything else gets a 1px teal
+     OUTLINE rather than a border swap: swapping a border on an element whose
+     resting state has none would reflow it by a pixel on every tab. Outline
+     draws outside the box, so it is the same ring at no layout cost — and it
+     is not a box-shadow, which is what §4 bans and what the React views use.
+     --------------------------------------------------------------------- */
+  :focus-visible {
+    outline: 1px solid var(--accent-healthy);
+    outline-offset: 2px;
+  }
+
+  /* Controls that sit flush against a neighbour: a 2px offset would overlap
+     the next row, so the ring hugs the box instead. */
+  .btn:focus-visible,
+  .nav-item:focus-visible,
+  .demo-btn:focus-visible,
+  .integrations-filter-btn:focus-visible {
+    outline-offset: 1px;
+  }
+
+  /* Text fields keep :focus rather than :focus-visible. The ring marks where
+     the caret is, and a pointer user who clicks into a field still needs to
+     see that — :focus-visible would suppress it for them. */
+  .search-bar:focus,
+  .field-input:focus,
+  .form-group select:focus,
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--accent-healthy);
+  }
+
+  /* The traffic row is the drawer's only keyboard entry point (§4: "entire
+     row is the click target"). Inset because a row's outline would
+     otherwise sit in the gap between rows and read as a rule. */
+  tbody tr:focus-visible {
+    outline: 1px solid var(--accent-healthy);
+    outline-offset: -1px;
+  }
+
+  /* §4 gives inputs a mono placeholder. */
+  .search-bar::placeholder,
+  .field-input::placeholder {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    opacity: 1;
   }
 
   /* ---------------------------------------------------------------------

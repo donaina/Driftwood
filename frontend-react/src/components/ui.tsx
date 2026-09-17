@@ -1,0 +1,278 @@
+/* Shared primitives for the React views.
+
+   Six components had grown six private copies of the same class strings —
+   the card surface fourteen times, the section title fourteen times, the
+   primary button seven. Copies drift: the cards had already diverged into
+   p-6/p-4 variants and the buttons into three different paddings, none of
+   which was a decision anyone made. These are the same class strings, named
+   once, so a change to the surface is one edit rather than fourteen.
+
+   The class names are deliberately kept identical to the ones they replace,
+   except where DESIGN.md mandates a value the copies had drifted off — see
+   `Button`'s 6px radius.
+*/
+import React from 'react';
+
+/* §4 Toasts: "Bottom-right, 380px, Panel Surface fill, severity-colored left
+   accent." The shell already owns that container (web/index.html
+   #toast-container, which carries role="status" aria-live="polite"), and the
+   inline script exposes showToast(). The React views were calling the native
+   alert() instead — a blocking browser modal that cannot be styled, cannot be
+   announced by that live region, and on the settings panels was the entire
+   response to pressing Save.
+
+   Falls back to the console when no shell is mounted, which is the case for
+   the standalone Vite dev entry points (main-history.tsx and friends). */
+export function toast(title: string, message: string): void {
+  const shell = window as unknown as {
+    showToast?: (t: string, m: string) => void;
+  };
+  if (typeof shell.showToast === 'function') {
+    shell.showToast(title, message);
+    return;
+  }
+  console.warn(`[driftwood] ${title} — ${message}`);
+}
+
+/* -------------------------------------------------------------------------
+   Icons
+
+   These replace emoji (🔄 📥 🔒). An emoji renders in the platform's colour
+   font, so it ignores `currentColor`, sits on a different optical baseline
+   from the Geist label beside it, and reads as a different weight on every
+   OS. §3 gives the product exactly two typefaces; a third arriving through
+   the emoji font is not one of them. Geometry is inherited from currentColor
+   so an icon takes the colour of whatever it labels.
+   ---------------------------------------------------------------------- */
+
+const stroke = {
+  viewBox: '0 0 16 16',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+  className: 'w-4 h-4 shrink-0',
+};
+
+export const RefreshIcon: React.FC = () => (
+  <svg {...stroke}>
+    <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" />
+    <path d="M13.5 2.5V5H11" />
+  </svg>
+);
+
+export const DownloadIcon: React.FC = () => (
+  <svg {...stroke}>
+    <path d="M8 1.75v8.5" />
+    <path d="M4.75 7 8 10.25 11.25 7" />
+    <path d="M2.25 12.75h11.5" />
+  </svg>
+);
+
+export const LockIcon: React.FC<{ open?: boolean }> = ({ open = false }) => (
+  <svg {...stroke}>
+    <rect x="3.25" y="7" width="9.5" height="6.25" rx="1" />
+    <path d={open ? 'M5.75 7V5.25a2.25 2.25 0 0 1 4.4-.7' : 'M5.75 7V5.5a2.25 2.25 0 0 1 4.5 0V7'} />
+  </svg>
+);
+
+/* -------------------------------------------------------------------------
+   Surfaces
+   ---------------------------------------------------------------------- */
+
+type Pad = 'md' | 'sm';
+
+export const Panel: React.FC<
+  React.HTMLAttributes<HTMLDivElement> & {
+    pad?: Pad;
+    tone?: 'default' | 'error';
+  }
+> = ({ pad = 'md', tone = 'default', className = '', children, ...rest }) => (
+  <div
+    className={[
+      'bg-bg-card rounded-xl border',
+      pad === 'sm' ? 'p-4' : 'p-6',
+      tone === 'error' ? 'border-accent-breaking' : 'border-border-color',
+      className,
+    ]
+      .filter(Boolean)
+      .join(' ')}
+    {...rest}
+  >
+    {children}
+  </div>
+);
+
+/* An h3 inside a Panel, and an h4 inside a card within one. The heading level
+   is a prop rather than a second component because the two differ only in
+   level and size, and splitting them is how a document ends up jumping from
+   h2 to h4. */
+export const PanelTitle: React.FC<{
+  level?: 3 | 4;
+  size?: 'base' | 'lg';
+  className?: string;
+  children: React.ReactNode;
+}> = ({ level = 3, size = 'lg', className = '', children }) => {
+  const Tag = (level === 3 ? 'h3' : 'h4') as 'h3';
+  return (
+    <Tag
+      className={[
+        'font-semibold text-text-main',
+        size === 'lg' ? 'text-xl' : '',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {children}
+    </Tag>
+  );
+};
+
+/* -------------------------------------------------------------------------
+   Controls
+
+   §4: "Buttons: Flat fill, 6px radius, 1px structural border. … Tactile
+   press: translateY(1px) on :active, 100ms."
+
+   The radius is the one place these deviate from the strings they replace.
+   The copies were `rounded-lg`, which is --radius-lg, 12px — double the 6px
+   §4 specifies and double the shell's own .btn. The border on `primary` is
+   teal-on-teal: it costs 2px of width and nothing visually, which is what
+   makes it "structural" rather than decoration.
+   ---------------------------------------------------------------------- */
+
+type Variant = 'primary' | 'secondary' | 'quiet';
+/** The three paddings the copies had drifted into, named by size instead. */
+type Size = 'sm' | 'md' | 'lg';
+
+const VARIANT: Record<Variant, string> = {
+  primary:
+    'border-accent-healthy bg-accent-healthy text-bg-main hover:bg-accent-healthy/90',
+  secondary: 'border-border-color text-text-main hover:bg-bg-hover',
+  quiet: 'border-transparent text-text-muted hover:bg-bg-hover hover:text-text-main',
+};
+
+const SIZE: Record<Size, string> = {
+  lg: 'px-6 py-3',
+  md: 'px-4 py-2',
+  sm: 'px-3 py-1.5',
+};
+
+export const Button: React.FC<
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: Variant;
+    size?: Size;
+    /** Holds the button and says so, rather than silently doing nothing. */
+    busy?: boolean;
+  }
+> = ({
+  variant = 'secondary',
+  size = 'lg',
+  busy = false,
+  className = '',
+  disabled,
+  children,
+  ...rest
+}) => (
+  <button
+    type="button"
+    disabled={disabled || busy}
+    aria-busy={busy || undefined}
+    className={[
+      // inline-flex + gap, matching the shell's own .btn. Without it a button
+      // lays its label and any icon out as inline content, so "Refresh
+      // History" broke onto two lines the moment it gained an icon.
+      'inline-flex items-center justify-center gap-2 whitespace-nowrap',
+      'rounded-sm border transition-all duration-100 active:translate-y-px',
+      'disabled:opacity-50 disabled:cursor-not-allowed disabled:active:translate-y-0',
+      SIZE[size],
+      VARIANT[variant],
+      className,
+    ]
+      .filter(Boolean)
+      .join(' ')}
+    {...rest}
+  >
+    {busy ? 'Working…' : children}
+  </button>
+);
+
+/* A labelled form control. §4: "Label above input … Settings panel
+   max-width 550px." */
+export const Field: React.FC<{
+  label: string;
+  children: React.ReactNode;
+}> = ({ label, children }) => (
+  <div className="space-y-4">
+    <label className="block text-sm font-medium text-text-muted mb-2">
+      {label}
+    </label>
+    {children}
+  </div>
+);
+
+/* -------------------------------------------------------------------------
+   View scaffolding
+   ---------------------------------------------------------------------- */
+
+/* The h2 every view opens with. `align` is the two shapes that existed:
+   centred while the view has nothing to show, and split once it has an action
+   to sit beside the title. */
+export const ViewHeader: React.FC<{
+  title: string;
+  align?: 'center' | 'between';
+  action?: React.ReactNode;
+  lead?: string;
+}> = ({ title, align = 'between', action, lead }) => (
+  <div className={align === 'center' ? 'text-center py-12' : 'flex justify-between items-center'}>
+    <h2
+      className={
+        align === 'center'
+          ? 'text-2xl font-semibold tracking-tight text-text-main mb-4'
+          : 'text-2xl font-semibold tracking-tight text-text-main'
+      }
+    >
+      {title}
+    </h2>
+    {lead && <p className="text-text-muted max-w-xl mx-auto">{lead}</p>}
+    {action}
+  </div>
+);
+
+/* §4: "Empty states: Instrument-themed copy that directs action … with the
+   trigger button referenced by name. Never bare 'No data.'"
+
+   The ○ is §4's no-baseline shape, which is exactly what an empty history
+   is: nothing has been observed yet. */
+export const EmptyState: React.FC<{
+  title: string;
+  body: React.ReactNode;
+  action?: React.ReactNode;
+}> = ({ title, body, action }) => (
+  <Panel className="text-center">
+    <div className="text-text-muted text-2xl font-semibold" aria-hidden="true">
+      ○
+    </div>
+    <h3 className="font-semibold text-text-main mt-2 mb-1">{title}</h3>
+    <p className="text-text-muted text-sm max-w-xl mx-auto">{body}</p>
+    {action && <div className="flex justify-center mt-4">{action}</div>}
+  </Panel>
+);
+
+/* §4: "Loaders: Skeleton rows matching table dimensions — shimmering Hairline
+   bars. No circular spinners anywhere."
+
+   This replaced an `animate-pulse` circle, which is the circular spinner §4
+   bans. The classes live in web/shell.css (.skeleton-rows/.skeleton-row) —
+   same stylesheet, so the shimmer is defined once for both the shell and the
+   React views. */
+export const SkeletonRows: React.FC<{ rows?: number }> = ({ rows = 4 }) => (
+  <div className="skeleton-rows" aria-hidden="true">
+    {Array.from({ length: rows }, (_, i) => (
+      <div className="skeleton-row" key={i} />
+    ))}
+  </div>
+);

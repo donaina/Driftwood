@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Button, Panel, PanelTitle } from './ui';
 
 interface Scenario {
   id: string;
@@ -83,7 +84,7 @@ const ScenarioLibrary: React.FC = () => {
 
     return (
       <div className={`w-8 h-8 flex items-center justify-center rounded-lg ${bgColor}`}>
-        <span className={`font-bold text-${textColor}`}>
+        <span className={`font-semibold text-${textColor}`}>
           {severity.toUpperCase()}
         </span>
       </div>
@@ -95,25 +96,24 @@ const ScenarioLibrary: React.FC = () => {
     return (
       <div className="space-y-8">
         <div className="text-center">
-          <h2 className="text-3xl font-bold text-text-main mb-4">Scenario Library</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-text-main mb-4">Scenario Library</h2>
           <p className="text-text-muted max-w-xl mx-auto">
             Learn about API contract changes with pre-configured breaking change scenarios
           </p>
         </div>
 
-        <div className="bg-bg-card rounded-xl border border-border-color p-6">
+        <Panel>
           <div className="flex justify-between items-start mb-4">
             <div className="flex items-center space-x-3">
               {renderSeverityBadge(activeScenario.severity)}
               <div>
-                <h3 className="text-xl font-semibold text-text-main mb-1">
+                <PanelTitle className="mb-1">
                   {activeScenario.title}
-                </h3>
+                </PanelTitle>
                 <p className="text-sm text-text-muted">{activeScenario.type}</p>
               </div>
             </div>
-            <button
-              onClick={() => {
+            <Button size="sm" onClick={() => {
                 setActiveScenario(null);
                 const scenarioRoot = document.getElementById('scenario-react-root');
                 if (scenarioRoot) (scenarioRoot as HTMLElement).style.display = 'none';
@@ -122,11 +122,9 @@ const ScenarioLibrary: React.FC = () => {
                 document.getElementById('view-traffic')!.classList.add('active');
                 document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
                 document.getElementById('nav-traffic')!.classList.add('active');
-              }}
-              className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-            >
+              }}>
               Back to Scenarios
-            </button>
+            </Button>
           </div>
 
           <div className="space-y-4">
@@ -134,18 +132,18 @@ const ScenarioLibrary: React.FC = () => {
 
             <div className="gap-4">
               <div>
-                <h4 className="font-semibold text-text-main mb-2">Impact</h4>
+                <PanelTitle level={4} size="base" className="mb-2">Impact</PanelTitle>
                 <p className="text-base text-text-muted">{activeScenario.impact}</p>
               </div>
               <div>
-                <h4 className="font-semibold text-text-main mb-2">Type</h4>
+                <PanelTitle level={4} size="base" className="mb-2">Type</PanelTitle>
                 <p className="text-base text-text-muted">{activeScenario.type}</p>
               </div>
             </div>
 
             {activeScenario.changes && activeScenario.changes.length > 0 ? (
               <div className="mt-4">
-                <h4 className="font-semibold text-text-main mb-2">Changes</h4>
+                <PanelTitle level={4} size="base" className="mb-2">Changes</PanelTitle>
                 <div className="space-y-2">
                   {activeScenario.changes.map((change, index) => (
                     <div key={index} className="bg-bg-hover rounded-lg p-3">
@@ -160,11 +158,11 @@ const ScenarioLibrary: React.FC = () => {
             ) : null}
 
             <div className="mt-4">
-              <h4 className="font-semibold text-text-main mb-2">Fix</h4>
+              <PanelTitle level={4} size="base" className="mb-2">Fix</PanelTitle>
               <p className="text-base text-text-muted">{activeScenario.fix}</p>
             </div>
           </div>
-        </div>
+        </Panel>
       </div>
     );
   }
@@ -173,67 +171,56 @@ const ScenarioLibrary: React.FC = () => {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-text-main mb-4">Scenario Library</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-text-main mb-4">Scenario Library</h2>
         <p className="text-text-muted max-w-xl mx-auto">
           Learn about API contract changes with pre-configured breaking change scenarios
         </p>
       </div>
 
       {/* Filters */}
-      <div className="bg-bg-card rounded-xl border border-border-color p-6">
+      <Panel>
         <div className="flex flex-wrap gap-2">
-          <button
-            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'all' ? 'active bg-accent-healthy/20 text-accent-healthy' : ''}`}
-            data-filter="all"
+          <Button size="md" className={`${activeFilter === 'all' ? 'active bg-accent-healthy/20 text-accent-healthy' : ''}`} data-filter="all"
             onClick={() => setActiveFilter('all')}
           >
             All Scenarios
-          </button>
-          <button
-            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'breaking' ? 'active bg-accent-breaking/20 text-accent-breaking' : ''}`}
-            data-filter="breaking"
+          </Button>
+          <Button size="md" className={`${activeFilter === 'breaking' ? 'active bg-accent-breaking/20 text-accent-breaking' : ''}`} data-filter="breaking"
             onClick={() => setActiveFilter('breaking')}
           >
             Breaking
-          </button>
-          <button
-            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'warning' ? 'bg-accent-warning/20 text-accent-warning' : ''}`}
-            data-filter="warning"
+          </Button>
+          <Button size="md" className={`${activeFilter === 'warning' ? 'bg-accent-warning/20 text-accent-warning' : ''}`} data-filter="warning"
             onClick={() => setActiveFilter('warning')}
           >
             Warnings
-          </button>
-          <button
-            className={`px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors ${activeFilter === 'info' ? 'bg-accent-healthy/20 text-accent-healthy' : ''}`}
-            data-filter="info"
+          </Button>
+          <Button size="md" className={`${activeFilter === 'info' ? 'bg-accent-healthy/20 text-accent-healthy' : ''}`} data-filter="info"
             onClick={() => setActiveFilter('info')}
           >
             Informational
-          </button>
+          </Button>
         </div>
-      </div>
+      </Panel>
 
       {/* Scenarios Grid */}
       <div className="grid gap-6">
         {filteredScenarios.map(scenario => (
-          <div key={scenario.id} className="bg-bg-card rounded-xl border border-border-color p-6">
+          <Panel key={scenario.id}>
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-center space-x-3">
                 {renderSeverityBadge(scenario.severity)}
                 <div>
-                  <h3 className="text-xl font-semibold text-text-main mb-1">
+                  <PanelTitle className="mb-1">
                     {scenario.title}
-                  </h3>
+                  </PanelTitle>
                   <p className="text-sm text-text-muted">{scenario.type}</p>
                 </div>
               </div>
 
-              <button
-                onClick={() => setActiveScenario(scenario)}
-                className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-              >
+              <Button size="sm" onClick={() => setActiveScenario(scenario)}>
                 View Details
-              </button>
+              </Button>
             </div>
 
             <div className="space-y-4">
@@ -241,18 +228,18 @@ const ScenarioLibrary: React.FC = () => {
 
               <div className="grid gap-4">
                 <div>
-                  <h4 className="font-semibold text-text-main mb-2">Impact</h4>
+                  <PanelTitle level={4} size="base" className="mb-2">Impact</PanelTitle>
                   <p className="text-base text-text-muted">{scenario.impact}</p>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-text-main mb-2">Type</h4>
+                  <PanelTitle level={4} size="base" className="mb-2">Type</PanelTitle>
                   <p className="text-base text-text-muted">{scenario.type}</p>
                 </div>
               </div>
 
               {scenario.changes && scenario.changes.length > 0 ? (
                 <div className="mt-4">
-                  <h4 className="font-semibold text-text-main mb-2">Changes</h4>
+                  <PanelTitle level={4} size="base" className="mb-2">Changes</PanelTitle>
                   <div className="space-y-2">
                     {scenario.changes.map((change, index) => (
                       <div key={index} className="bg-bg-hover rounded-lg p-3">
@@ -266,7 +253,7 @@ const ScenarioLibrary: React.FC = () => {
                 </div>
               ) : null}
             </div>
-          </div>
+          </Panel>
         ))}
       </div>
     </div>
