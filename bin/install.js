@@ -141,20 +141,47 @@ async function install() {
   }
 }
 
-function tryBuildFromSource() {
+function hasGoToolchain() {
   try {
-    const ext = process.platform === 'win32' ? '.exe' : '';
-    const targetPath = path.join(__dirname, `drift-bin${ext}`);
-    const mainGoPath = path.join(__dirname, '..', 'cmd', 'drift', 'main.go');
-
-    execSync(`go build -o "${targetPath}" "${mainGoPath}"`, { stdio: 'inherit' });
-    if (process.platform !== 'win32') {
-      try { fs.chmodSync(targetPath, 0o755); } catch (e) {}
-    }
-    console.log('[driftwood] Built binary locally using system Go toolchain.');
+    execSync('go version', { stdio: 'ignore' });
+    return true;
   } catch (e) {
-    console.log('[driftwood] Go is not installed on this system. Driftwood will download prebuilt binaries on release or run via Go if installed.');
+    return false;
   }
+}
+
+function tryBuildFromSource() {
+  if (!hasGoToolchain()) {
+    console.log('[driftwood] No Go toolchain found, so the binary cannot be built here.');
+    console.log('[driftwood] Install Go 1.25 or newer (https://go.dev/dl/) and reinstall, or download a release binary.');
+    return false;
+  }
+
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  const targetPath = path.join(__dirname, `drift-bin${ext}`);
+  const moduleRoot = path.join(__dirname, '..');
+
+  try {
+    // Package mode, from the module root. `go build cmd/drift/main.go` compiles
+    // that one file, so any sibling that package main gains is silently left
+    // out of the binary.
+    execSync(`go build -o "${targetPath}" ./cmd/drift`, { cwd: moduleRoot, stdio: 'inherit' });
+  } catch (e) {
+    // The toolchain is present and the build failed, so check the toolchain
+    // first and only then report the build. Collapsing both into one "Go is not
+    // installed" message hid the real cause — a missing web/dist, which
+    // //go:embed makes fatal, was reported as a missing Go installation.
+    console.error('[driftwood] go build failed. The output above is from the Go toolchain.');
+    console.error('[driftwood] The dashboard must be built before the binary that embeds it:');
+    console.error('[driftwood]   npm --prefix frontend-react ci && npm --prefix frontend-react run build');
+    return false;
+  }
+
+  if (process.platform !== 'win32') {
+    try { fs.chmodSync(targetPath, 0o755); } catch (e) {}
+  }
+  console.log('[driftwood] Built binary locally using system Go toolchain.');
+  return true;
 }
 
 install();

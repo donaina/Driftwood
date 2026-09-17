@@ -31,7 +31,7 @@ func TestProxySSRFValidation(t *testing.T) {
 		"ftp://example.com",
 		"javascript:alert(1)",
 		"data:text/html,<script>alert(1)</script>",
-		"http://localhost:8787", // SSRF to local metadata - should be blocked
+		"http://localhost:8787",   // SSRF to local metadata - should be blocked
 		"http://169.254.169.254/", // AWS metadata
 		"http://127.0.0.1:8080",   // local
 		"",                        // empty

@@ -30,8 +30,41 @@ go.work
 
 # Node (for web frontend)
 node_modules/
-dist/
 build/
+
+# Vite's output, which web/web.go embeds. The files are not committed, but the
+# PLACEHOLDER is: //go:embed is a compile error when its directory is missing,
+# so on a fresh clone `go build ./...`, `go vet ./...` and `go test ./...` would
+# all fail. Note the pattern excludes the directory's *contents* rather than the
+# directory, because git cannot re-include a file whose parent directory is
+# excluded — `dist/` here would silently make the placeholder uncommittable.
+web/dist/*
+!web/dist/PLACEHOLDER
+
+# Where Vite wrote before it moved to web/dist. Ignored so that a stale local
+# build cannot be mistaken for the current one or shipped by accident.
+frontend-react/dist/
+
+# Output of the release-binaries workflow.
+/dist/
+
+# Binaries built at the repo root. `make build` writes ./drift.
+/drift
+/drift-*
+/driftwood
+/driftwood-*
+
+# Editor and migration debris. Four of these were tracked
+# (cmd/drift/main.go.bak, internal/server/server.go.bak, and
+# internal/storage/storage_test.go.bak{,2}), and untracked copies kept reaching
+# the npm tarball — the package ships whole directories, so anything sitting in
+# one is published, and npm's `files` array overrides .npmignore.
+*.bak
+*.bak[0-9]
+*.backup
+*.corrupt-backup
+*.orig
+*.rej
 
 # Environment
 .env
@@ -45,3 +78,6 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# npm pack output.
+*.tgz

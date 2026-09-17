@@ -69,8 +69,8 @@ func main() {
 	log.Printf("[Driftwood] Built-in Mock Simulator: http://localhost:%s/_driftwood/mock/users", cfg.ProxyPort)
 
 	httpServer := &http.Server{
-		Addr:         addr,
-		Handler:      srv.Router(),
+		Addr:              addr,
+		Handler:           srv.Router(),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		ReadTimeout:       30 * time.Second,

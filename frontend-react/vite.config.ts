@@ -6,6 +6,21 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [react()],
   build: {
+    // Built into web/, not frontend-react/dist, so that the Go package that
+    // serves these files can also embed them: //go:embed cannot reach outside
+    // its own package directory, and frontend-react/ is a sibling of web/.
+    // Keeping the output next to web.go means one package owns the dashboard —
+    // the HTML and the bundles it loads — and the binary carries both.
+    outDir: resolve(__dirname, '..', 'web', 'dist'),
+    // Not emptied, deliberately. web/dist/PLACEHOLDER is committed, because
+    // //go:embed is a compile error when the directory is missing and a fresh
+    // clone has to be able to build before it can run any Node. Emptying the
+    // directory deletes that file, which would leave git reporting it as
+    // removed after every build and re-break the clone as soon as that was
+    // committed. `make build` clears the directory itself and keeps the
+    // placeholder; the cost of a bare `npm run build` is only orphaned
+    // content-hashed chunks, which nothing references.
+    emptyOutDir: false,
     // One CSS file for the whole build. This is load-bearing, not cosmetic:
     // only one entry imports CSS today, but once shared primitives exist,
     // several entries could each pull in a stylesheet. With a stable output

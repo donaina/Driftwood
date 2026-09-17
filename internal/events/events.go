@@ -12,10 +12,10 @@ import (
 )
 
 type Hub struct {
-	mu              sync.RWMutex
-	clients         map[chan []byte]bool
-	broadcast       chan []byte
-	droppedAlerts   int64 // counter for dropped alerts
+	mu            sync.RWMutex
+	clients       map[chan []byte]bool
+	broadcast     chan []byte
+	droppedAlerts int64 // counter for dropped alerts
 }
 
 func NewHub() *Hub {

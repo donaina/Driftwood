@@ -1,0 +1,8 @@
+Vite writes the dashboard here, and web/web.go embeds the result, so the files
+themselves are not committed.
+
+This file is committed, and must stay: //go:embed is a compile error when its
+directory does not exist, so on a fresh clone its absence would break
+`go build ./...`, `go vet ./...` and `go test ./...` — the entire local gate.
+
+Run `make build` (or `npm --prefix frontend-react run build`) to populate it.
