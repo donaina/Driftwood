@@ -33,6 +33,17 @@ interface EnhancedVersion extends Omit<HistoryItem['versions'][0], 'sample_paylo
   stabilityScore?: number;
 }
 
+/* §4 asks status to be carried by shape and colour together, so the timeline
+   still reads for someone who cannot separate Fault Red from Vital Teal. Shape
+   is the half that survives greyscale, colourblindness, and a screenshot
+   pasted into a ticket. */
+const SEVERITY_SHAPE: Record<'healthy' | 'breaking' | 'warning' | 'unknown', string> = {
+  healthy: '●',
+  breaking: '■',
+  warning: '▲',
+  unknown: '○',
+};
+
 interface EndpointHistoryProps {
   history: HistoryItem;
   selectedVersionsMap: Map<string, number[]>;
@@ -123,48 +134,29 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
     // Check if this version is selected for comparison
     const isSelected = selectedVersions.includes(versionNumber);
 
-    // Determine appearance values
-    const getNodeColor = () => {
-      if (isLocked) return 'var(--accent-info)'; // Data Sky for locked version
-      switch (changeType) {
-        case 'healthy': return 'var(--accent-healthy)'; // Vital Teal
-        case 'breaking': return 'var(--accent-breaking)'; // Fault Red
-        case 'warning': return 'var(--accent-warning)'; // Caution Amber
-        default: return 'var(--text-muted)';
-      }
-    };
+    /* The node has a handful of named states, so its appearance is a class name
+       rather than a thing assembled at render time.
 
-    const getNodeBackground = () => {
-      if (isLocked) return 'rgba(90, 200, 250, 0.1)';
-      switch (changeType) {
-        case 'healthy': return 'rgba(0, 201, 167, 0.1)';
-        case 'breaking': return 'rgba(255, 59, 48, 0.1)';
-        case 'warning': return 'rgba(255, 159, 10, 0.1)';
-        default: return 'var(--bg-hover)';
-      }
-    };
+       It used to be assembled: the old code took `var(--border-color)`, chopped
+       off the "var(" and the ")", put a prefix back on, and interpolated the
+       result into a template literal. Tailwind builds its utilities by scanning
+       source for complete class strings, so none of what that produced was ever
+       generated, and the pieces that *did* resolve only did so because some
+       unrelated file happened to contain the same words. See the .version-node
+       rules in shell.css for what the user actually saw.
 
-    const getBorderColor = () => {
-      if (isLocked) return 'var(--accent-info)';
-      switch (changeType) {
-        case 'healthy': return 'var(--accent-healthy)';
-        case 'breaking': return 'var(--accent-breaking)';
-        case 'warning': return 'var(--accent-warning)';
-        default: return 'var(--border-color)';
-      }
-    };
+       Locked outranks severity: pinning is a decision somebody made, severity
+       is something Driftwood observed. */
+    const nodeState = isLocked
+      ? 'version-node--locked'
+      : changeType
+        ? `version-node--${changeType}`
+        : '';
 
-    const getNodeSymbol = () => {
-      // A drawn padlock, not an emoji: the status shapes beside it are
-      // text glyphs that take currentColor, and an emoji would not.
-      if (isLocked) return <LockIcon />;
-      switch (changeType) {
-        case 'healthy': return '●';
-        case 'breaking': return '■';
-        case 'warning': return '▲';
-        default: return '○';
-      }
-    };
+    // A drawn padlock for the locked state, §4's shapes for the rest. An emoji
+    // could not stand in: it ignores currentColor, so it would not take the
+    // colour that carries the other half of the meaning.
+    const nodeSymbol = isLocked ? <LockIcon /> : SEVERITY_SHAPE[changeType ?? 'unknown'];
 
     return (
       <div
@@ -174,17 +166,11 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
         title={tooltipContent.trim()}
       >
         <div className="flex flex-col items-center">
-          <div className={`w-10 h-10 flex items-center justify-center rounded-full
-            ${isSelected ? 'border-2 border-accent-info' : 'border'}
-            ${isSelected ? 'shadow-[0_0_0_3px_rgba(90,200,250,0.5)]' : ''}
-            bg-${isLocked ? 'accent-info/10' : getNodeBackground().includes('var(--') ?
-                  getNodeBackground().replace('var(--', '').replace(')', '') : getNodeBackground()}
-            border-${isSelected ? '2' : '1'} ${isSelected ? 'border-accent-info' : getBorderColor().includes('var(--') ?
-                  getBorderColor().replace('var(--', '').replace(')', '') : getBorderColor()}`}>
-            <span className={`text-${isLocked ? 'accent-info' : getNodeColor().includes('var(--') ?
-                  getNodeColor().replace('var(--', '').replace(')', '') : getNodeColor()} font-semibold`}>
-              {getNodeSymbol()}
-            </span>
+          <div className={`version-node ${nodeState} ${isSelected ? 'is-selected' : ''}`}>
+            {/* Decorative: the state is already in the title above and in the
+                lock button below, and a screen reader announcing "black
+                circle" adds nothing to either. */}
+            <span aria-hidden="true">{nodeSymbol}</span>
           </div>
           {index < enhancedVersions.length - 1 && (
             <div className="w-px h-4 mt-2 bg-border-color"></div>

@@ -698,6 +698,81 @@
     border: 1px solid var(--border-strong);
   }
 
+  /* §2 gives INFO the Data Sky hue, and this variant was missing because the
+     shell only ever badges *contract status* — match, breaking, warning, and
+     the no-baseline case above. The Scenario Library badges change severity
+     instead, and one of its three levels is informational, so it needed the
+     fourth colour rather than borrowing one of the other three. */
+  .badge-info {
+    background: color-mix(in srgb, var(--accent-info) 15%, transparent);
+    color: var(--accent-info);
+    border: 1px solid color-mix(in srgb, var(--accent-info) 30%, transparent);
+  }
+
+  /* Timeline nodes in the Version History view.
+
+     The appearance here was previously assembled out of CSS variable *names*:
+     `var(--border-color)` with the "var(--" and the ")" chopped off, and
+     `bg-${'accent-info/10'}`. Tailwind generates utilities by scanning source
+     for complete class strings, so the pieces this produced — `border-color`,
+     `accent-info`, `bg-accent-info/10` — were never generated. The 1px border
+     fell through to the `currentColor` default and drew Primary Ink: a text
+     colour doing structural work, on every node in the timeline. The locked
+     node's tint resolved to nothing at all, so the one state the lock exists to
+     announce looked identical to an ordinary one.
+
+     The states are finite and semantic, so they are classes. */
+  .version-node {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .version-node--locked {
+    border-color: var(--accent-info);
+    background: color-mix(in srgb, var(--accent-info) 10%, transparent);
+    color: var(--accent-info);
+  }
+
+  /* §4's shape-and-colour dual coding, waiting on a data source: the backend
+     does not yet report what changed between two versions, so nothing sets
+     `changeType` and these three are unreachable today. They are written down
+     anyway because §4 specifies the vocabulary, and re-deriving "breaking is a
+     red square" later is how a design system quietly loses it. */
+  .version-node--healthy {
+    border-color: var(--accent-healthy);
+    background: color-mix(in srgb, var(--accent-healthy) 10%, transparent);
+    color: var(--accent-healthy);
+  }
+
+  .version-node--breaking {
+    border-color: var(--accent-breaking);
+    background: color-mix(in srgb, var(--accent-breaking) 10%, transparent);
+    color: var(--accent-breaking);
+  }
+
+  .version-node--warning {
+    border-color: var(--accent-warning);
+    background: color-mix(in srgb, var(--accent-warning) 10%, transparent);
+    color: var(--accent-warning);
+  }
+
+  /* Selection is a deliberate second ring rather than a colour, because every
+     colour on this node already means a contract state (§2) and selection is
+     not one of them. */
+  .version-node.is-selected {
+    border-width: 2px;
+    border-color: var(--accent-info);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-info) 50%, transparent);
+  }
+
   /* Detail Modal Drawer */
   .drawer-overlay {
     position: fixed;
