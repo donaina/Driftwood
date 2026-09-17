@@ -37,7 +37,10 @@ The backend team changes a database column type or schema payload without notify
 ## Severity model
 
 Every difference between a response and its baseline is recorded as a **delta** on the traffic
-record, so nothing is dropped. Severity decides what happens beyond that:
+record, and severity decides what happens beyond that. The one exception is a field whose name
+marks it as volatile — a request ID, a trace ID, a timestamp — which is set aside before the
+comparison. Its value changes on every call by design, so a difference there is not drift, and
+a field that is nothing but noise cannot be reported as a broken contract.
 
 | Severity | What it covers | What it does |
 | --- | --- | --- |
