@@ -1,8 +1,8 @@
-import ReactDOM from 'react-dom/client';
+import { mountView } from './mount';
 import CustomAlertThresholds from './components/CustomAlertThresholds';
 
 function mountThresholds(container: HTMLElement) {
-  ReactDOM.createRoot(container).render(<CustomAlertThresholds />);
+  mountView(container, <CustomAlertThresholds />);
 }
 
 // Attach to window for external use

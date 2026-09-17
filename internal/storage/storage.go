@@ -25,6 +25,18 @@ type Store struct {
 	configPath  string
 	persistDir  string
 	writeMx     sync.Mutex // separate lock for file writes
+
+	/* Whether anyone has ever told this install what to sniff: a saved config,
+	   or --target/--port on the command line.
+
+	   This exists because the dashboard needs to know whether to offer its
+	   first-run setup, and it used to infer that from the store holding zero
+	   baselines. That inference was wrong twice over. Driftwood seeds a contract
+	   for its own mock simulator, so a fresh install always had one; and every
+	   request the proxy sees is auto-baselined, so a browser's incidental
+	   GET /favicon.ico was enough to make an untouched install look configured.
+	   Neither is the operator saying anything. This is. */
+	configured bool
 }
 
 func NewStore(targetURL, proxyPort string) *Store {
@@ -54,6 +66,21 @@ func NewStore(targetURL, proxyPort string) *Store {
 	return s
 }
 
+// SetConfigured records that the operator has named a target or a port, which
+// the dashboard reads back to decide whether to offer first-run setup.
+func (s *Store) SetConfigured(configured bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.configured = configured
+}
+
+// IsConfigured reports whether this install has ever been pointed at anything.
+func (s *Store) IsConfigured() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.configured
+}
+
 func (s *Store) GetConfig() types.ProxyConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -69,6 +96,7 @@ func (s *Store) GetConfig() types.ProxyConfig {
 func (s *Store) UpdateConfig(cfg types.ProxyConfig) error {
 	s.mu.Lock()
 	s.config = cfg
+	s.configured = true
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	s.mu.Unlock()
 
@@ -122,6 +150,9 @@ func (s *Store) ApplyRememberedConfig(targetFromFlag, portFromFlag bool) error {
 	s.config.AutoSaveBaseline = saved.AutoSaveBaseline
 	s.config.InterceptJSON = saved.InterceptJSON
 	s.config.DevMockMode = saved.DevMockMode
+	// A config on disk is a config somebody saved: the setup wizard, or the
+	// settings panel, or an earlier run. Either way the install is set up.
+	s.configured = true
 	return nil
 }
 

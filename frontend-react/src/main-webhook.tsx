@@ -1,8 +1,8 @@
-import ReactDOM from 'react-dom/client';
+import { mountView } from './mount';
 import WebhookIntegrations from './components/WebhookIntegrations';
 
 function mountWebhook(container: HTMLElement) {
-  ReactDOM.createRoot(container).render(<WebhookIntegrations />);
+  mountView(container, <WebhookIntegrations />);
 }
 
 // Attach to window for external use

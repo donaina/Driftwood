@@ -50,6 +50,14 @@ func main() {
 	if err := store.ApplyRememberedConfig(given["target"], given["port"]); err != nil {
 		log.Printf("[Driftwood] %v — continuing with the command-line defaults", err)
 	}
+	// Naming a target answers the setup wizard's own question — "where is your
+	// API running?" — so a first run with `--target https://api.acme.com` must
+	// not then be asked it. Only --target counts: --port says where Driftwood's
+	// own dashboard listens, which is not a statement about the API, and nearly
+	// every launch passes one.
+	if given["target"] {
+		store.SetConfigured(true)
+	}
 	// Everything below reads the effective config, not the flags: once the saved
 	// settings are overlaid, the flags are only one of its inputs.
 	cfg := store.GetConfig()
