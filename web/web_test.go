@@ -179,3 +179,32 @@ func TestTrimLeadingSlash(t *testing.T) {
 		}
 	}
 }
+
+// The committed placeholder keeps //go:embed compiling on a checkout that has
+// never run the frontend build, which is exactly why its presence cannot be
+// mistaken for a build: a dist holding only the placeholder serves the page in
+// place of every asset, and AssetsBuilt exists so a caller can tell.
+func TestHasStylesheet(t *testing.T) {
+	dir := t.TempDir()
+
+	if hasStylesheet(dir) {
+		t.Error("an empty dist reported built assets")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "PLACEHOLDER"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if hasStylesheet(dir) {
+		t.Error("the placeholder alone reported built assets")
+	}
+
+	if err := os.MkdirAll(filepath.Join(dir, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "driftwood.css"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !hasStylesheet(dir) {
+		t.Error("a built stylesheet was not reported")
+	}
+}

@@ -26,10 +26,10 @@ The backend team changes a database column type or schema payload without notify
   - **Format Changes**: Detects when a string's shape changes from one known format to another (`2024-01-31` ➔ a UUID), which a type check alone cannot see.
   - **Additive Changes**: Tracks newly introduced non-breaking properties.
 - **AI Change Explanations (optional)**: A sidecar service reads the structural diff and writes a short explanation of it — what changed, what it is likely to break, and what to do next. It runs alongside Driftwood rather than inside it; alerts are complete without it, and the binary never waits on it.
-- **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from locked baseline schemas.
+- **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from your baseline schemas.
 - **JavaScript & Node.js Native Support**: Installable via `npx` / `npm`, with a module that starts and stops the proxy from a Node process.
 - **Embedded Web Dashboard**: Native single-binary web interface at `http://localhost:8787/_driftwood/` with real-time SSE updates.
-- **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Removed Field`, `Nullability Violation`) to test contract alerts instantly.
+- **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Missing Field`, `Null Violation`) that drive the mock endpoint through a real breaking change, so you can watch an alert arrive end to end.
 - **Persistent Contract Storage**: Saved baseline contracts persist across restarts in `~/.driftwood/baselines.json`.
 
 ---
@@ -45,8 +45,8 @@ a field that is nothing but noise cannot be reported as a broken contract.
 | Severity | What it covers | What it does |
 | --- | --- | --- |
 | `BREAKING` | A required property is gone; a type changed; a non-nullable property returned `null`; a string's format changed from one known shape to another (`date` ➔ `uuid`). | Raises an alert and marks the request `BREAKING`. |
-| `WARNING` | A property the baseline did not require is gone; `integer` widened to `number`; a value stopped matching any known format. | Marks the request `WARNING`. Does not alert. |
-| `INFO` | The response gained something: a new property, or a value that now matches a known format. | Counted as healthy — the request still reads `MATCH`. |
+| `WARNING` | A property the baseline did not require is gone; `integer` widened to `number`; a value stopped matching any known format. | Marks the request `WARNING` and files it in the Alerts view. Nothing is broadcast — only `BREAKING` raises a live alert. |
+| `INFO` | The response gained something: a new property, or a value that now matches a known format. Also a `null` that started returning a value, and a `number` that narrowed to whole numbers. | Counted as healthy — the request still reads `MATCH`. |
 
 Whether a removed property is `BREAKING` or `WARNING` depends on what the baseline promised. A
 contract imported from an OpenAPI document uses that document's `required` list, so a property
@@ -82,17 +82,23 @@ npm --prefix frontend-react run build
 go build -o drift ./cmd/drift
 ```
 
-Skipping the frontend step fails the build rather than surprising you at runtime:
-`web/web.go` embeds `web/dist`, and `//go:embed` is a compile error when its
-directory is missing.
+`web/web.go` embeds `web/dist`, so the binary serves its own dashboard from any
+working directory. A committed `web/dist/PLACEHOLDER` keeps `//go:embed`
+compiling on a checkout that has never run the frontend step — without it,
+`//go:embed` is a compile error and a clean clone cannot build at all.
+
+The cost is that the build succeeds either way, so the binary names the problem at
+startup instead. If the assets are missing it says so, because otherwise every
+asset URL answers `200` with the page's own HTML and the dashboard renders
+unstyled and inert with nothing in the log to explain why.
 
 ### 2. JavaScript & TypeScript
 
 > **Not on the npm registry yet.** `@donaina/driftwood` has never been published —
-> the release workflow needs a tag pushed, and GitHub Actions on this repository
-> currently fails on a billing lock, so no release has ever been cut. The commands
-> below are the intended interface, not a working one. Build from source above in
-> the meantime.
+> the publish workflow runs when a GitHub Release is created, and GitHub Actions on
+> this repository currently fails on a billing lock, so no release has ever been
+> cut. The commands below are the intended interface, not a working one. Build from
+> source above in the meantime.
 
 #### Run directly via `npx`:
 
@@ -155,7 +161,7 @@ silently is not working. `AI_MODEL` overrides the model it calls.
 
 ## TypeScript Interface Generation
 
-Driftwood automatically converts locked baseline API payload contracts into TypeScript type definitions:
+Driftwood automatically converts baseline API payload contracts into TypeScript type definitions:
 
 - **Dashboard UI**: Click **`Export TypeScript Types (.d.ts)`** on [http://localhost:8787/_driftwood/](http://localhost:8787/_driftwood/).
 - **HTTP Endpoint**: Download directly via `GET http://localhost:8787/_driftwood/api/export/typescript`.
@@ -178,7 +184,7 @@ export interface GetUsersResponse {
 
 ### Production-Grade Capabilities
 
-1. **Low Overhead**: Built with Go standard library `httputil.NewSingleHostReverseProxy` for ultra-low latency transparent proxying.
+1. **Low Overhead**: Built on Go's standard library `net/http/httputil.ReverseProxy`, with a custom `Rewrite` and transport for ultra-low latency transparent proxying.
 2. **Memory Safety**: Uses thread-safe mutex locking (`sync.RWMutex`) and a bounded ring buffer (500 requests max) to prevent memory leaks under high traffic load.
 3. **Resilient SSE Streaming**: Non-blocking Server-Sent Events hub with drop safety ensures slow dashboard clients don't block API proxy throughput.
 4. **Single Binary Deployment**: Zero runtime dependencies — the dashboard page and `web/dist` are compiled into the binary with `go:embed`, so it serves its own UI from any working directory and can be moved anywhere on its own.
@@ -202,6 +208,7 @@ export interface GetUsersResponse {
 │   ├── diff/            # Real-time JSON schema diffing engine & tests
 │   ├── events/          # Server-Sent Events (SSE) broadcasting hub
 │   ├── mock/            # Built-in interactive contract drift simulator
+│   ├── openapi/         # OpenAPI spec import (`drift import -spec`)
 │   ├── proxy/           # HTTP reverse proxy & traffic sniffing interceptor
 │   ├── schema/          # Recursive JSON schema inference engine
 │   ├── server/          # HTTP server router & REST API controllers
