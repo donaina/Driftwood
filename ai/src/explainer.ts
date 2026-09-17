@@ -9,7 +9,16 @@ import {
 } from "./types";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = "claude-3-5-sonnet-20241022";
+
+/**
+ * The model that writes the explanations.
+ *
+ * Overridable because the answer changes with time and this is not the place to
+ * find out it did: it was pinned to claude-3-5-sonnet-20241022, and the same
+ * literal was repeated in index.ts's /health response, so the two could
+ * disagree about what was actually running. /health now reports this constant.
+ */
+export const MODEL = process.env.AI_MODEL || "claude-sonnet-5";
 
 const client = ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: ANTHROPIC_API_KEY })

@@ -18,7 +18,8 @@ PORT   ?= 8787
 # walk frontend-react/node_modules.
 GO_DIRS := cmd internal pkg web tests
 
-.PHONY: all build dashboard deps test vet fmt fmt-check serve verify clean
+.PHONY: all build dashboard deps test vet fmt fmt-check serve verify clean \
+        ai-deps ai-build ai-serve
 
 all: build
 
@@ -81,6 +82,29 @@ verify: fmt-check vet dashboard test
 		find web/dist -name '*.css'; exit 1; \
 	fi
 	@echo "verify: OK"
+
+# ---------------------------------------------------------------- ai sidecar
+
+# Optional, and deliberately not part of `build` or `verify`. Driftwood is
+# complete without it: an absent sidecar costs one refused connection and a
+# missing paragraph, and nothing in the proxy waits on it. A gate that needed an
+# ANTHROPIC_API_KEY would not be a gate anyone could run.
+AI_NPM := npm --prefix ai
+
+ai-deps: ai/node_modules
+
+ai/node_modules: ai/package-lock.json
+	$(AI_NPM) ci
+	@touch $@
+
+ai-build: ai-deps
+	$(AI_NPM) run build
+
+# Reads ANTHROPIC_API_KEY at startup, and AI_MODEL if you want a model other
+# than the default. Without a key the service still starts and answers 503 in
+# degraded mode, so a missing key is visible in GET /health rather than fatal.
+ai-serve: ai-deps
+	$(AI_NPM) run dev
 
 clean:
 	rm -f $(BINARY)

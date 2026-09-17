@@ -48,6 +48,10 @@ frontend-react/dist/
 # Output of the release-binaries workflow.
 /dist/
 
+# tsc's output for the AI sidecar. It has its own package.json and its own
+# build, so /dist/ above — which is anchored to the repo root — never covered it.
+ai/dist/
+
 # Binaries built at the repo root. `make build` writes ./drift.
 /drift
 /drift-*

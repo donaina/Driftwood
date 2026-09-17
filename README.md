@@ -25,6 +25,7 @@ The backend team changes a database column type or schema payload without notify
   - **Nullability Violations**: Detects when non-null properties suddenly return `null`.
   - **Format Changes**: Detects when a string's shape changes from one known format to another (`2024-01-31` ➔ a UUID), which a type check alone cannot see.
   - **Additive Changes**: Tracks newly introduced non-breaking properties.
+- **AI Change Explanations (optional)**: A sidecar service reads the structural diff and writes a short explanation of it — what changed, what it is likely to break, and what to do next. It runs alongside Driftwood rather than inside it; alerts are complete without it, and the binary never waits on it.
 - **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from locked baseline schemas.
 - **JavaScript & Node.js Native Support**: Installable via `npx` / `npm` and importable into Express/Fastify/Next.js applications.
 - **Embedded Web Dashboard**: Native single-binary web interface at `http://localhost:8787/_driftwood/` with real-time SSE updates.
@@ -116,6 +117,37 @@ const driftwood = new Driftwood({
 await driftwood.start();
 ```
 
+### 3. AI explanations (optional)
+
+Detection and alerting need none of this. Every alert already carries the structural
+diff; the sidecar adds a paragraph reading it back in prose, attached to the breaking
+alerts on the Alerts view.
+
+```bash
+cd ai
+npm ci
+ANTHROPIC_API_KEY=sk-ant-... npm run dev     # listens on :8788
+```
+
+Or `make ai-serve` from the repository root, which runs `npm ci` first.
+
+The sidecar listens on port **8788** and the proxy looks for it exactly there —
+that address is a constant in `internal/proxy/proxy.go`, so leave `AI_PORT` alone
+unless you also change it there.
+
+Nothing tells Driftwood whether the sidecar is running, because nothing needs to.
+If it is absent, breaking alerts are published immediately and without an
+explanation; if it is present but slow, the alert has already gone out by the time
+the explanation arrives, and the explanation is attached to the stored alert when it
+lands. With no API key the service still starts and answers `503`, so
+
+```bash
+curl localhost:8788/health
+```
+
+tells you which state you are in rather than leaving you with a process that
+silently is not working. `AI_MODEL` overrides the model it calls.
+
 ---
 
 ## TypeScript Interface Generation
@@ -154,6 +186,7 @@ export interface GetUsersResponse {
 
 ```
 .
+├── ai/                  # Optional AI explainer sidecar (Node, port 8788)
 ├── bin/                 # Node.js CLI executable wrapper (npx support)
 ├── cmd/
 │   └── drift/         # Main Go application entry point
