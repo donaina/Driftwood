@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Driftwood — catch the API change that breaks your frontend</title>
+  <meta name="description"
+    content="Driftwood sits between your app and its API, remembers the shape of every response, and tells you the moment one stops matching — with the exact field that changed. One binary, no dependencies, runs on your machine.">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- Resolve the theme BEFORE the stylesheet is parsed, for the same reason the
+       dashboard does: this must run before the first paint, and a deferred module
+       runs after. Get it wrong and a dark-mode reload paints the light theme for
+       a frame — which on a page whose hero is a full-width screenshot means
+       flashing the wrong screenshot at the reader.
+
+       It is the same storage key the dashboard uses, so a choice made in the app
+       is honoured here and vice versa. Only written when there is an actual
+       stored choice: with none, writing nothing is what leaves the CSS media
+       query free to follow the OS. -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('driftwood-theme');
+        if (stored === 'light' || stored === 'dark') {
+          document.documentElement.setAttribute('data-theme', stored);
+        }
+      } catch (e) { /* storage unavailable: fall through to the OS preference */ }
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- The dashboard's own families. Geist Mono rather than JetBrains Mono: the
+       shell sets mono at 400 and 500, and Geist Mono is the only mono in Geist's
+       family that ships both. Loading a second, different mono here would make
+       the screenshot in the hero disagree with the page it sits on. -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/landing/main.tsx"></script>
+</body>
+
+</html>

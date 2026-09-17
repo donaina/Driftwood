@@ -157,6 +157,43 @@ curl localhost:8788/health
 tells you which state you are in rather than leaving you with a process that
 silently is not working. `AI_MODEL` overrides the model it calls.
 
+### 4. The website (optional)
+
+`site/` is the marketing site and a try-it-out page, in a browser, for someone who
+has not installed anything. It is a separate Vite build that deploys independently
+of the binary — it is not compiled into it, and nothing in the Go build depends on
+it.
+
+```bash
+make site                      # → site/dist
+npm --prefix site run preview
+```
+
+It shares the dashboard's token file (`frontend-react/src/tokens.css`) and nothing
+else, so the two read as one product without the dashboard's shell — traffic table,
+drawer, toasts, wizard — coming along. `make verify` builds it and asserts its CSS
+actually carries those tokens: the import is a one-line change that would otherwise
+fail silently, rendering the site with no colours at all and still exiting `0`.
+
+**Run it against a live instance.** The try-it-out page drives the real control API
+at `/_driftwood/*` and needs it same-origin, because the control plane's CORS
+allowlist is localhost-only (`internal/server/server.go`, `isAllowedOrigin`). In dev,
+`site/vite.config.ts` proxies that prefix to `127.0.0.1:8787`, so starting `./drift`
+on its default port is enough:
+
+```bash
+./drift --port 8787 --target http://localhost:3000   # terminal 1
+npm --prefix site run dev                            # terminal 2
+```
+
+With no instance reachable the page says so and shows the command to start one. It
+does not fall back to canned output — a demo that quietly substitutes pre-recorded
+results is worse than no demo, because the reader takes away a belief that nothing
+they did established.
+
+`Caddyfile.driftwood` is the production layout: the static site at `/`, `/_driftwood/*`
+proxied to the binary with buffering off, because `/events` is a long-lived SSE stream.
+
 ---
 
 ## TypeScript Interface Generation
@@ -215,6 +252,8 @@ export interface GetUsersResponse {
 │   └── storage/         # Thread-safe in-memory store & disk persistence
 ├── pkg/
 │   └── types/           # Core domain models (SchemaNode, ContractDiff, etc.)
+├── site/                # Marketing site & try-it-out page (separate Vite build,
+│   └── src/             #   deployed independently — not embedded in the binary)
 ├── tests/               # End-to-end proxy integration tests
 ├── web/                 # Dashboard: index.html, shell.css, and the go:embed
 │   └── dist/            #   Vite's output, embedded into the binary

@@ -27,20 +27,42 @@ window, and the line turns from Data Sky to Caution Amber when the newest observ
 well above that endpoint's own median. It is a statement about the data, not a repeat of the
 Contract column's colour beside it.
 
-**Not yet built, and specified here as the target:** a *contract-stability* sparkline — the
-same 120px column plotting contract match health over the endpoint's last ~50 observations,
-flat and high while the contract holds, cliffing at the moment it broke. The data exists
-(`EndpointHistory.Observations[].ContractStatus`) and is not yet rendered. This is the
-element Driftwood should be remembered by; until it ships, §7's ban on invented numbers
-applies with full force to that column, as it does everywhere else.
+**The contract-stability sparkline** is the second signature element, and it is built. It
+plots contract match health across the endpoint's last ~50 observations in the Version
+History panel, flat and high while the contract holds, cliffing at the moment it broke —
+the one thing a single "current stability" percentage cannot show, because it has no memory
+of when things changed. The line is the **running** match rate rather than a per-request
+pass/fail: a per-request series over a healthy endpoint is a solid block of one value and
+reads as a filled rectangle, while the running rate starts where the first observation put
+it and settles as evidence accumulates, so the shape carries the trend.
+
+Two rules keep the number beside it honest, and both are the reason it is drawn from the
+observation window rather than from a version list. An observation with no baseline to be
+measured against is excluded from the denominator rather than counted as a failure — an
+endpoint that has been seen but never locked cannot fail to match a contract it does not
+have, and folding those in would report a brand-new endpoint as 0% stable. And the panel
+states how many requests the figure covers, because a rate over three sightings and a rate
+over fifty are not the same claim.
+
+This element has been built wrong once already: an earlier version averaged `Math.random()`
+per version and printed it to one decimal under the caption "Percentage of requests matching
+the baseline contract" — a number none of that arithmetic computed, that changed on every
+render, and that coloured itself green or red as a verdict. §7's ban on invented numbers
+applies to this column with full force, as it does everywhere else.
 
 ## 2. Color Palette & Roles
 
 Two palettes, one token list. Every colour is declared as a literal exactly **once per
-palette** and referenced by name everywhere else; `frontend-react/src/index.css` is the single
+palette** and referenced by name everywhere else; `frontend-react/src/tokens.css` is the single
 definition site for both, and `web/shell.css` consumes it through the shell aliases. Adding a
 colour means one literal in the light block, one in the dark block, and one alias line — never
 a third copy of a hex value anywhere.
+
+`tokens.css` is a file of its own rather than a block in `index.css` because a second surface
+reads it — the marketing site in §8 imports it directly, and the alternative was the site
+carrying its own copy of the palette, which is the drift this rule exists to prevent.
+`index.css` holds the layer order and the imports and is otherwise about the dashboard; the
+tokens are the part the two surfaces share.
 
 **Light** is the default, and is the world the product is designed in. **Dark** is the palette
 this dashboard originally shipped, kept because it was good. Precedence: an explicit
@@ -165,10 +187,18 @@ every rule below is silently inert.
 
 ## 7. Anti-Patterns (Banned)
 
+This list binds **both surfaces** — the dashboard and the marketing site (§8). It was written
+for the dashboard, and the parenthetical on the card-grid rule ("this is data, not marketing")
+reads as though a marketing page might be exempt. It is not. The site is where a reader decides
+whether the product is serious, so it is the last place to make an exception, and the card-grid
+ban in particular caught a real violation there: a three-step "how it works" section shipped as
+three equal cards, which is both the banned shape and a lie about content that is a sequence.
+
 - No emojis in UI chrome (severity icons are geometric shapes: ● ▲ ■ ○)
-- No `Inter` font — `Geist` only; no serifs anywhere (dashboard)
+- No `Inter` font — `Geist` only; no serifs anywhere (both surfaces; the site's display sizes
+  are additional tokens, not a second typeface — see §8)
 - No pure black `#000000` — dark mode's floor is Deep Monitor `#09090B`; light mode's ground is `#FAFAFA` and its cards are `#FFFFFF`
-- No colour written as a literal outside the two palette blocks in `index.css` — one definition site, or the themes drift apart
+- No colour written as a literal outside the two palette blocks in `tokens.css` — one definition site, or the themes drift apart
 - No neon/outer glow shadows, no purple/violet anywhere
 - No gradient text on headers — the brand wordmark is solid Primary Ink
 - No custom mouse cursors
@@ -180,3 +210,51 @@ every rule below is silently inert.
 - No decorative use of severity colors — healthy/amber/red mean contract state, nothing else (§2's method-badge exception is the only one, and it is labelled)
 - No infinite alert flashing — one pulse on arrival, then rest
 - No class name that lies about what an element is or does; if the shape changes, rename it
+
+## 8. The Marketing Site
+
+A second surface, at `site/`, deployed separately from the binary. It exists because the two
+have different jobs and different audiences: the dashboard is **Operate** — someone is reading
+a live traffic table and wants the breaking row in under a second — while the landing page is
+**Persuade** and the try-it-out page is **Operate on a demo**, in a browser, for someone who has
+not installed anything.
+
+**It shares §2's tokens and nothing else.** `site/src/styles.css` imports
+`frontend-react/src/tokens.css` — the same file the dashboard's `index.css` imports — and writes
+no colour, radius, shadow or font of its own. That is the whole mechanism by which the two read
+as one product, and it is why the token file was split out of `index.css` in the first place: the
+dashboard's *shell* (traffic table, drawer, toasts, wizard) must not come along with its palette.
+The site adds exactly two tokens, `--text-display` and `--text-display-lg`, as **new names**
+rather than by redefining the shared scale — overriding `--text-4xl` would give that token two
+meanings depending on which page you are on.
+
+What it does not share is the shell. A marketing page has no use for a traffic table.
+
+**The theme is one setting across both.** Same `data-theme` attribute on `<html>`, same
+`driftwood-theme` localStorage key, same pre-paint inline script in `<head>`. A reader who chose
+dark in the app is not flashed light when they land on the site, and their choice carries back.
+The key being identical is load-bearing and worth stating: a second key would look like it
+worked while silently disagreeing with the other page.
+
+Tailwind's `dark:` variant is **unusable** on either surface. It follows `prefers-color-scheme`,
+so it would ignore a reader who has explicitly chosen light on a dark machine — the one case the
+token layer goes out of its way to honour. The site swaps its two dashboard screenshots by theme
+with `.theme-light-only` / `.theme-dark-only` in `styles.css`, mirroring the token layer's exact
+conditions including the `:not([data-theme="light"])` guard.
+
+**Copy rules.** Every claim on the site must be true of this codebase — the same rule §7 already
+applies to numbers, extended to prose. No "trusted by" strip, no invented logos, no customer
+quotes, no pricing table: there are no customers to name and nothing to sell, so those slots hold
+a facts strip (each figure checkable in the repository) and an FAQ that answers the unflattering
+questions — "is it safe to bind to my network", "what does it not do" — rather than only the easy
+ones. Terminal output on the page is captured from a real run and the caption says what was
+changed.
+
+**The try-it-out page must never fall back to canned data.** It drives a real instance over
+the control API, same-origin, because the control plane's CORS allowlist is localhost-only
+(`internal/server/server.go`, `isAllowedOrigin`) — see `Caddyfile.driftwood`. If it cannot reach
+an instance it says so and shows the command to start one. A demo that quietly substitutes
+pre-recorded output is worse than no demo, because the reader takes away a belief that nothing
+they did established. Its liveness probe validates that the reply *parses as JSON*, not that the
+status was 200: a static host with an SPA fallback answers an unknown API path with 200 and the
+site's own HTML, which is the same failure this project shipped once in the dashboard.
