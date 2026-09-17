@@ -829,6 +829,61 @@ func TestStore_ApplyRememberedConfig_MissingAndCorruptFiles(t *testing.T) {
 	}
 }
 
+/*
+Configured, which is what the dashboard's first-run wizard keys off.
+
+	The bug this replaces: the wizard asked whether the store held zero
+	baselines. Driftwood seeds a contract for its own mock simulator, so a fresh
+	install never had zero, and auto-baselining means any stray request — a
+	browser's GET /favicon.ico is the one that actually happened — also made an
+	untouched install look set up. Both are traffic, not intent. This flag is
+	intent, so each way of expressing intent is asserted separately.
+*/
+func TestStore_IsConfigured(t *testing.T) {
+	t.Run("a fresh store is not configured", func(t *testing.T) {
+		s := newObsStore(t)
+		if s.IsConfigured() {
+			t.Error("a store nobody has touched reported itself as configured")
+		}
+	})
+
+	t.Run("a seeded baseline does not configure it", func(t *testing.T) {
+		s := newObsStore(t)
+		if _, err := s.SaveBaseline("GET", "/_driftwood/mock/users", `{"id":1}`); err != nil {
+			t.Fatalf("seeding a baseline: %v", err)
+		}
+		if s.IsConfigured() {
+			t.Error("captured traffic was mistaken for the operator naming a target")
+		}
+	})
+
+	t.Run("saving a config configures it", func(t *testing.T) {
+		s := newObsStore(t)
+		if err := s.UpdateConfig(types.ProxyConfig{TargetURL: "http://localhost:9000"}); err != nil {
+			t.Fatalf("UpdateConfig: %v", err)
+		}
+		if !s.IsConfigured() {
+			t.Error("a saved config did not mark the install configured")
+		}
+	})
+
+	t.Run("a config on disk configures it after a restart", func(t *testing.T) {
+		s := newObsStore(t)
+		if err := s.UpdateConfig(types.ProxyConfig{TargetURL: "http://localhost:9000"}); err != nil {
+			t.Fatalf("UpdateConfig: %v", err)
+		}
+
+		restarted := newObsStore(t)
+		restarted.configPath = s.configPath
+		if err := restarted.ApplyRememberedConfig(false, false); err != nil {
+			t.Fatalf("ApplyRememberedConfig: %v", err)
+		}
+		if !restarted.IsConfigured() {
+			t.Error("a remembered config did not survive a restart")
+		}
+	})
+}
+
 /* Provenance, and the auto-save trap it closes.
 
    A version captured from live traffic is a guess: Driftwood saw one response

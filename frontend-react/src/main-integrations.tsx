@@ -1,8 +1,8 @@
-import ReactDOM from 'react-dom/client';
+import { mountView } from './mount';
 import IntegrationsLibrary from './components/IntegrationsLibrary';
 
 function mountIntegrations(container: HTMLElement) {
-  ReactDOM.createRoot(container).render(<IntegrationsLibrary />);
+  mountView(container, <IntegrationsLibrary />);
 }
 
 // Attach to window for external use

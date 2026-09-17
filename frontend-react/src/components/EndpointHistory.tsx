@@ -24,6 +24,20 @@ export interface HistoryItem {
     source?: string;
   }>;
   observation_count: number;
+  /* The bounded window of recent sightings, oldest first — the same series
+     ObservationCount totals. In-memory only: storage strips it on persist, so
+     a fresh process legitimately has none and the stability panel says so
+     rather than showing a stale trend from the last run.
+
+     This was missing from the wire type even though the API has always sent
+     it, which is why the stability panel had nothing to compute from. */
+  observations?: Array<{
+    timestamp: string;
+    status_code: number;
+    duration_ms: number;
+    /* NO_BASELINE, MATCH, WARNING or BREAKING — see types.go. */
+    contract_status: string;
+  }>;
   locked_version?: number;
 }
 
@@ -42,6 +56,69 @@ const SEVERITY_SHAPE: Record<'healthy' | 'breaking' | 'warning' | 'unknown', str
   breaking: '■',
   warning: '▲',
   unknown: '○',
+};
+
+/* §1's contract-stability sparkline: contract match rate across the endpoint's
+   recent observations, oldest on the left. Flat and high means the contract has
+   held for the whole window; a cliff is the request where it stopped holding,
+   which is the one thing a single "current stability" percentage cannot show,
+   because it has no memory of when things changed.
+
+   The line is the RUNNING match rate, not a per-request pass/fail. A per-request
+   series over a healthy endpoint is a solid block of one value and reads as a
+   filled rectangle; the running rate starts wherever the first observation put
+   it and settles as evidence accumulates, so the shape carries the trend.
+
+   Drawn with preserveAspectRatio="none" and vector-effect="non-scaling-stroke"
+   so the geometry fills its 120px slot while the stroke stays an honest 1.5px —
+   the same construction as the traffic table's row sparkline. */
+const StabilitySparkline: React.FC<{
+  observations: NonNullable<HistoryItem['observations']>;
+  className?: string;
+}> = ({ observations, className = '' }) => {
+  const W = 120;
+  const H = 24;
+  const PAD = 2;
+
+  // Only sightings that had a contract to be measured against; a NO_BASELINE
+  // request neither held nor broke anything.
+  const rated = observations.filter((o) => o.contract_status !== 'NO_BASELINE');
+  if (rated.length === 0) return null;
+
+  let matched = 0;
+  const series = rated.map((o, i) => {
+    if (o.contract_status === 'MATCH') matched += 1;
+    return matched / (i + 1);
+  });
+
+  const stepX = series.length > 1 ? (W - PAD * 2) / (series.length - 1) : 0;
+  const points = series
+    .map((v, i) => {
+      const x = PAD + i * stepX;
+      const y = H - PAD - v * (H - PAD * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  return (
+    <svg
+      className={`w-[120px] h-[24px] shrink-0 ${className}`}
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`Contract match rate over the last ${rated.length} observed requests`}
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
 };
 
 interface EndpointHistoryProps {
@@ -229,30 +306,80 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   };
 
   const renderStabilityChart = () => {
-    /* This used to average a Math.random() value per version and print the
-       result to one decimal under the caption "Percentage of requests matching
-       the baseline contract" — a number none of that arithmetic computed, that
-       changed on every render, and that coloured itself green or red as a
-       verdict. Claiming a measured contract metric you did not measure is
-       worse than showing nothing, so it shows nothing until the backend
-       records what actually changed between versions. */
+    /* §1's signature element, and the reason the observation window exists.
+
+       What this must not be is what it was: the old version averaged a
+       Math.random() value per version and printed it to one decimal under the
+       caption "Percentage of requests matching the baseline contract" — a
+       number none of that arithmetic computed, that changed on every render,
+       and that coloured itself green or red as a verdict. It was replaced with
+       an em-dash, which was honest but useless.
+
+       It is now a real measurement over the real series. `observations` is the
+       endpoint's own recent sightings, each carrying the ContractStatus the
+       proxy computed for it at the time. Match rate over that window IS the
+       question the caption asks, so it no longer has to be approximated.
+
+       Two details keep the number honest:
+
+       - Requests with no contract to compare against are excluded from the
+         denominator rather than counted as failures. An endpoint that has been
+         observed but never locked cannot fail to match a baseline it does not
+         have, and folding NO_BASELINE in would report a brand-new endpoint as
+         0% stable.
+       - The panel says how many requests the figure covers. A rate over three
+         sightings and a rate over fifty are not the same claim. */
+    const observations = history.observations ?? [];
+    const checked = observations.filter((o) => o.contract_status !== 'NO_BASELINE');
+    const matched = checked.filter((o) => o.contract_status === 'MATCH').length;
+
+    if (checked.length === 0) {
+      return (
+        <div className="mb-6">
+          <PanelTitle className="mb-2">Contract Stability</PanelTitle>
+          <Panel pad="sm">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-text-muted">
+                Current stability:
+              </span>
+              <span className="font-mono text-text-muted font-semibold text-xl">
+                —
+              </span>
+            </div>
+            <div className="mt-2 text-xs text-text-muted">
+              {observations.length === 0
+                ? 'No requests observed yet in this session. Driftwood measures stability from live traffic, so this fills in as soon as your app calls through the proxy.'
+                : `Seen ${observations.length} ${observations.length === 1 ? 'request' : 'requests'}, but none had a contract to compare against yet. Lock a version below to start measuring.`}
+            </div>
+          </Panel>
+        </div>
+      );
+    }
+
+    const rate = matched / checked.length;
+    // Same thresholds as the vitals ring, so "stable" means one thing across
+    // the dashboard rather than two.
+    const tone =
+      rate === 1 ? 'text-accent-healthy' : rate >= 0.9 ? 'text-accent-warning' : 'text-accent-breaking';
+
     return (
       <div className="mb-6">
-        <PanelTitle className="mb-2">
-          Contract Stability Score
-        </PanelTitle>
+        <PanelTitle className="mb-2">Contract Stability</PanelTitle>
         <Panel pad="sm">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-text-muted">
-              Current Stability:
+          <div className="flex justify-between items-center gap-4">
+            <div>
+              <div className="text-sm font-medium text-text-muted">
+                Current stability:
+              </div>
+              <div className="mt-1 text-xs text-text-muted">
+                {matched} of the last {checked.length}{' '}
+                {checked.length === 1 ? 'request' : 'requests'} matched the contract.
+              </div>
+            </div>
+            <StabilitySparkline observations={observations} className={tone} />
+            <span className={`font-mono font-semibold text-xl ${tone}`}>
+              {Math.round(rate * 100)}%
             </span>
-            <span className="font-mono text-text-muted font-semibold text-xl">
-              —
-            </span>
-          </div>
-          <div className="mt-2 text-xs text-text-muted">
-            Not measured yet — Driftwood does not currently record what changed
-            between two versions of an endpoint.
           </div>
         </Panel>
       </div>

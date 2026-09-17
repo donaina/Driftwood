@@ -19,6 +19,7 @@ import (
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/server"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/web"
 )
 
 func main() {
@@ -49,6 +50,14 @@ func main() {
 	if err := store.ApplyRememberedConfig(given["target"], given["port"]); err != nil {
 		log.Printf("[Driftwood] %v — continuing with the command-line defaults", err)
 	}
+	// Naming a target answers the setup wizard's own question — "where is your
+	// API running?" — so a first run with `--target https://api.acme.com` must
+	// not then be asked it. Only --target counts: --port says where Driftwood's
+	// own dashboard listens, which is not a statement about the API, and nearly
+	// every launch passes one.
+	if given["target"] {
+		store.SetConfigured(true)
+	}
 	// Everything below reads the effective config, not the flags: once the saved
 	// settings are overlaid, the flags are only one of its inputs.
 	cfg := store.GetConfig()
@@ -76,6 +85,15 @@ func main() {
 	}
 	log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", cfg.TargetURL)
 	log.Printf("[Driftwood] Built-in Mock Simulator: http://localhost:%s/_driftwood/mock/users", cfg.ProxyPort)
+	// Said out loud for the same reason as the loopback note above: the failure
+	// is otherwise silent and looks like a bug in the dashboard rather than a
+	// missing build step. Every asset answers 200 with the page's own HTML, so
+	// the dashboard renders unstyled and inert with nothing in the log to say
+	// why. The proxy still sniffs and records correctly — this is the view, not
+	// the engine — so it warns rather than refusing to start.
+	if !web.AssetsBuilt() {
+		log.Printf("[Driftwood] The dashboard has no built assets: web/dist holds only the placeholder that keeps //go:embed compiling. Run `make build` (or `npm --prefix frontend-react run build`). Until then every asset URL returns the page itself, so the dashboard will render with no styling and no scripts.")
+	}
 
 	httpServer := &http.Server{
 		Addr:              addr,

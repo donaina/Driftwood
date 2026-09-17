@@ -1,0 +1,127 @@
+/* ============================================================================
+   The site's stylesheet.
+
+   It imports the dashboard's token file and nothing else from the dashboard.
+   Every colour, radius, shadow and font here therefore resolves to the same
+   value the app uses — which is what makes the two read as one product — while
+   the dashboard's own shell (traffic table, drawer, toasts, wizard) stays out,
+   because a marketing page has no use for any of it.
+
+   LAYER ORDER IS DECLARED FIRST, and for the same reason it is in the
+   dashboard: Tailwind emits layered CSS, and an unlayered reset beats every
+   layered utility regardless of specificity. Declaring the order up front is
+   what stops a base reset from silently zeroing the spacing scale in
+   production only.
+   ========================================================================== */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss";
+
+/* The shared tokens. Everything below reads from these and writes no colour of
+   its own. */
+@import "../../frontend-react/src/tokens.css";
+
+/* Two sizes the dashboard has no use for, added rather than redefined: the
+   shared scale stops at 40px because nothing in a dense instrument panel is
+   bigger than that, and a headline is. New names keep one definition site per
+   token — overriding --text-4xl here would give that token two meanings
+   depending on which page you are on. */
+@theme static {
+  --text-display: 44px;
+  --text-display-lg: 60px;
+}
+
+/* ---------------------------------------------------------------------------
+   Page-level defaults.
+
+   The site commits to light, with the same dark mode the dashboard has, driven
+   by the same `data-theme` attribute on <html> and the same localStorage key —
+   so a reader who chose dark in the app is not flashed light when they land
+   here, and their choice carries between the two.
+   ------------------------------------------------------------------------- */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: var(--font-sans, Geist, -apple-system, system-ui, sans-serif);
+    /* The dashboard is a dense instrument; this is a page people read. The
+       extra leading is the main typographic difference between them. */
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Anchor links land under a sticky header otherwise. */
+  :target {
+    scroll-margin-top: 6rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+}
+
+@layer components {
+  /* The page's one content width. Everything that needs to line up — nav, hero,
+     every section, the footer — measures from this, so the left edge is the
+     same all the way down. */
+  .shell {
+    width: 100%;
+    max-width: 1120px;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+
+  @media (min-width: 768px) {
+    .shell {
+      padding-inline: 2rem;
+    }
+  }
+
+  /* A hairline rule that reads on both grounds: a literal border colour would
+     have to be written twice, once per theme, and would be the second place a
+     colour is written down. */
+  .rule {
+    border-top: 1px solid var(--border-color);
+  }
+
+  /* The eyebrow above a section heading. Monospace, because in this product
+     monospace means "a name from the system" — a path, a status, a kind — and
+     these labels are exactly that kind of word. */
+  .eyebrow {
+    font-family: var(--font-mono, "Geist Mono", ui-monospace, monospace);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  /* Swapping an asset by theme, in CSS.
+
+     Tailwind's `dark:` variant is not usable for this: it follows
+     prefers-color-scheme, so it would ignore a reader who has explicitly chosen
+     light on a dark machine — the one case the token layer goes out of its way
+     to honour. These two classes mirror that layer's conditions exactly,
+     including the `:not([data-theme="light"])` guard and the source order that
+     lets an explicit choice outrank the OS.
+
+     In CSS rather than React state because the theme is resolved before first
+     paint by the inline script in <head>. Reading it into state here would
+     render the wrong image first and flash it. */
+  .theme-light-only { display: block; }
+  .theme-dark-only { display: none; }
+
+  [data-theme="dark"] .theme-light-only { display: none; }
+  [data-theme="dark"] .theme-dark-only { display: block; }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-light-only { display: none; }
+    :root:not([data-theme="light"]) .theme-dark-only { display: block; }
+  }
+}

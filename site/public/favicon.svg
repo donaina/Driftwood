@@ -2,10 +2,12 @@
   <!-- The brand mark, drawn the same way the header draws it: a "D" on
        --accent-primary in --on-accent.
 
-       This replaces the Vite template's lightning bolt, which was still being
-       served and was purple (#863bff) — a colour §7 bans outright. A leftover
-       template asset is not a brand, and it was the one piece of the product
-       still wearing someone else's clothes.
+       Byte-for-byte the same file as frontend-react/public/favicon.svg, and
+       deliberately duplicated rather than shared: the two builds have separate
+       public/ roots and neither can import the other's, so the alternative is a
+       copy step in the Makefile. Two small files that must match is the cheaper
+       of those, and the mismatch it risks — an app and a site with different
+       icons in adjacent tabs — is exactly the thing this is here to prevent.
 
        The light accent is used, not the dark one, because a favicon is a single
        file with no theme to respond to. #1a6fd4 is the default theme's value. -->

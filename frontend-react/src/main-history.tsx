@@ -1,4 +1,4 @@
-import ReactDOM from 'react-dom/client';
+import { mountView } from './mount';
 import HistoryView from './components/HistoryView';
 
 /* The single import site for the stylesheet. It lives here only because Vite
@@ -10,7 +10,7 @@ import HistoryView from './components/HistoryView';
 import './index.css';
 
 function mountHistory(container: HTMLElement) {
-  ReactDOM.createRoot(container).render(<HistoryView />);
+  mountView(container, <HistoryView />);
 }
 
 // Attach to window for external use

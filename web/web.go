@@ -36,6 +36,33 @@ var (
 	distDir = filepath.Join("web", "dist")
 )
 
+// dashboardStylesheet is the marker of a real frontend build: every build emits
+// it and nothing else does.
+const dashboardStylesheet = "assets/driftwood.css"
+
+// AssetsBuilt reports whether the frontend was actually built.
+//
+// web/dist/PLACEHOLDER is committed deliberately. //go:embed is a compile error
+// when the directory it names is absent, so without the placeholder a clean
+// checkout cannot `go build ./...` at all, and with it `make verify` cannot
+// either. The price of keeping the build working is that it succeeds whether or
+// not anyone ran the frontend step, and the binary then serves a dashboard whose
+// stylesheet and every one of its scripts are index.html. Nothing in the
+// response admits it — each asset URL answers 200, with HTML — so a caller that
+// wants to know has to ask.
+func AssetsBuilt() bool {
+	if hasStylesheet(distDir) {
+		return true
+	}
+	_, err := fs.Stat(embedded, "dist/"+dashboardStylesheet)
+	return err == nil
+}
+
+// hasStylesheet reports whether dir holds the dashboard's stylesheet.
+func hasStylesheet(dir string) bool {
+	return isFile(filepath.Join(dir, filepath.FromSlash(dashboardStylesheet)))
+}
+
 // ServeIndex serves the dashboard: the build file a path names if there is one,
 // and the page itself otherwise. The React views are mounted by scripts into a
 // single page, so an unmatched path is the page, not a 404.

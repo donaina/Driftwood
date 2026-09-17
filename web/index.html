@@ -1,14 +1,42 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Driftwood - Real-Time API Contract Drift Sniffer</title>
+
+  <!-- Resolve the theme BEFORE the stylesheet is parsed.
+
+       This has to be an inline script here rather than anything in the bundle:
+       it must run before the first paint, and a deferred module runs after.
+       Get it wrong and a dark-mode reload paints the light theme for a frame,
+       which is the one failure in this whole design that looks like a bug.
+
+       The attribute is only written when the user has actually chosen. With no
+       stored choice, writing nothing is what lets the CSS media query follow
+       the OS. localStorage throws in some privacy modes, hence the try/catch.
+
+       data-theme goes on <html>, not <body> — the token layer substitutes its
+       var() references at computed-value time on :root, so a body attribute
+       would be read too late to change anything. -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('driftwood-theme');
+        if (stored === 'light' || stored === 'dark') {
+          document.documentElement.setAttribute('data-theme', stored);
+        }
+      } catch (e) { /* storage unavailable: fall through to the OS preference */ }
+    })();
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Geist Mono, not JetBrains Mono: the shell sets mono at 400 and 500, and
+       Geist Mono is the only mono in Geist's own family that ships both. -->
   <link
-    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="./assets/driftwood.css">
 </head>
@@ -18,6 +46,11 @@
   <!-- Top Navbar -->
   <header>
     <div class="brand">
+      <!-- .brand-logo has been styled since the design system was written and
+           had no element to style — the rule was reachable only by accident.
+           aria-hidden because it is a monogram of the word beside it, and a
+           screen reader announcing "D Driftwood" is noise. -->
+      <div class="brand-logo" aria-hidden="true">D</div>
       <!-- The document's one <h1>. It was a <div>, which left the page with
            two <h1>s (the wizard's and the traffic view's), no <h2> at all,
            and a jump from h1 straight to h3. The brand is the only heading
@@ -36,10 +69,27 @@
         ■ <span id="alert-count">0</span> <span class="alert-counter-label">Breaking Contract Changes</span>
       </button>
       <button class="btn btn-primary" id="triggerTestRequestBtn">
-        Trigger Test Payload
+        <span class="btn-label-wide">Trigger </span>Test Payload
       </button>
       <button class="btn btn-danger" id="clearTrafficHistoryBtn">
         Clear Traffic
+      </button>
+      <!-- Shows the theme you would switch TO, not the one you are in: the
+           icon is the affordance, and a moon on a light page reads as "make it
+           dark" without a legend. The label states the action for the same
+           reason, and is rewritten by the handler below on every change. -->
+      <button type="button" class="btn theme-toggle" id="theme-toggle"
+        aria-label="Switch to dark theme" title="Switch theme">
+        <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+          <path
+            d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
       </button>
     </div>
   </header>
@@ -88,6 +138,18 @@
         <button type="button" class="nav-item" id="nav-settings" title="Proxy Settings">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h2.75M8.75 5h4.75M2.5 11h4.75M10.75 11h2.75"/><circle cx="6.75" cy="5" r="1.55"/><circle cx="9.25" cy="11" r="1.55"/></svg>
           <span class="nav-label">Proxy Settings</span>
+        </button>
+      </div>
+
+      <div class="nav-section">
+        <div class="section-title">Reference</div>
+        <button type="button" class="nav-item" id="nav-scenario" title="Scenario Library">
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.25 3.25h11.5v2.5H2.25z"/><path d="M2.25 8h11.5v2.5H2.25z"/><path d="M2.25 12.75h6.5"/></svg>
+          <span class="nav-label">Scenario Library</span>
+        </button>
+        <button type="button" class="nav-item" id="nav-integrations" title="Integration Guides">
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2.5v3M10.5 2.5v3"/><path d="M3.25 5.5h9.5v3.25a4.75 4.75 0 0 1-9.5 0z"/><path d="M8 13.5v.01"/></svg>
+          <span class="nav-label">Integration Guides</span>
         </button>
       </div>
 
@@ -366,85 +428,15 @@
         </div>
       </div>
 
-      <!-- View 5b: Alert Thresholds -->
-      <div id="thresholds-react-root" class="react-panel">
-        <div class="panel panel--wide">
-          <h2 class="view-title">Custom Alert Thresholds</h2>
-          <p class="muted sp-bottom-lg">
-            Configure what constitutes breaking vs non-breaking changes for your team's context.
-          </p>
-
-          <div class="sp-bottom-xl">
-            <h3 class="subhead">Preset Configurations</h3>
-            <div class="row-wrap">
-              <button class="btn btn-outline" onclick="applyThresholdPreset('strict')">
-                Strict
-              </button>
-              <button class="btn btn-outline" onclick="applyThresholdPreset('recommended')">
-                Recommended
-              </button>
-              <button class="btn btn-outline" onclick="applyThresholdPreset('lenient')">
-                Lenient
-              </button>
-            </div>
-            <p class="meta sp-top-sm">
-              Select a preset to quickly configure threshold settings for different team needs.
-            </p>
-          </div>
-
-          <div class="sp-bottom-xl">
-            <h3 class="subhead">Per-Change Type Configuration</h3>
-            <div class="inset">
-              <div class="grid-2 sp-bottom-md">
-                <div>
-                  <label class="field-label field-label--tight">Type Changes (int → string, etc.)</label>
-                  <select class="field-input" id="threshold-type-change">
-                    <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="field-label field-label--tight">Required → Optional Fields</label>
-                  <select class="field-input" id="threshold-required-optional">
-                    <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                  </select>
-                </div>
-              </div>
-              <div class="grid-2 sp-bottom-md">
-                <div>
-                  <label class="field-label field-label--tight">Added/Removed Fields</label>
-                  <select class="field-input" id="threshold-added-removed">
-                    <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="field-label field-label--tight">Status Code Changes</label>
-                  <select class="field-input" id="threshold-status-code">
-                    <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                  </select>
-                </div>
-              </div>
-              <div class="grid-2">
-                <div>
-                  <label class="field-label field-label--tight">Header Changes</label>
-                  <select class="field-input" id="threshold-header-changes">
-                    <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- View 5b: Alert Thresholds. An empty mount target, like the other
+           React-backed destinations below — this used to carry ~78 lines of
+           hand-written markup that duplicated the React component, and the
+           two could not coexist: createRoot().render() replaces the contents
+           of its container, so the static form was destroyed the moment the
+           view mounted and shown only if mounting failed. Its handlers
+           (applyThresholdPreset and friends) existed solely to drive those
+           fields, so they went with it. -->
+      <div id="thresholds-react-root" class="react-panel"></div>
 
       <!-- React-backed destinations. These are siblings of the .view-panel
            elements above, not children of one, because each show*Library hides
@@ -526,60 +518,121 @@
 
 
     window.addEventListener('DOMContentLoaded', () => {
-      // Check if we should show setup wizard first
+      /* Every binding is registered before anything is shown, and on both
+         paths. They used to live inside the branch that runs when the wizard
+         is skipped, so the wizard's own controls were unwired in the one case
+         where the wizard is on screen: clicking Next, "Enter URL Manually",
+         "Skip for Now" or "Start Monitoring" did nothing, and the sidebar was
+         the only way out. The bindings are the app's event wiring, not part of
+         the decision about which panel to open first. */
+      const on = (id, handler) => {
+        const el = document.getElementById(id);
+        if (!el) { console.warn(`[Driftwood] no #${id} to bind`); return; }
+        el.addEventListener('click', handler);
+      };
+
+      // The pre-paint script in <head> has already resolved the attribute;
+      // this only wires the control that changes it. Current effective
+      // theme is read back off the DOM rather than from storage, so the
+      // first click on a machine with no stored choice flips away from
+      // what the OS is actually showing instead of from an assumed light.
+      const effectiveTheme = () => {
+        const set = document.documentElement.getAttribute('data-theme');
+        if (set === 'light' || set === 'dark') return set;
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      };
+      const syncThemeToggle = () => {
+        const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+        document.getElementById('theme-toggle')
+          .setAttribute('aria-label', `Switch to ${next} theme`);
+      };
+      on('theme-toggle', () => {
+        const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('driftwood-theme', next); } catch (e) { /* see <head> */ }
+        syncThemeToggle();
+      });
+      syncThemeToggle();
+
+      on('alert-counter-btn', () => switchTab('alerts'));
+      on('triggerTestRequestBtn', triggerTestRequest);
+      // Both empty-state CTAs were dead markup: #tryDemoBtn existed twice
+      // with no listener on either. Same action as the header button.
+      // Re-queried after each render because renderTrafficTable replaces
+      // the tbody, which destroys and recreates this button.
+      document.getElementById('traffic-table-body').addEventListener('click', (e) => {
+        if (e.target.closest('#emptyStateDemoBtn')) triggerTestRequest();
+      });
+      on('clearTrafficHistoryBtn', clearTrafficHistory);
+      on('nav-traffic', () => switchTab('traffic'));
+      on('nav-baselines', () => switchTab('baselines'));
+      on('nav-history', () => switchTab('history'));
+      on('nav-alerts', () => switchTab('alerts'));
+      on('nav-settings', () => switchTab('settings'));
+      on('nav-scenario', () => switchTab('scenario'));
+      on('nav-integrations', () => switchTab('integrations'));
+      on('mode-NORMAL', () => setMockMode('NORMAL'));
+      on('mode-TYPE_BREAK', () => setMockMode('TYPE_BREAK'));
+      on('mode-MISSING_FIELD', () => setMockMode('MISSING_FIELD'));
+      on('mode-NULL_BREAK', () => setMockMode('NULL_BREAK'));
+      on('mode-ADDED_FIELD', () => setMockMode('ADDED_FIELD'));
+      on('drawer-overlay', closeDrawer);
+      on('closeDrawerBtn', closeDrawer);
+      on('setAsBaselineFromDrawerBtn', setAsBaselineFromDrawer);
+
+      /* The setup wizard. Every one of these controls was dead markup: the
+         wizard's own logic (completeSetup, detectLocalhost,
+         goToNextSetupStep) had been written and then bound to nothing, so a
+         first run presented a three-step wizard in which Next, "Enter URL
+         Manually", "Skip for Now", "Start Monitoring" and "I'll configure
+         later" all did nothing at all. Nothing dispatched, no error, no way
+         to finish and no way to leave — the sidebar was the only exit,
+         which is the only reason this was not a hard trap.
+
+         Step 1 has two ways forward, so it gets its own handler: the manual
+         URL field is only read when it is actually on screen. */
+      on('detect-localhost', detectLocalhost);
+      on('use-manual-url', () => {
+        document.getElementById('manual-url-input').style.display = 'block';
+        document.getElementById('setup-target-url').focus();
+      });
+      on('setup-next-1', () => {
+        const field = document.getElementById('setup-target-url');
+        const typed = field && field.value.trim();
+        if (typed) detectedTargetUrl = typed;
+        goToNextSetupStep();
+      });
+      on('setup-next', goToNextSetupStep);
+      on('setup-prev', goToPreviousSetupStep);
+      on('setup-skip-detection', () => goToSetupStep(3));
+      on('setup-skip-baselines', leaveSetupWizard);
+      on('setup-complete', completeSetup);
+      on('setup-close-wizard', leaveSetupWizard);
+
+      /* Then decide what is on screen. The wizard is a view, not a mode: the
+         bindings above are live either way, and leaving the wizard calls the
+         same loaders this branch does. */
       shouldShowSetupWizard().then(show => {
         if (show) {
           showSetupWizard();
-        } else {
-          // Initialize normal app
-          initSSE();
-          loadTraffic();
-          loadBaselines();
-          loadAlerts();
-          loadConfig();
-          initVitals();
-
-          /* Every binding goes through on(), which tolerates a missing element
-             instead of throwing. This block is one long chain of unguarded
-             getElementById().addEventListener() calls, so a single absent id
-             aborted every binding after it: #loadHistoriesBtn and #saveConfigBtn
-             are not in the markup, and the four bindings below them survived
-             only because their markup carried duplicate inline onclick copies.
-             Delete those copies and four controls break, silently. */
-          const on = (id, handler) => {
-            const el = document.getElementById(id);
-            if (!el) { console.warn(`[Driftwood] no #${id} to bind`); return; }
-            el.addEventListener('click', handler);
-          };
-
-          on('alert-counter-btn', () => switchTab('alerts'));
-          on('triggerTestRequestBtn', triggerTestRequest);
-          // Both empty-state CTAs were dead markup: #tryDemoBtn existed twice
-          // with no listener on either. Same action as the header button.
-          // Re-queried after each render because renderTrafficTable replaces
-          // the tbody, which destroys and recreates this button.
-          document.getElementById('traffic-table-body').addEventListener('click', (e) => {
-            if (e.target.closest('#emptyStateDemoBtn')) triggerTestRequest();
-          });
-          on('clearTrafficHistoryBtn', clearTrafficHistory);
-          on('nav-traffic', () => switchTab('traffic'));
-          on('nav-baselines', () => switchTab('baselines'));
-          on('nav-history', () => switchTab('history'));
-          on('nav-alerts', () => switchTab('alerts'));
-          on('nav-settings', () => switchTab('settings'));
-          on('mode-NORMAL', () => setMockMode('NORMAL'));
-          on('mode-TYPE_BREAK', () => setMockMode('TYPE_BREAK'));
-          on('mode-MISSING_FIELD', () => setMockMode('MISSING_FIELD'));
-          on('mode-NULL_BREAK', () => setMockMode('NULL_BREAK'));
-          on('mode-ADDED_FIELD', () => setMockMode('ADDED_FIELD'));
-          on('drawer-overlay', closeDrawer);
-          on('closeDrawerBtn', closeDrawer);
-          on('setAsBaselineFromDrawerBtn', setAsBaselineFromDrawer);
+          return;
         }
+        initSSE();
+        loadTraffic();
+        loadBaselines();
+        loadAlerts();
+        loadConfig();
+        initVitals();
       });
     });
 
     function initSSE() {
+      /* Opening a second EventSource leaves the first one connected and
+         unreachable, so every event would be handled twice. Two callers reach
+         here — the normal boot path and leaving the setup wizard — and the
+         wizard path is new, which is what makes the guard necessary rather
+         than merely tidy. */
+      if (eventSource) return;
       eventSource = new EventSource('/_driftwood/events');
 
       eventSource.onopen = () => {
@@ -1028,12 +1081,20 @@
        returned null and threw *after* the strip, so no panel was left active and
        the whole application rendered empty. Nothing is mutated now until the
        destination is known to exist. */
+    /* Destinations with no .view-panel of their own: each of these names a
+       show*Library function that reveals its own root and mounts into it.
+       Thresholds and webhooks are deliberately absent. Both have a component
+       and neither has anything behind it — CustomAlertThresholds collects
+       severities that no code reads, and WebhookIntegrations reports a save and
+       a test delivery that never leave the browser. Routing to either would put
+       a nav entry in front of a screen whose buttons lie, which is the thing
+       the last three releases were about removing. They get entries when the
+       backend that makes them true exists. */
     function switchTab(tabName) {
-      // Only 'history' has a nav entry now. Integrations, thresholds, scenario
-      // and webhooks are hidden until they persist something, so listing them
-      // here would route to a view with no way back.
       const reactViews = {
-        'history': 'showHistoryLibrary'
+        'history': 'showHistoryLibrary',
+        'scenario': 'showScenarioLibrary',
+        'integrations': 'showIntegrationsLibrary'
       };
 
       const navEl = document.getElementById(`nav-${tabName}`);
@@ -1062,54 +1123,15 @@
       panelEl.classList.add('active');
     }
 
-    // Thresholds functions
-    function loadThresholdConfig() {
-      // In a real implementation, this would load from backend
-      // For now, we'll set some default values
-      document.getElementById('threshold-type-change').value = 'breaking';
-      document.getElementById('threshold-required-optional').value = 'warning';
-      document.getElementById('threshold-added-removed').value = 'info';
-      document.getElementById('threshold-status-code').value = 'warning';
-      document.getElementById('threshold-header-changes').value = 'info';
-      document.getElementById('threshold-endpoint-overrides').checked = false;
-    }
-
-    function saveThresholdConfig() {
-      // In a real implementation, this would save to backend
-      showToast('Thresholds Saved', 'Custom alert thresholds have been saved.');
-    }
-
-    function resetThresholdDefaults() {
-      // Reset to preset 'recommended'
-      applyThresholdPreset('recommended');
-      showToast('Thresholds Reset', 'Thresholds have been reset to recommended defaults.');
-    }
-
-    function applyThresholdPreset(preset) {
-      switch (preset) {
-        case 'strict':
-          document.getElementById('threshold-type-change').value = 'breaking';
-          document.getElementById('threshold-required-optional').value = 'breaking';
-          document.getElementById('threshold-added-removed').value = 'breaking';
-          document.getElementById('threshold-status-code').value = 'breaking';
-          document.getElementById('threshold-header-changes').value = 'breaking';
-          break;
-        case 'recommended':
-          document.getElementById('threshold-type-change').value = 'breaking';
-          document.getElementById('threshold-required-optional').value = 'warning';
-          document.getElementById('threshold-added-removed').value = 'info';
-          document.getElementById('threshold-status-code').value = 'warning';
-          document.getElementById('threshold-header-changes').value = 'info';
-          break;
-        case 'lenient':
-          document.getElementById('threshold-type-change').value = 'info';
-          document.getElementById('threshold-required-optional').value = 'info';
-          document.getElementById('threshold-added-removed').value = 'info';
-          document.getElementById('threshold-status-code').value = 'info';
-          document.getElementById('threshold-header-changes').value = 'info';
-          break;
-      }
-    }
+    /* The vanilla thresholds form lived here — loadThresholdConfig,
+       saveThresholdConfig, resetThresholdDefaults and applyThresholdPreset.
+       Every one of them wrote to the static markup that #thresholds-react-root
+       used to contain, and none of them persisted anything: saveThresholdConfig
+       showed "Custom alert thresholds have been saved." over an empty function
+       body, and the thresholds it collected were read by nothing, in either the
+       shell or the Go diff engine. CustomAlertThresholds.tsx is the real
+       implementation and mounts into the same root, so this was a second,
+       dead copy of a destination that is not routed yet. */
 
     function showToast(title, msg) {
       const container = document.getElementById('toast-container');
@@ -1140,19 +1162,6 @@
        "Percentage of requests matching the baseline contract" from them. Two
        copies of a view is how the field-name bug survived this long; one copy
        cannot drift from itself. */
-
-
-    // Setup Wizard Functions
-    async function checkIfSetupNeeded() {
-      try {
-        const res = await fetch('/_driftwood/api/baselines');
-        const baselines = await res.json();
-        return baselines.length === 0;
-      } catch (err) {
-        console.error('Error checking baselines:', err);
-        return true; // Show setup wizard on error to be safe
-      }
-    }
 
 
     // Vital Signs — computed client-side from the live traffic buffer
@@ -1418,7 +1427,7 @@
         document.querySelectorAll('.view-panel').forEach(panel => {
           panel.style.display = 'none';
         });
-        document.getElementById('webhook-react-root').style.display = 'none';
+        hideReactRoots();
         document.getElementById('scenario-react-root').style.display = 'block';
 
         // Mount React component
@@ -1426,11 +1435,10 @@
           window.mountScenario(document.getElementById('scenario-react-root'));
         }
 
-        // Update nav active state
-        document.querySelectorAll('.nav-item').forEach(item => {
-          item.classList.remove('active');
-        });
-        // We'd add a nav item for scenarios in a real implementation
+        // Nav active state is switchTab's to set — it runs before this and
+        // clears every .nav-item first. This function used to clear them again
+        // on the way out, which wiped the highlight switchTab had just applied,
+        // so the destination looked unselected the moment you reached it.
       };
     });
 
@@ -1439,13 +1447,29 @@
     const totalSetupSteps = 3;
     let detectedTargetUrl = '';
 
+    /* Whether to offer first-run setup. The server decides, because the honest
+       answer is not visible from here.
+
+       This used to ask whether the store held zero baselines, and that question
+       has no correct answer. Driftwood seeds a contract for its own mock
+       simulator, so a fresh install already has one and the wizard could never
+       appear; and every request the proxy sees is auto-baselined, so a browser's
+       incidental GET /favicon.ico was enough to make a genuinely untouched
+       install look configured. Counting baselines measured traffic, not intent.
+
+       /_driftwood/api/setup-state reports whether anyone has ever named a
+       target — by saving a config or by passing --target/--port. That is the
+       same statement the wizard asks for, so it is the right thing to test.
+
+       An unreachable API reads as configured, which suppresses the wizard: if
+       the control plane is not answering, the wizard's own saves cannot work
+       either, and the dashboard's own error surfaces are the honest thing to
+       show rather than three steps that lead nowhere. */
     function shouldShowSetupWizard() {
-      // In a real implementation, this would check localStorage or make an API call
-      // For now, we'll check if baselines exist
-      return fetch('/_driftwood/api/baselines')
+      return fetch('/_driftwood/api/setup-state')
         .then(res => res.json())
-        .then(baselines => baselines.length === 0)
-        .catch(() => true); // Show setup if we can't check
+        .then(state => !state.configured)
+        .catch(() => false);
     }
 
     function showSetupWizard() {
@@ -1505,77 +1529,140 @@
       }
     }
 
-    function detectLocalhost() {
-      const commonPorts = [3000, 3001, 4000, 5000, 8000, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089, 8090];
-      document.getElementById('detect-localhost').disabled = true;
-      document.getElementById('detect-localhost').innerText = 'Detecting...';
-      document.getElementById('setup-detection-status').innerText = 'Checking common development ports...';
+    /* Ports a development API is actually likely to be on. Order is the order
+       they are tried, so the common ones answer first. */
+    const COMMON_DEV_PORTS = [3000, 3001, 4000, 5000, 8000, 8080, 8081, 8082, 5173, 4200];
 
-      let found = false;
-      for (const port of commonPorts) {
-        // In a real implementation, we would actually try to connect
-        // For demo, we'll simulate finding something on port 3000
-        if (port === 3000 && !found) {
-          setTimeout(() => {
-            detectedTargetUrl = `http://localhost:${port}`;
-            document.getElementById('setup-detection-status').innerText = `Found API at http://localhost:${port}`;
-            document.getElementById('setup-skip-detection').style.display = 'inline-block';
-          }, 1000);
-          found = true;
-          break;
+    /* Probes a URL for reachability.
+       `no-cors` is the point, not a workaround: the browser will not let this
+       page READ a response from another origin, and it does not need to — the
+       only question is whether anything answered at all. A server that responds
+       (opaque or not) resolves; a port with nothing behind it rejects. So this
+       is a real reachability test, and it is why the result is reported as
+       "something is listening" rather than as the API's identity. */
+    async function probeUrl(url) {
+      try {
+        await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(1500) });
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    /* This used to report "Found API at http://localhost:3000" without opening
+       a single socket: it looped over a port list and hardcoded a hit on 3000
+       behind a 1s timer, so it announced a discovery it had not made and would
+       say the same thing on a machine with nothing running. It now probes, and
+       when nothing answers it says so. */
+    async function detectLocalhost() {
+      const btn = document.getElementById('detect-localhost');
+      const status = document.getElementById('setup-detection-status');
+      btn.disabled = true;
+      btn.innerText = 'Detecting...';
+      status.innerText = 'Checking common development ports...';
+      document.getElementById('setup-skip-detection').style.display = 'inline-block';
+
+      for (const port of COMMON_DEV_PORTS) {
+        const url = `http://localhost:${port}`;
+        if (await probeUrl(url)) {
+          detectedTargetUrl = url;
+          status.innerText = `Found a server at ${url}`;
+          btn.disabled = false;
+          btn.innerText = 'Auto-detect Localhost';
+          return;
         }
       }
 
-      if (!found) {
-        setTimeout(() => {
-          document.getElementById('setup-detection-status').innerText = 'No API detected on common ports';
-          document.getElementById('setup-skip-detection').style.display = 'inline-block';
-          document.getElementById('detect-localhost').disabled = false;
-          document.getElementById('detect-localhost').innerText = 'Auto-detect Localhost';
-        }, 1500);
+      status.innerText = 'Nothing answered on the common development ports. Enter your URL manually, or skip and set it later in Proxy Settings.';
+      btn.disabled = false;
+      btn.innerText = 'Auto-detect Localhost';
+    }
+
+    /* Reports what Driftwood has actually observed, not a count it made up.
+       This previously printed "Found 5 API endpoints" after a 1.5s timer
+       regardless of what was behind the target — a number with no source. The
+       honest answer at this point in setup is usually zero, because Driftwood
+       learns endpoints from traffic, and on a fresh install no traffic has
+       flowed yet. Saying that is more useful than a confident fake: it tells
+       the user what the next step has to be. */
+    async function startEndpointDetection() {
+      const status = document.getElementById('setup-detection-status');
+      status.innerText = 'Checking for endpoints already being monitored...';
+      try {
+        const res = await fetch('/_driftwood/api/baselines');
+        const baselines = await res.json();
+        const n = Array.isArray(baselines) ? baselines.length : 0;
+        status.innerText = n === 0
+          ? 'No endpoints yet — Driftwood learns them from traffic. Point your app at this proxy and every route it calls is picked up automatically.'
+          : `${n} endpoint${n === 1 ? '' : 's'} already being monitored.`;
+      } catch (err) {
+        status.innerText = 'Could not reach the Driftwood API to check for existing endpoints.';
       }
     }
 
-    function startEndpointDetection() {
-      document.getElementById('setup-detection-status').innerText = 'Scanning for API endpoints...';
-      // Simulate detection
-      setTimeout(() => {
-        document.getElementById('setup-detection-status').innerText = 'Found 5 API endpoints';
-        // In reality, we would call an endpoint to discover the API
-      }, 1500);
+    /* Leaves the wizard for the Live Traffic view without touching the saved
+       configuration. "Skip for Now" and "I'll configure later" both need to
+       reach the dashboard, and neither is a statement about the target. */
+    function leaveSetupWizard() {
+      document.getElementById('view-setup').classList.remove('active');
+      document.getElementById('view-traffic').classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('nav-traffic').classList.add('active');
+
+      /* Everything the ordinary boot path does, because the wizard path skipped
+         it: the DOMContentLoaded handler either shows the wizard or boots the
+         app, never both. Without initSSE here the dashboard looked correct and
+         was inert — the tables filled from the one load below and then never
+         changed again, because nothing was listening. Without loadConfig the
+         settings panel described a target Driftwood was not using: finish setup
+         pointing at one API, open Proxy Settings, and it still offered the
+         default the process started with. */
+      initSSE();
+      loadTraffic();
+      loadBaselines();
+      loadAlerts();
+      loadConfig();
+      initVitals();
     }
 
     async function completeSetup() {
-      // Save the target URL to config
       try {
-        await fetch('/_driftwood/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            target_url: detectedTargetUrl || 'http://localhost:3000',
-            auto_save_baseline: true,
-            proxy_port: "8787",
-            intercept_json: true
-          })
+        /* Reads the config back and posts the whole object, rather than posting
+           only the fields this wizard knows about. handleConfig decodes into a
+           zero-value ProxyConfig and stores it wholesale — it preserves
+           ProxyPort and nothing else — so every field a partial body omits is
+           silently reset. The one that bites here is dev_mock_mode: it is what
+           makes an unreachable target fall back to the mock simulator, so
+           posting without it would switch the simulator off as the final step
+           of the setup flow that leads straight into it. */
+        let current = {};
+        try {
+          const res = await fetch('/_driftwood/api/config');
+          current = (await res.json()) || {};
+        } catch (e) { /* nothing saved yet: the defaults below stand in */ }
+
+        const target = detectedTargetUrl || current.target_url || 'http://localhost:3000';
+        const next = Object.assign({}, current, {
+          target_url: target,
+          auto_save_baseline: true,
+          intercept_json: true
         });
 
-        // Show success message
-        showToast('Setup Complete', `Driftwood is now monitoring ${detectedTargetUrl || 'http://localhost:3000'}`);
+        const saved = await fetch('/_driftwood/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(next)
+        });
+        // A rejected target comes back 400 with the reason; reporting it as a
+        // success would leave the wizard claiming to monitor an endpoint the
+        // proxy refused.
+        if (!saved.ok) throw new Error((await saved.text()).trim());
 
-        // Hide setup wizard and show traffic view
-        document.getElementById('view-setup').classList.remove('active');
-        document.getElementById('view-traffic').classList.add('active');
-        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-        document.getElementById('nav-traffic').classList.add('active');
-
-        // Load initial data
-        loadTraffic();
-        loadBaselines();
-        loadAlerts();
-        initVitals();
+        showToast('Setup Complete', `Driftwood is now monitoring ${target}`);
+        leaveSetupWizard();
       } catch (error) {
         console.error('Setup failed:', error);
-        showToast('Setup Failed', 'Please try again or configure manually');
+        showToast('Setup Failed', String(error.message || error));
       }
     }
 
@@ -1788,13 +1875,10 @@ window.showIntegrationsLibrary = function() {
   });
   hideReactRoots();
   document.getElementById('integrations-react-root').style.display = 'block';
-        // Mount React component
-        if (window.mountIntegrations) {
-          window.mountIntegrations(document.getElementById('integrations-react-root'));
-        }
 
-  // No nav entry: this view is hidden until it is wired to a backend. The
-  // mount function stays so restoring it is a one-line change to switchTab.
+  if (window.mountIntegrations) {
+    window.mountIntegrations(document.getElementById('integrations-react-root'));
+  }
 };
 
 

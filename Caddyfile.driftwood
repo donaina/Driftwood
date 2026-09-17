@@ -1,11 +1,46 @@
 # Caddyfile for Driftwood
 # Replace driftwood.example.com with your actual domain
+#
+# This serves two things on one origin, and the reason they must share an origin
+# is the whole shape of the config.
+#
+# The control API refuses cross-origin requests on purpose — its allowlist is
+# localhost only (internal/server/server.go, isAllowedOrigin), because it is an
+# unauthenticated control plane and a wildcard there would let any page on the
+# internet rewrite a running instance's proxy target. The try-it-out page drives
+# that API, so it has to be same-origin with it. Hence: the site at /, the binary
+# under /_driftwood/*, one hostname.
+#
+# There is no `reverse_proxy` at the site root any more. It used to send
+# everything to the binary, whose proxy then claimed / as a catch-all and dialled
+# whatever target it was started with. That is the right behaviour for the app
+# you are locally developing against and the wrong behaviour for a public
+# hostname, so the site now owns / and the proxy's catch-all is unreachable from
+# outside — which is what you want.
 
 driftwood.example.com {
-    reverse_proxy 127.0.0.1:8787
-    encode gzip
-    log {
-        output stdout
-        format console
-    }
+	# The control plane, the dashboard, the mock simulator and the event stream.
+	# Written first so it wins over the catch-all below.
+	handle /_driftwood/* {
+		reverse_proxy 127.0.0.1:8787 {
+			# /_driftwood/events is a server-sent event stream. Caddy flushes
+			# event streams on its own, but only when it recognises the content
+			# type; -1 turns buffering off outright, which also covers the frames
+			# that arrive before the first flush would have fired.
+			flush_interval -1
+		}
+	}
+
+	# The marketing site: `make site` output, copied to this directory.
+	handle {
+		root * /srv/driftwood-site
+		file_server
+	}
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
 }

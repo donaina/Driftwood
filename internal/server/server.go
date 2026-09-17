@@ -105,6 +105,8 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleConfirmBaseline(w, r)
 		case proxy.ControlPrefix + "/api/config":
 			s.handleConfig(w, r)
+		case proxy.ControlPrefix + "/api/setup-state":
+			s.handleSetupState(w, r)
 		case proxy.ControlPrefix + "/api/alerts":
 			s.handleAlerts(w, r)
 		case proxy.ControlPrefix + "/api/histories":
@@ -351,6 +353,18 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.store.GetConfig())
+}
+
+// handleSetupState answers whether this install has ever been configured, which
+// is the dashboard's cue to offer first-run setup.
+//
+// A route of its own rather than a field on /api/config: handleConfig decodes
+// the request body into a zero-value ProxyConfig and stores it wholesale, so
+// anything added to that struct is a field some client can silently reset by
+// omitting it. This is a read-only fact about the install, not a setting.
+func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"configured": s.store.IsConfigured()})
 }
 
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {

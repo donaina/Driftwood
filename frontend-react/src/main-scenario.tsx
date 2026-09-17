@@ -1,8 +1,8 @@
-import ReactDOM from 'react-dom/client';
+import { mountView } from './mount';
 import ScenarioLibrary from './components/ScenarioLibrary';
 
 function mountScenario(container: HTMLElement) {
-  ReactDOM.createRoot(container).render(<ScenarioLibrary />);
+  mountView(container, <ScenarioLibrary />);
 }
 
 // Attach to window for external use
