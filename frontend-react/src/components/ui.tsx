@@ -140,8 +140,13 @@ export const PanelTitle: React.FC<{
    The radius is the one place these deviate from the strings they replace.
    The copies were `rounded-lg`, which is --radius-lg, 12px — double the 6px
    §4 specifies and double the shell's own .btn. The border on `primary` is
-   teal-on-teal: it costs 2px of width and nothing visually, which is what
+   accent-on-accent: it costs 2px of width and nothing visually, which is what
    makes it "structural" rather than decoration.
+
+   `primary` is the brand accent, not accent-healthy. Ink on the fill is
+   `text-on-accent`, which is white in light mode and near-black in dark —
+   the accents are dark on the light ground and bright on the dark one, so
+   neither `text-white` nor `text-bg-main` is right in both.
    ---------------------------------------------------------------------- */
 
 type Variant = 'primary' | 'secondary' | 'quiet';
@@ -150,7 +155,7 @@ type Size = 'sm' | 'md' | 'lg';
 
 const VARIANT: Record<Variant, string> = {
   primary:
-    'border-accent-healthy bg-accent-healthy text-bg-main hover:bg-accent-healthy/90',
+    'border-accent-primary bg-accent-primary text-on-accent hover:bg-accent-primary/90',
   secondary: 'border-border-color text-text-main hover:bg-bg-hover',
   quiet: 'border-transparent text-text-muted hover:bg-bg-hover hover:text-text-main',
 };

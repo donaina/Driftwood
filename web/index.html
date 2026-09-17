@@ -1,14 +1,42 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Driftwood - Real-Time API Contract Drift Sniffer</title>
+
+  <!-- Resolve the theme BEFORE the stylesheet is parsed.
+
+       This has to be an inline script here rather than anything in the bundle:
+       it must run before the first paint, and a deferred module runs after.
+       Get it wrong and a dark-mode reload paints the light theme for a frame,
+       which is the one failure in this whole design that looks like a bug.
+
+       The attribute is only written when the user has actually chosen. With no
+       stored choice, writing nothing is what lets the CSS media query follow
+       the OS. localStorage throws in some privacy modes, hence the try/catch.
+
+       data-theme goes on <html>, not <body> — the token layer substitutes its
+       var() references at computed-value time on :root, so a body attribute
+       would be read too late to change anything. -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('driftwood-theme');
+        if (stored === 'light' || stored === 'dark') {
+          document.documentElement.setAttribute('data-theme', stored);
+        }
+      } catch (e) { /* storage unavailable: fall through to the OS preference */ }
+    })();
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Geist Mono, not JetBrains Mono: the shell sets mono at 400 and 500, and
+       Geist Mono is the only mono in Geist's own family that ships both. -->
   <link
-    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="./assets/driftwood.css">
 </head>
@@ -18,6 +46,11 @@
   <!-- Top Navbar -->
   <header>
     <div class="brand">
+      <!-- .brand-logo has been styled since the design system was written and
+           had no element to style — the rule was reachable only by accident.
+           aria-hidden because it is a monogram of the word beside it, and a
+           screen reader announcing "D Driftwood" is noise. -->
+      <div class="brand-logo" aria-hidden="true">D</div>
       <!-- The document's one <h1>. It was a <div>, which left the page with
            two <h1>s (the wizard's and the traffic view's), no <h2> at all,
            and a jump from h1 straight to h3. The brand is the only heading
@@ -36,10 +69,27 @@
         ■ <span id="alert-count">0</span> <span class="alert-counter-label">Breaking Contract Changes</span>
       </button>
       <button class="btn btn-primary" id="triggerTestRequestBtn">
-        Trigger Test Payload
+        <span class="btn-label-wide">Trigger </span>Test Payload
       </button>
       <button class="btn btn-danger" id="clearTrafficHistoryBtn">
         Clear Traffic
+      </button>
+      <!-- Shows the theme you would switch TO, not the one you are in: the
+           icon is the affordance, and a moon on a light page reads as "make it
+           dark" without a legend. The label states the action for the same
+           reason, and is rewritten by the handler below on every change. -->
+      <button type="button" class="btn theme-toggle" id="theme-toggle"
+        aria-label="Switch to dark theme" title="Switch theme">
+        <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" />
+          <path
+            d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
       </button>
     </div>
   </header>
@@ -551,6 +601,29 @@
             if (!el) { console.warn(`[Driftwood] no #${id} to bind`); return; }
             el.addEventListener('click', handler);
           };
+
+          // The pre-paint script in <head> has already resolved the attribute;
+          // this only wires the control that changes it. Current effective
+          // theme is read back off the DOM rather than from storage, so the
+          // first click on a machine with no stored choice flips away from
+          // what the OS is actually showing instead of from an assumed light.
+          const effectiveTheme = () => {
+            const set = document.documentElement.getAttribute('data-theme');
+            if (set === 'light' || set === 'dark') return set;
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          };
+          const syncThemeToggle = () => {
+            const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+            document.getElementById('theme-toggle')
+              .setAttribute('aria-label', `Switch to ${next} theme`);
+          };
+          on('theme-toggle', () => {
+            const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            try { localStorage.setItem('driftwood-theme', next); } catch (e) { /* see <head> */ }
+            syncThemeToggle();
+          });
+          syncThemeToggle();
 
           on('alert-counter-btn', () => switchTab('alerts'));
           on('triggerTestRequestBtn', triggerTestRequest);
