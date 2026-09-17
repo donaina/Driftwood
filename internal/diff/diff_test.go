@@ -59,54 +59,111 @@ func TestRemovedFieldDetection(t *testing.T) {
 
 // --- PR #2 reproducer tests (should fail before fixes) ---
 
-// #1: isCompatibleType should accept integer↔number in BOTH directions
-func TestIntegerNumberCompatibility_BothDirections(t *testing.T) {
-	// baseline integer, current number (currently works)
-	baseline := `{"count": 42}`
-	current := `{"count": 42.0}`
-
-	res, err := CompareJSON(baseline, current)
+// A JSON number with no fractional part infers as integer however it was written,
+// so `42` and `42.0` are the same type and comparing them tests nothing. This is
+// the pair that is a real change, and it is the only place Driftwood's
+// integer/number split is observable, since both sides are `number` to JSON.
+//
+// Supersedes the two tests that stood here. `#1` asserted the pair was
+// "compatible", which passed only because isCompatibleType returned true — the
+// defect itself. `#27` asserted the widening was a WARNING but guarded the
+// assertion with `len(res.Deltas) > 0`, so it held vacuously exactly when there
+// was no delta to check.
+func TestNumberPrecisionChange(t *testing.T) {
+	// A whole number that gained a fractional part is outside what the baseline
+	// promised, and README documents it as a WARNING.
+	res, err := CompareJSON(`{"count": 42}`, `{"count": 42.5}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.HasBreakingChanges {
-		t.Errorf("integer→number should be compatible, got breaking")
+		t.Errorf("integer widened to number reported BREAKING; README documents it as WARNING")
+	}
+	if !res.HasWarnings {
+		t.Fatalf("integer widened to number reported nothing — the change was invisible")
+	}
+	if len(res.Deltas) != 1 {
+		t.Fatalf("expected exactly one delta, got %d: %+v", len(res.Deltas), res.Deltas)
+	}
+	if d := res.Deltas[0]; d.Kind != types.KindTypeMismatch || d.Severity != types.SeverityWarning {
+		t.Errorf("expected WARNING %s, got %s %s", types.KindTypeMismatch, d.Severity, d.Kind)
 	}
 
-	// baseline number, current integer (BUG: currently BREAKING, should be compatible)
-	baseline = `{"count": 42.0}`
-	current = `{"count": 42}`
-
-	res, err = CompareJSON(baseline, current)
+	// The reverse is recorded but healthy. `integer` is a subset of `number`, so
+	// whole numbers still satisfy a baseline that promised `number`. Treating it
+	// as drift would fire on healthy APIs: merging a mixed array collapses its
+	// integer and number items to `number`, so one response of whole numbers
+	// would read as a contract change.
+	res, err = CompareJSON(`{"count": 42.5}`, `{"count": 42}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.HasBreakingChanges {
-		t.Errorf("number→integer should be compatible (bug #1), got breaking")
+	if res.HasWarnings || res.HasBreakingChanges {
+		t.Errorf("number narrowed to integer was treated as drift: %+v", res.Deltas)
+	}
+	if len(res.Deltas) != 1 || res.Deltas[0].Severity != types.SeverityInfo {
+		t.Errorf("expected one INFO delta recording the narrowing, got %+v", res.Deltas)
 	}
 }
 
-// #2: nullability fall-through - should continue checking after nullable=true
+// #2: a baseline that permits null must not report a null as a break.
 func TestNullabilityFallthrough(t *testing.T) {
-	// Baseline: non-nullable integer, nullable field (so null is ok), but ALSO current is string (type mismatch)
-	// This should still detect the type mismatch even though nullable=true
-	baseline := `{"id": 42}`
-	current := `{"id": "not-an-int"}`
+	// A baseline inferred from a plain integer never promised null, so null is a
+	// broken promise, and reporting it as a type mismatch would name the wrong
+	// thing.
+	res, err := CompareJSON(`{"id": 42}`, `{"id": null}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Deltas) != 1 || res.Deltas[0].Kind != types.KindNullabilityChange {
+		t.Fatalf("expected one %s delta, got %+v", types.KindNullabilityChange, res.Deltas)
+	}
+	if res.Deltas[0].Severity != types.SeverityBreaking {
+		t.Errorf("a field that never allowed null returned one: want BREAKING, got %s", res.Deltas[0].Severity)
+	}
 
-	res, err := CompareJSON(baseline, current)
+	// A non-null type mismatch is still a mismatch.
+	res, err = CompareJSON(`{"id": 42}`, `{"id": "not-an-int"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !res.HasBreakingChanges {
 		t.Errorf("expected breaking for type mismatch (string vs int), even with nullable fallthrough (bug #2)")
 	}
+}
 
-	// Now test nullable field where current is null - should be INFO (or not breaking)
-	baseline = `{"id": 42}`
-	current = `{"id": null}`
+// A baseline can know a field is nullable: a spec declared it, or inference saw
+// it both hold a value and go absent. A null is then a value the contract allows,
+// and reporting it is a false alarm on a healthy endpoint.
+func TestNullableFieldReturningNullIsNotDrift(t *testing.T) {
+	baseline := &types.JSONSchemaNode{
+		Type: types.TypeObject,
+		Properties: map[string]*types.JSONSchemaNode{
+			"n": {Type: types.TypeInteger, Nullable: true},
+		},
+		RequiredKeys: []string{"n"},
+	}
 
-	// Current behavior: returns early at line 87 after nullability check, never reaches type check
-	// Fixed behavior: should check type compatibility after nullable check
+	res, err := CompareJSONWithSchema(baseline, `{"n": null}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Deltas) != 0 {
+		t.Errorf("a null the baseline permits was reported as drift: %+v", res.Deltas)
+	}
+	if res.HasBreakingChanges || res.HasWarnings {
+		t.Errorf("permitted null set breaking=%v warnings=%v", res.HasBreakingChanges, res.HasWarnings)
+	}
+
+	// Nullable does not mean untyped: the same field answering with a different
+	// type is still caught.
+	res, err = CompareJSONWithSchema(baseline, `{"n": "not-an-int"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HasBreakingChanges {
+		t.Errorf("nullability excused a real type change: %+v", res.Deltas)
+	}
 }
 
 // #3: baseline null → real type should be INFO (contract refinement), not BREAKING
@@ -226,25 +283,12 @@ func TestJSONPathBracketQuoting(t *testing.T) {
 	}
 }
 
-// #27: WARNING tier for type-widening, null→typed, added-required
-func TestWarningTier(t *testing.T) {
-	// Type widening (integer→number) should be WARNING, not BREAKING
-	baseline := `{"count": 42}`
-	current := `{"count": 42.0}`
-
-	res, err := CompareJSON(baseline, current)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(res.Deltas) > 0 && res.Deltas[0].Severity == types.SeverityBreaking {
-		t.Errorf("type widening integer→number should be WARNING, not BREAKING (bug #27)")
-	}
-
-	// null→typed should be INFO (already tested in TestNullToTyped_IsInfoNotBreaking)
-
-	// Added required field (if we had freq-based) - not testing yet as it's PR #5
-}
+// #27 was a WARNING-tier test that asserted nothing: it guarded its only check
+// with `len(res.Deltas) > 0`, so it passed in exactly the situation it existed to
+// catch, and its `42` vs `42.0` pair infers to one type on both sides. Its
+// widening case now lives in
+// TestNumberPrecisionChange, which fails if the delta is missing; null→typed is
+// covered by TestNullToTyped_IsInfoNotBreaking.
 
 // #29: structural deltas only - no emoji/prose in Message, one canonical "absent" sentinel
 func TestStructuralDeltas_NoEmojiProse(t *testing.T) {

@@ -177,18 +177,38 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 			})
 			return // Early return only for actual violation
 		}
-		// If base.Nullable == true, fall through to type checking
+		// Nullable means the baseline never promised a value here: a spec declared
+		// the field optional, or inference saw it both hold a value and go absent.
+		// A null is therefore inside the contract, and there is nothing to report.
+		//
+		// It has to return rather than fall through to the type check below, which
+		// is what this used to do. isCompatibleType knows nothing about
+		// nullability, so `null` against `integer` read as a type mismatch: the one
+		// case the fall-through was written to permit came out BREAKING, and a
+		// field the contract explicitly allows to be null could not be null
+		// without raising an alert.
+		return
 	}
 
 	// Type comparison
 	if !isCompatibleType(base.Type, curr.Type) {
-		// Determine severity: type widen (integer<->number) = WARNING, null->typed = INFO (refinement), else BREAKING
+		// Severity ladder, one tier per README's severity table.
 		severity := types.SeverityBreaking
-		if (base.Type == types.TypeInteger && curr.Type == types.TypeNumber) ||
-			(base.Type == types.TypeNumber && curr.Type == types.TypeInteger) {
+		switch {
+		case base.Type == types.TypeInteger && curr.Type == types.TypeNumber:
+			// A whole number that gained a fractional part. This is the number
+			// change worth naming: the field now returns values outside the
+			// narrower promise the baseline made. README documents it as WARNING.
 			severity = types.SeverityWarning
-		}
-		if base.Type == types.TypeNull && curr.Type != types.TypeNull {
+		case base.Type == types.TypeNumber && curr.Type == types.TypeInteger:
+			// A number that narrowed to whole numbers. Recorded, but healthy: an
+			// integer satisfies `number`, so the baseline's promise still holds.
+			// Alerting here would fire on healthy APIs, since merging a mixed
+			// array collapses integer and number items to `number` — one response
+			// of whole numbers would then read as a contract change.
+			severity = types.SeverityInfo
+		case base.Type == types.TypeNull && curr.Type != types.TypeNull:
+			// A null that became a value is a refinement, not a break.
 			severity = types.SeverityInfo
 		}
 
@@ -335,17 +355,23 @@ func compareRecursive(base, curr *types.JSONSchemaNode, path string, diff *types
 	}
 }
 
-// isCompatibleType returns true if types match or are compatible (e.g. integer↔number both directions)
+// isCompatibleType reports whether a change from base to curr is no change at
+// all: the same type, or an unknown on either side, which is the absence of a
+// claim rather than a claim that was broken.
+//
+// integer and number are deliberately not treated as compatible. JSON has a
+// single number type, so this pair is the only place Driftwood's integer/number
+// split is observable: inference reads a value as integer exactly when it has no
+// fractional part, so `integer` becoming `number` means a field that had only
+// ever returned whole numbers has started returning fractional ones. Nothing
+// else in this file can see that — both sides are `number` to JSON — and
+// returning true here swallowed it, which is what left the WARNING branch at the
+// call site unreachable for the one case it was written for.
 func isCompatibleType(base, curr types.JSONNodeType) bool {
 	if base == curr {
 		return true
 	}
 	if base == types.TypeUnknown || curr == types.TypeUnknown {
-		return true
-	}
-	// Integer to float can be compatible in loose JSON contexts (BOTH directions)
-	if (base == types.TypeInteger && curr == types.TypeNumber) ||
-		(base == types.TypeNumber && curr == types.TypeInteger) {
 		return true
 	}
 	return false
