@@ -40,7 +40,6 @@
     "javascript",
     "devtools",
     "contract-testing",
-    "express-middleware",
     "network-sniffer"
   ],
   "author": "donaina",

@@ -2,9 +2,11 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/donaina/driftwood/pkg/types"
 )
@@ -958,5 +960,88 @@ func TestStore_ConfirmBaseline_IsIdempotentOnAConfirmedVersion(t *testing.T) {
 	}
 	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
 		t.Errorf("second ConfirmBaseline = %v, want nil", err)
+	}
+}
+
+// TestStore_EndpointCapEvictsOnlyWhatItMayForget covers the bound on the history
+// map.
+//
+// One entry is created per distinct METHOD:PATH observed, and a path carrying a
+// parameter creates one per entity — /orders/1, /orders/2 — so the map grew once
+// per request, each entry able to hold a baseline body. The cap evicts the
+// endpoint that has gone longest without being seen, and this test is mostly
+// about the endpoints it must not touch: dropping a contract somebody accepted
+// does not merely lose a record, it leaves the endpoint unbaselined and hands
+// the next response the job of defining the contract.
+func TestStore_EndpointCapEvictsOnlyWhatItMayForget(t *testing.T) {
+	s := &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxTraffics: 500,
+		maxAlerts:   200,
+		persistPath: filepath.Join(t.TempDir(), "baselines.json"),
+		config: types.ProxyConfig{
+			TargetURL:        "http://localhost:3000",
+			ProxyPort:        "8787",
+			AutoSaveBaseline: true,
+			InterceptJSON:    true,
+		},
+	}
+
+	observe := func(path string) {
+		t.Helper()
+		s.AddTraffic(types.CapturedTraffic{
+			ID:         path,
+			Method:     "GET",
+			Path:       path,
+			Timestamp:  time.Now(),
+			StatusCode: 200,
+		})
+	}
+
+	for i := 0; i < maxEndpoints; i++ {
+		observe(fmt.Sprintf("/filler/%d", i))
+	}
+	if got := len(s.GetAllHistories()); got != maxEndpoints {
+		t.Fatalf("histories = %d after %d distinct endpoints, want %d", got, maxEndpoints, maxEndpoints)
+	}
+
+	// /filler/0 is pinned to a version and /filler/1 carries a version a human
+	// accepted. Neither may be spent to make room for a stranger.
+	if _, err := s.SaveBaselineFrom("GET", "/filler/0", `{"id": 1}`, types.BaselineSourceManual); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetLockedVersion("GET", "/filler/0", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SaveBaselineFrom("GET", "/filler/1", `{"id": 1}`, types.BaselineSourceManual); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < maxEndpoints; i++ {
+		observe(fmt.Sprintf("/new/%d", i))
+	}
+
+	if _, ok := s.GetHistory("GET", "/filler/0"); !ok {
+		t.Error("an endpoint pinned to a version was evicted to make room")
+	}
+	if _, ok := s.GetHistory("GET", "/filler/1"); !ok {
+		t.Error("an endpoint with a confirmed version was evicted to make room")
+	}
+	// The newest arrival survives because it is the one that did the evicting.
+	// Once the filler is exhausted the series cycles: with the two protected
+	// endpoints fixed in place, each new path spends the least recently seen
+	// provisional entry, so the map holds a window of recent endpoints rather
+	// than the first ones it ever saw.
+	if _, ok := s.GetHistory("GET", fmt.Sprintf("/new/%d", maxEndpoints-1)); !ok {
+		t.Error("the endpoint seen most recently was not recorded")
+	}
+	if _, ok := s.GetHistory("GET", "/filler/2"); ok {
+		t.Error("an endpoint nothing protects was never evicted: the map is not bounded after all")
+	}
+	if got := len(s.GetAllHistories()); got > maxEndpoints {
+		t.Errorf("histories = %d, want the map held at its cap of %d", got, maxEndpoints)
 	}
 }

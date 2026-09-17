@@ -282,12 +282,21 @@ func (p *Proxy) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		reqBodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+		reqBodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxAnalyzedBody))
 		if err != nil {
 			http.Error(w, "failed to read request body", http.StatusBadRequest)
 			return
 		}
-		r.Body = io.NopCloser(bytes.NewBuffer(reqBodyBytes))
+		// The cap bounds what Driftwood records, not what the backend receives.
+		// Handing on the capped copy meant a request larger than the cap reached
+		// the backend truncated, still under the Content-Length the client had
+		// sent — so the backend either read a short body or waited for bytes that
+		// were never coming. LimitReader stops at the prefix without consuming
+		// past it, so the two readers together are the whole body.
+		r.Body = &multiReadCloser{
+			Reader: io.MultiReader(bytes.NewReader(reqBodyBytes), r.Body),
+			Closer: r.Body,
+		}
 
 		reqHeaders := make(map[string]string)
 		for k, v := range r.Header {
@@ -331,27 +340,43 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 			respHeaders[k] = strings.Join(v, ", ")
 		}
 
-		// Read body with limit
-		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+		// Read a bounded prefix to analyze, and pass the rest through untouched.
+		//
+		// These used to be one set of bytes: the body was capped at 10 MiB and the
+		// capped copy was what got served. A response over the cap therefore
+		// arrived truncated under the Content-Length the backend had sent, so the
+		// client was told to expect bytes that never came. Driftwood is a proxy;
+		// silently corrupting the traffic it is watching is a worse outcome than
+		// not looking at it, so the cap now bounds the analysis only.
+		analyzed, err := io.ReadAll(io.LimitReader(resp.Body, maxAnalyzedBody))
 		if err != nil {
 			return err
 		}
-		_ = resp.Body.Close()
+		resp.Body = &multiReadCloser{
+			Reader: io.MultiReader(bytes.NewReader(analyzed), resp.Body),
+			Closer: resp.Body,
+		}
 
-		// Decompress gzip if present (Content-Encoding: gzip)
+		// A gzipped body is decompressed to be read, not to be served. The client
+		// asked for gzip and the response says so, so it gets the compressed
+		// stream it was promised: rewriting the body to identity while leaving
+		// Content-Encoding: gzip in place handed a client that had sent
+		// Accept-Encoding: gzip a body it would then fail to decode.
+		analysisBody := analyzed
 		if ce := resp.Header.Get("Content-Encoding"); strings.Contains(strings.ToLower(ce), "gzip") {
-			decompressed, err := decompressGzip(bodyBytes)
-			if err != nil {
-				log.Printf("[Driftwood] gzip decompress error: %v", err)
+			decompressed, derr := decompressGzip(analyzed, maxAnalyzedBody)
+			if derr != nil && len(decompressed) == 0 {
+				log.Printf("[Driftwood] gzip decompress error: %v", derr)
 			} else {
-				bodyBytes = decompressed
-				// Remove Content-Encoding since we decompressed
+				analysisBody = decompressed
+				// The recorded body is the decompressed one, so the recorded
+				// headers have to say so. respHeaders is a copy of resp.Header,
+				// not the header the client is served.
 				respHeaders["Content-Encoding"] = "identity"
 			}
 		}
 
-		respBodyBuf.Write(bodyBytes)
-		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		respBodyBuf.Write(analysisBody)
 		return nil
 	}
 
@@ -397,13 +422,44 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 	)
 }
 
-func decompressGzip(data []byte) ([]byte, error) {
+// maxAnalyzedBody caps how much of a message Driftwood reads in order to diff
+// it. It bounds the analysis, not the traffic: everything past it is forwarded
+// to its destination untouched.
+const maxAnalyzedBody = 10 << 20 // 10 MiB
+
+// multiReadCloser reads a prefix followed by the remainder of an original body,
+// and closes that original when it is closed.
+//
+// It exists because the two obvious spellings are both wrong here. Wrapping a
+// MultiReader in io.NopCloser drops the original's Close, so the connection it
+// came from is never released for reuse; closing the original up front, which is
+// what this code did while it was also replacing the body, is what made the
+// remainder unreadable. Handing the original on as the Closer keeps both.
+type multiReadCloser struct {
+	io.Reader
+	io.Closer
+}
+
+// decompressGzip expands a gzip body, giving up after limit bytes.
+//
+// The limit is what makes this safe to point at a response Driftwood did not
+// produce. The caller caps the compressed bytes it reads, and that cap bounds
+// nothing: ratios of 1000:1 are ordinary, so a few hundred KB of well-chosen
+// input expands to gigabytes, and an unbounded ReadAll would allocate every byte
+// of it before anyone could object. Reading at most limit bytes from the
+// decompressor caps the allocation at the limit, whatever the payload claims.
+//
+// Bytes that did decompress are returned even alongside an error. The input is a
+// prefix of a larger stream whenever the compressed side hit the cap, and a
+// truncated gzip member ends in an error — so discarding the output there would
+// mean the largest responses are the only ones never diffed.
+func decompressGzip(data []byte, limit int64) ([]byte, error) {
 	gr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	defer gr.Close()
-	return io.ReadAll(gr)
+	return io.ReadAll(io.LimitReader(gr, limit))
 }
 
 func (p *Proxy) serveMockResponse(w http.ResponseWriter, r *http.Request, start time.Time, reqBodyBytes []byte, reqHeaders map[string]string) {

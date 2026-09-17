@@ -2,10 +2,14 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -483,5 +487,131 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	request("/fails-first")
 	if _, exists := store.GetBaseline("GET", "/fails-first"); exists {
 		t.Error("an error response was saved as the contract")
+	}
+}
+
+// TestResponseLargerThanTheAnalysisCapArrivesWhole covers the cap as a bound on
+// analysis rather than on traffic.
+//
+// The capped copy of the body used to be the copy that was served, so a response
+// over the limit reached the client truncated while its Content-Length still
+// described the original. A proxy that silently corrupts the traffic it is
+// watching is worse than one that does not watch it. The client here is a real
+// one over a real socket, because that is what turns the mismatch into an error
+// someone would see rather than a length nobody checks.
+func TestResponseLargerThanTheAnalysisCapArrivesWhole(t *testing.T) {
+	isolateHome(t)
+
+	const bodySize = maxAnalyzedBody + 4096
+	body := strings.Repeat("x", bodySize)
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Length", strconv.Itoa(bodySize))
+		_, _ = io.WriteString(w, body)
+	}))
+	defer backend.Close()
+
+	prx, err := NewProxyAllowPrivate(backend.URL, storage.NewStore(backend.URL, "8787"),
+		events.NewHub(), &mock.MockController{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	front := httptest.NewServer(prx.Handler())
+	defer front.Close()
+
+	resp, err := http.Get(front.URL + "/big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading the proxied response: %v", err)
+	}
+	if len(got) != bodySize {
+		t.Errorf("the client received %d bytes of a %d-byte response; the analysis cap truncated the traffic",
+			len(got), bodySize)
+	}
+}
+
+// zeroReader yields an endless run of zero bytes, which compresses extremely
+// well — the point of the fixture below.
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
+}
+
+// TestGzippedResponseIsForwardedCompressedAndAnalyzedBounded covers both halves
+// of the gzip handling, which are not the same half.
+//
+// A gzipped body is decompressed in order to be read, not in order to be served:
+// rewriting it to identity while leaving Content-Encoding: gzip in place handed
+// a client that had asked for gzip a body it would then fail to decode. And the
+// expansion is where a large or hostile response turns a small read into a large
+// allocation, so it is capped on the expanded side — the compressed side is
+// already capped, and a ratio of 1000:1 makes that cap bound nothing.
+func TestGzippedResponseIsForwardedCompressedAndAnalyzedBounded(t *testing.T) {
+	isolateHome(t)
+
+	// 64 MiB of zeros compresses to a few tens of KB, far under the cap on the
+	// compressed side, so nothing here is bounded unless the expansion is.
+	const expanded = 64 << 20
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	if _, err := io.CopyN(zw, zeroReader{}, expanded); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	gz := compressed.Bytes()
+	if len(gz) >= maxAnalyzedBody {
+		t.Fatalf("the fixture is not a compression bomb: %d compressed bytes", len(gz))
+	}
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Length", strconv.Itoa(len(gz)))
+		_, _ = w.Write(gz)
+	}))
+	defer backend.Close()
+
+	store := storage.NewStore(backend.URL, "8787")
+	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Driven through the handler rather than a socket: the assertion below is on
+	// what the proxy recorded, and a real client can finish reading its body
+	// before the handler has finished filing the transaction.
+	req := httptest.NewRequest(http.MethodGet, "/bomb", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	rec := httptest.NewRecorder()
+	prx.Handler()(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Errorf("Content-Encoding = %q: the client asked for gzip and its body was rewritten underneath it", got)
+	}
+	if got := rec.Body.Bytes(); !bytes.Equal(got, gz) {
+		t.Errorf("the client received %d bytes, want the %d gzipped bytes the backend sent", len(got), len(gz))
+	}
+
+	traffics := store.GetTraffics(1)
+	if len(traffics) != 1 {
+		t.Fatalf("recorded %d transactions, want 1", len(traffics))
+	}
+	if n := len(traffics[0].ResponseBody); n > maxAnalyzedBody {
+		t.Errorf("the analysis retained %d bytes of a %d-byte expansion; the decompression is unbounded", n, expanded)
 	}
 }
