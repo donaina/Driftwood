@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +30,7 @@ func main() {
 
 	target := flag.String("target", "http://localhost:3000", "Target API URL to proxy")
 	port := flag.String("port", "8787", "Driftwood Proxy & Web Server Port")
+	host := flag.String("host", "127.0.0.1", "Interface to bind. Loopback by default: the dashboard is an unauthenticated control plane, so exposing it to the network is a decision to make on purpose")
 	flag.Parse()
 
 	// Which flags the user actually typed. A flag left at its default is not a
@@ -53,18 +55,25 @@ func main() {
 
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
-	// Use NewProxyForTest to allow private IPs (like 127.0.0.1) for local testing and VPS deployment
 
-	prx, err := proxy.NewProxyForTest(cfg.TargetURL, store, hub, mockCtrl)
+	// Private targets are allowed here because the operator named this one: the
+	// API being sniffed is usually on localhost. A target that arrives over HTTP
+	// instead is checked — see Proxy.SetTarget.
+	prx, err := proxy.NewProxyAllowPrivate(cfg.TargetURL, store, hub, mockCtrl)
 	if err != nil {
 		log.Fatalf("Failed to initialize proxy: %v", err)
 	}
 
 	srv := server.NewServer(store, hub, prx, mockCtrl)
-	// Bind to 0.0.0.0 (all interfaces) for external access
-	addr := "0.0.0.0:" + cfg.ProxyPort
+	addr := net.JoinHostPort(*host, cfg.ProxyPort)
 
-	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://localhost:%s", cfg.ProxyPort)
+	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://%s", addr)
+	// Said out loud because the failure it prevents is silent: a dashboard bound
+	// to loopback is simply unreachable from another machine, and nothing else
+	// in the output would explain why.
+	if ip := net.ParseIP(*host); ip != nil && ip.IsLoopback() {
+		log.Printf("[Driftwood] Bound to loopback only. Pass --host 0.0.0.0 to serve the network; the control plane has no authentication of its own.")
+	}
 	log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", cfg.TargetURL)
 	log.Printf("[Driftwood] Built-in Mock Simulator: http://localhost:%s/_driftwood/mock/users", cfg.ProxyPort)
 

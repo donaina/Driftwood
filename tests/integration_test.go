@@ -34,7 +34,7 @@ func TestEndToEndProxyAndDiff(t *testing.T) {
 	mockCtrl := mock.NewMockController()
 
 	// Use test proxy that allows private IPs
-	prx, err := proxy.NewProxyForTest(targetServer.URL, store, hub, mockCtrl)
+	prx, err := proxy.NewProxyAllowPrivate(targetServer.URL, store, hub, mockCtrl)
 	if err != nil {
 		t.Fatalf("failed to create proxy: %v", err)
 	}

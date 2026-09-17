@@ -46,6 +46,12 @@ const (
 	KindNullabilityChange DiffKind = "NULLABILITY_CHANGE"
 	KindArrayTypeMismatch DiffKind = "ARRAY_ITEM_MISMATCH"
 	KindFormatChange      DiffKind = "FORMAT_CHANGE"
+	// KindStatusCodeChange fits the naming of the others least: it is not a
+	// difference between two payloads but the absence of a payload to compare.
+	// It exists because the alternative — diffing an error body against a
+	// baseline captured from a success — reports every field of the real
+	// response as REMOVED_FIELD, burying the one fact worth knowing.
+	KindStatusCodeChange DiffKind = "STATUS_CODE_CHANGE"
 )
 
 // DiffDelta details a single change between baseline and observed payload

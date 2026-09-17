@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -80,13 +81,15 @@ const (
 var explainURL = "http://localhost:8788/explain"
 
 type Proxy struct {
-	targetURL     atomic.Pointer[url.URL]
-	store         *storage.Store
-	hub           *events.Hub
-	mockCtrl      *mock.MockController
-	transport     *http.Transport
-	server        *http.Server
-	allowPrivate  bool  // for testing/dev - bypass SSRF for private IPs
+	targetURL atomic.Pointer[url.URL]
+	store     *storage.Store
+	hub       *events.Hub
+	mockCtrl  *mock.MockController
+	transport *http.Transport
+	server    *http.Server
+	// allowPrivate governs the target given at construction. It is deliberately
+	// not consulted by SetTarget, whose target arrives over HTTP — see there.
+	allowPrivate  bool
 	droppedAlerts int64 // counter for dropped breaking alerts
 
 	// explainSlots is the concurrency budget for sidecar calls. A buffered
@@ -106,8 +109,17 @@ func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mo
 	return p, nil
 }
 
-// NewProxyForTest creates a proxy with SSRF checks disabled for testing
-func NewProxyForTest(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
+// NewProxyAllowPrivate builds a proxy that accepts a private target.
+//
+// It is the right constructor when the target came from the operator — the
+// --target flag, or a test's own httptest server — because an operator naming
+// http://localhost:3000 is naming the thing they want sniffed, and that is the
+// product's primary use. It is the wrong constructor for a target that arrived
+// over the network; use SetTarget for those.
+//
+// It was called NewProxyForTest and called from main, which is how the SSRF
+// blocklist came to be disabled in every shipped binary.
+func NewProxyAllowPrivate(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
 	parsed, err := parseAndValidateTarget(target, true)
 	if err != nil {
 		return nil, fmt.Errorf("invalid target URL: %w", err)
@@ -169,37 +181,88 @@ func parseAndValidateTarget(raw string, allowPrivate bool) (*url.URL, error) {
 	return parsed, nil
 }
 
+// isBlockedHost reports whether a target host names infrastructure the proxy
+// has no business reaching.
+//
+// Only SetTarget consults this. The constructor does not, because Driftwood's
+// own default target is http://localhost:3000 — it is a local dev tool, and a
+// rule that blocked private hosts unconditionally would reject its primary use.
+// The line that matters is not private-versus-public but who named the target:
+// an operator typing a flag, or a request that arrived over the wire.
 func isBlockedHost(host string) bool {
-	if host == "localhost" || host == "localhost.localdomain" || host == "ip6-localhost" {
+	// Hostnames are case-insensitive, and a trailing dot is a legal fully
+	// qualified spelling of the same name. A plain string compare let both
+	// spellings of "localhost" through.
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "" {
 		return true
 	}
-	if host == "127.0.0.1" || host == "::1" || strings.HasPrefix(host, "127.") {
+
+	switch host {
+	case "localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback":
+		return true
+	case "metadata.google.internal", "metadata.goog":
+		// The GCP metadata service answers to these names, which are not IP
+		// literals, so nothing below would catch them.
 		return true
 	}
-	if host == "169.254.169.254" || strings.HasPrefix(host, "169.254.") {
-		return true
+
+	if ip := parseIPLiteral(host); ip != nil {
+		return isBlockedIP(ip)
 	}
-	if strings.HasPrefix(host, "fe80::") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return true
-		}
-		if ip4 := ip.To4(); ip4 != nil {
-			if ip4[0] == 10 ||
-				(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) ||
-				(ip4[0] == 192 && ip4[1] == 168) {
-				return true
-			}
-		}
-	}
-	return false
+
+	// A name with no dot resolves against the search domains, so it names
+	// something inside the network Driftwood runs in rather than a host on the
+	// public internet. A dot is not proof of safety, but its absence is proof
+	// of locality.
+	return !strings.Contains(host, ".")
 }
 
-func (p *Proxy) SetTarget(target string) error {
-	parsed, err := parseAndValidateTarget(target, p.allowPrivate)
+// isBlockedIP reports whether an address is one Driftwood will not dial. The
+// stdlib predicates cover the ranges the hand-rolled octet comparisons did,
+// plus IPv6 ULA (fd00::/8) and the unspecified address, both of which were
+// reachable before.
+func isBlockedIP(ip net.IP) bool {
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified()
+}
+
+// parseIPLiteral reads the spellings a resolver accepts for an address but
+// net.ParseIP does not: the single-integer decimal and hexadecimal forms. Both
+// 2130706433 and 0x7f000001 mean 127.0.0.1 to getaddrinfo, which is what
+// actually dials them, so a check that only understood dotted quads waved them
+// straight through.
+func parseIPLiteral(host string) net.IP {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip
+	}
+
+	base, digits := 10, host
+	if strings.HasPrefix(host, "0x") || strings.HasPrefix(host, "0X") {
+		base, digits = 16, host[2:]
+	}
+	if digits == "" {
+		return nil
+	}
+	n, err := strconv.ParseUint(digits, base, 32)
+	if err != nil {
+		return nil
+	}
+	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+}
+
+// SetTarget points the proxy at a new backend.
+//
+// The target is validated rather than trusted, and allowPrivate is the
+// caller's assertion that the request which carried it came from the operator.
+// Driftwood has no authentication of its own and runs inside networks worth
+// reaching, so a retarget from off-box must not be able to aim it at
+// link-local metadata or the LAN behind it.
+func (p *Proxy) SetTarget(target string, allowPrivate bool) error {
+	parsed, err := parseAndValidateTarget(target, allowPrivate)
 	if err != nil {
 		return err
 	}
@@ -374,6 +437,45 @@ func (p *Proxy) serveMockResponse(w http.ResponseWriter, r *http.Request, start 
 	)
 }
 
+// assessFailedResponse reports a non-2xx response as the status change it is,
+// rather than diffing the error body against a contract it never claimed to
+// satisfy.
+//
+// The severity split is the point. A 5xx is the service failing to honour the
+// contract, and is published as an alert. A 4xx is the contract being enforced
+// against the caller, so it is filed as a warning instead: it still reaches the
+// traffic list and the alert log, where an endpoint that stopped answering 200
+// belongs, but it never broadcasts and is never described as a break.
+func (p *Proxy) assessFailedResponse(method, path string, statusCode int) (string, *types.ContractDiff) {
+	// An error body is not a shape to promise. Auto-saving one here would make
+	// the failure itself the baseline, and every later success look like drift.
+	if _, exists := p.store.GetBaseline(method, path); !exists {
+		return "NO_BASELINE", nil
+	}
+
+	severity := types.SeverityWarning
+	status := "WARNING"
+	if statusCode >= 500 {
+		severity = types.SeverityBreaking
+		status = "BREAKING"
+	}
+
+	return status, &types.ContractDiff{
+		HasBreakingChanges: status == "BREAKING",
+		HasWarnings:        status == "WARNING",
+		Deltas: []types.DiffDelta{
+			{
+				JSONPath: "$",
+				Kind:     types.KindStatusCodeChange,
+				Severity: severity,
+				Message:  fmt.Sprintf("endpoint answered with HTTP %d; the contract describes a successful response", statusCode),
+				Expected: "2xx",
+				Actual:   fmt.Sprintf("%d", statusCode),
+			},
+		},
+	}
+}
+
 func (p *Proxy) processAndStoreTraffic(
 	method, path, rawURL string,
 	statusCode int,
@@ -388,8 +490,14 @@ func (p *Proxy) processAndStoreTraffic(
 	sanitizedReqHeaders := sanitizeHeaders(reqHeaders)
 	sanitizedRespHeaders := sanitizeHeaders(respHeaders)
 
-	// For 204/empty responses, still process if we have a baseline to check
-	if isJSON && strings.TrimSpace(respBody) != "" {
+	// A failed response is not evidence about the contract's shape, so it is
+	// assessed as the failure it is and never diffed against a success schema.
+	// Otherwise a single transient 500 on a healthy API reports every field of
+	// the real response as REMOVED_FIELD and raises a breaking alert naming all
+	// of them — noise that buries the one fact worth knowing.
+	if statusCode >= 400 {
+		contractStatus, contractDiff = p.assessFailedResponse(method, path, statusCode)
+	} else if isJSON && strings.TrimSpace(respBody) != "" {
 		baseline, exists := p.store.GetBaseline(method, path)
 		if !exists {
 			cfg := p.store.GetConfig()

@@ -58,9 +58,9 @@ func newHarness(t *testing.T) *harness {
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
 
-	prx, err := proxy.NewProxyForTest(backend.URL, store, hub, mockCtrl)
+	prx, err := proxy.NewProxyAllowPrivate(backend.URL, store, hub, mockCtrl)
 	if err != nil {
-		t.Fatalf("NewProxyForTest: %v", err)
+		t.Fatalf("NewProxyAllowPrivate: %v", err)
 	}
 
 	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl).Router())

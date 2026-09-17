@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/donaina/driftwood/internal/events"
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/pkg/types"
 )
 
 // isolateHome points the store at a throwaway home directory.
@@ -43,7 +45,7 @@ func TestProxySSRFValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid http URL should be accepted: %v", err)
 	}
-	if prx.SetTarget("https://api.example.com") != nil {
+	if prx.SetTarget("https://api.example.com", false) != nil {
 		t.Errorf("valid https URL should be accepted")
 	}
 
@@ -58,17 +60,28 @@ func TestProxySSRFValidation(t *testing.T) {
 		"http://127.0.0.1:8080",   // local
 		"",                        // empty
 		"not-a-url",
+		// The same three destinations in spellings that defeated the old
+		// string comparison. Each reached loopback or a metadata service when
+		// the check was a plain equality test against a lowercase dotted quad.
+		"http://LOCALHOST:8787",
+		"http://localhost.:8787", // trailing dot: fully qualified, same host
+		"http://0.0.0.0:8787",    // unspecified; dials loopback on Linux
+		"http://2130706433/",     // decimal 127.0.0.1
+		"http://0x7f000001/",     // hex 127.0.0.1
+		"http://fd00::1/",        // IPv6 ULA
+		"http://metadata.google.internal/",
+		"http://intranet", // dotless: resolved against the search domains
 	}
 
 	for _, u := range invalidURLs {
-		err = prx.SetTarget(u)
+		err = prx.SetTarget(u, false)
 		if err == nil {
 			t.Errorf("SSRF URL should be rejected: %s", u)
 		}
 	}
 
 	// Test: valid URL after invalid
-	if err := prx.SetTarget("https://api.github.com"); err != nil {
+	if err := prx.SetTarget("https://api.github.com", false); err != nil {
 		t.Errorf("valid URL after invalid should work: %v", err)
 	}
 }
@@ -88,7 +101,7 @@ func TestProxyTargetURLRaceSafety(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 100; i++ {
 		go func() {
-			prx.SetTarget("https://api.example.com")
+			prx.SetTarget("https://api.example.com", false)
 			_ = prx.Handler()
 			done <- true
 		}()
@@ -105,7 +118,7 @@ func TestSanitizeTrafficWired(t *testing.T) {
 	mockCtrl := &mock.MockController{}
 
 	// Use test proxy for localhost target
-	prx, err := NewProxyForTest("http://localhost:3000", store, hub, mockCtrl)
+	prx, err := NewProxyAllowPrivate("http://localhost:3000", store, hub, mockCtrl)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +200,7 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 
 	store := storage.NewStore(backend.URL, "8787")
 	hub := events.NewHub()
-	prx, err := NewProxyForTest(backend.URL, store, hub, &mock.MockController{})
+	prx, err := NewProxyAllowPrivate(backend.URL, store, hub, &mock.MockController{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,5 +327,161 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 	}
 	if sidecarBody["endpoint"] != "GET /thing" {
 		t.Errorf("the sidecar was told about %v", sidecarBody["endpoint"])
+	}
+}
+
+/*
+A backend that fails is not a backend whose contract changed.
+
+	Diffing an error body against a baseline captured from a success reports
+	every field of the real response as REMOVED_FIELD and alerts on all of them,
+	so one transient 500 arrives as a page of confident nonsense naming fields
+	that never went anywhere. The status is the finding; the body is not.
+*/
+func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
+	isolateHome(t)
+
+	var mu sync.Mutex
+	seen := map[string]int{}
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		mu.Lock()
+		seen[r.URL.Path]++
+		attempt := seen[r.URL.Path]
+		mu.Unlock()
+
+		// Fails from the first call, so it can never become a contract.
+		if r.URL.Path == "/fails-first" {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"boom"}`))
+			return
+		}
+
+		// Every other endpoint answers healthily once, which is what makes the
+		// baseline a success contract, and then does as its name says.
+		if attempt == 1 {
+			_, _ = w.Write([]byte(`{"id":1,"nick":"al"}`))
+			return
+		}
+		switch r.URL.Path {
+		case "/breaks-to-500":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"boom","trace":"x"}`))
+		case "/breaks-to-404":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"nope"}`))
+		default:
+			_, _ = w.Write([]byte(`{"id":1,"nick":"al"}`))
+		}
+	}))
+	defer backend.Close()
+
+	store := storage.NewStore(backend.URL, "8787")
+	hub := events.NewHub()
+	prx, err := NewProxyAllowPrivate(backend.URL, store, hub, &mock.MockController{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := func(path string) {
+		t.Helper()
+		prx.Handler()(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	}
+
+	// Matching on the status rather than on position keeps the lookup honest
+	// about which of the two sightings it wants.
+	failure := func(path string, code int) types.CapturedTraffic {
+		t.Helper()
+		for _, tr := range store.GetTraffics(100) {
+			if tr.Path == path && tr.StatusCode == code {
+				return tr
+			}
+		}
+		t.Fatalf("no %d response was recorded for %s", code, path)
+		return types.CapturedTraffic{}
+	}
+
+	request("/breaks-to-500") // healthy, so this becomes the contract
+	request("/breaks-to-500") // then the endpoint falls over
+
+	failed := failure("/breaks-to-500", http.StatusInternalServerError)
+	if failed.ContractStatus != "BREAKING" {
+		t.Errorf("a 500 against a healthy contract reads as %q, want BREAKING", failed.ContractStatus)
+	}
+	if failed.Diff == nil || len(failed.Diff.Deltas) == 0 {
+		t.Fatal("the failure produced no deltas at all")
+	}
+	for _, d := range failed.Diff.Deltas {
+		if d.Kind == types.KindRemovedField || d.Kind == types.KindAddedField ||
+			d.Kind == types.KindTypeMismatch {
+			t.Errorf("the error body was diffed against the contract: %s %s", d.Kind, d.JSONPath)
+		}
+	}
+	if got := failed.Diff.Deltas[0].Kind; got != types.KindStatusCodeChange {
+		t.Errorf("the delta describing a failure is %q, want %q", got, types.KindStatusCodeChange)
+	}
+
+	/* One breaking alert, and it is the right one: a service that has started
+	   failing is worth waking someone for. What must not happen is the
+	   field-by-field version that used to accompany it. */
+	breaking := 0
+	for _, a := range store.GetAlerts(50) {
+		if a.ContractStatus != "BREAKING" {
+			continue
+		}
+		breaking++
+		if a.Diff == nil {
+			t.Fatal("the breaking alert carries no diff")
+		}
+		for _, d := range a.Diff.Deltas {
+			if d.Kind == types.KindRemovedField || d.Kind == types.KindTypeMismatch {
+				t.Errorf("the alert reports %s at %s because the backend errored", d.Kind, d.JSONPath)
+			}
+		}
+	}
+	if breaking != 1 {
+		t.Fatalf("expected 1 breaking alert for one failing endpoint, got %d", breaking)
+	}
+
+	/* A 4xx is the contract being enforced on the caller rather than the API
+	   changing shape. It is filed as a warning — visible in the alerts view,
+	   because an endpoint that stopped answering 200 is worth seeing — but it
+	   is never reported as the contract breaking. */
+	request("/breaks-to-404")
+	request("/breaks-to-404")
+
+	rejected := failure("/breaks-to-404", http.StatusNotFound)
+	if rejected.ContractStatus != "WARNING" {
+		t.Errorf("a 404 against a healthy contract reads as %q, want WARNING", rejected.ContractStatus)
+	}
+	filed := false
+	for _, a := range store.GetAlerts(50) {
+		if !strings.HasSuffix(a.Endpoint, "/breaks-to-404") {
+			continue
+		}
+		filed = true
+		if a.ContractStatus != "WARNING" {
+			t.Errorf("the 404 was filed as %q, want WARNING", a.ContractStatus)
+		}
+		if a.Diff == nil {
+			t.Fatal("the 404 alert carries no diff")
+		}
+		for _, d := range a.Diff.Deltas {
+			if d.Kind != types.KindStatusCodeChange {
+				t.Errorf("the 404 was diffed field by field: %s %s", d.Kind, d.JSONPath)
+			}
+		}
+	}
+	if !filed {
+		t.Error("the 404 was recorded but filed nowhere, so nothing shows it happened")
+	}
+
+	/* And an error body must never be adopted as the contract, or the failure
+	   becomes the baseline and every later success reads as drift. */
+	request("/fails-first")
+	if _, exists := store.GetBaseline("GET", "/fails-first"); exists {
+		t.Error("an error response was saved as the contract")
 	}
 }
