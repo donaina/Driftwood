@@ -27,7 +27,7 @@ The backend team changes a database column type or schema payload without notify
   - **Additive Changes**: Tracks newly introduced non-breaking properties.
 - **AI Change Explanations (optional)**: A sidecar service reads the structural diff and writes a short explanation of it — what changed, what it is likely to break, and what to do next. It runs alongside Driftwood rather than inside it; alerts are complete without it, and the binary never waits on it.
 - **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from locked baseline schemas.
-- **JavaScript & Node.js Native Support**: Installable via `npx` / `npm` and importable into Express/Fastify/Next.js applications.
+- **JavaScript & Node.js Native Support**: Installable via `npx` / `npm`, with a module that starts and stops the proxy from a Node process.
 - **Embedded Web Dashboard**: Native single-binary web interface at `http://localhost:8787/_driftwood/` with real-time SSE updates.
 - **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Removed Field`, `Nullability Violation`) to test contract alerts instantly.
 - **Persistent Contract Storage**: Saved baseline contracts persist across restarts in `~/.driftwood/baselines.json`.
@@ -195,7 +195,6 @@ export interface GetUsersResponse {
 │   └── src/             # Components, one entry per view the dashboard mounts
 ├── internal/
 │   ├── capture/         # Network traffic payload & header sanitization
-│   ├── config/          # Configuration loader
 │   ├── contract/        # TypeScript interface generator & contract exports
 │   ├── diff/            # Real-time JSON schema diffing engine & tests
 │   ├── events/          # Server-Sent Events (SSE) broadcasting hub

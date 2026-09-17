@@ -8,6 +8,14 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <!--
+      The dev server's entry point. There is no single app root to mount: each
+      view is its own entry, built separately into web/dist, and web/index.html
+      loads them all. This file pointed at src/main.tsx, which has never
+      existed, so `npm run dev` served a 404 on the one file it needs. Point it
+      at whichever view you are working on — the list of entries is
+      rollupOptions.input in vite.config.ts.
+    -->
+    <script type="module" src="/src/main-history.tsx"></script>
   </body>
 </html>

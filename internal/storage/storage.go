@@ -131,6 +131,75 @@ func (s *Store) ApplyRememberedConfig(targetFromFlag, portFromFlag bool) error {
 // process. The true total lives in ObservationCount.
 const maxObservations = 50
 
+// maxEndpoints bounds how many endpoints are held in memory.
+//
+// One entry is created per distinct METHOD:PATH observed, so a path carrying a
+// parameter — /orders/{id}, /users/abc123 — creates one per entity, and nothing
+// ever removed one. Each entry can hold a baseline whose SamplePayload is a
+// whole response body, so this was not a table of counters growing by a row per
+// endpoint: it was growing by a response per endpoint, without limit, for the
+// life of the process.
+const maxEndpoints = 200
+
+// makeRoomForEndpointLocked frees a slot if the history map is at its cap. The
+// caller must hold s.mu.
+//
+// A map already over the cap — one written by an older build and loaded from
+// disk — is left at its size and simply stops growing. Draining it would be the
+// cap working as intended and also a silent deletion of records the user can
+// currently see, and growth is the part that runs away.
+func (s *Store) makeRoomForEndpointLocked() {
+	if len(s.histories) < maxEndpoints {
+		return
+	}
+	s.evictOneEndpointLocked()
+}
+
+// evictOneEndpointLocked drops the endpoint that has gone longest without being
+// seen, and reports whether it found one it was free to drop.
+//
+// Only an endpoint Driftwood is free to forget is a candidate: one that is not
+// pinned to a version and none of whose versions a human confirmed. That guard
+// is the point of the function. Dropping a confirmed baseline does not merely
+// lose a record — the endpoint becomes unbaselined, the next response to arrive
+// is auto-captured as its contract, and a shape somebody accepted is silently
+// replaced by one nobody has looked at. That is precisely the failure this
+// product exists to catch, so it must not be the price of a memory cap.
+//
+// It follows that an endpoint with nothing to lose is a candidate whatever its
+// history, and a pinned or confirmed one never is. Should every endpoint be
+// pinned or confirmed, no slot is freed and the map is allowed past the cap:
+// those entries can only be created deliberately, one at a time, by a person,
+// which is a bound that traffic cannot drive past.
+func (s *Store) evictOneEndpointLocked() bool {
+	victim := ""
+	var victimAt time.Time
+	for key, h := range s.histories {
+		if h.LockedVersion != 0 || hasConfirmedVersion(h) {
+			continue
+		}
+		if victim == "" || h.UpdatedAt.Before(victimAt) {
+			victim, victimAt = key, h.UpdatedAt
+		}
+	}
+	if victim == "" {
+		return false
+	}
+	delete(s.histories, victim)
+	return true
+}
+
+// hasConfirmedVersion reports whether any version of this endpoint came from
+// something other than live traffic — see ContractBaseline.IsProvisional.
+func hasConfirmedVersion(h *types.EndpointHistory) bool {
+	for _, v := range h.Versions {
+		if !v.IsProvisional() {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) AddTraffic(t types.CapturedTraffic) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -185,6 +254,7 @@ func (s *Store) recordObservationLocked(t types.CapturedTraffic) {
 		// Creating the entry does not create a baseline: GetBaseline guards on
 		// len(Versions) == 0, not on the map entry existing, so this endpoint
 		// reads as unbaselined exactly as before.
+		s.makeRoomForEndpointLocked()
 		h = &types.EndpointHistory{
 			Method:    t.Method,
 			Path:      t.Path,
@@ -401,6 +471,7 @@ func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, decla
 	now := time.Now()
 
 	if !exists {
+		s.makeRoomForEndpointLocked()
 		h = &types.EndpointHistory{
 			Method:        method,
 			Path:          path,
