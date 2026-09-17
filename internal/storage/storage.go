@@ -13,18 +13,18 @@ import (
 )
 
 type Store struct {
-	mu           sync.RWMutex
-	traffics     []types.CapturedTraffic
-	histories    map[string]*types.EndpointHistory // Key: "METHOD:PATH"
-	alerts       map[string]*types.Alert
-	alertOrder   []string
-	config       types.ProxyConfig
-	maxTraffics  int
-	maxAlerts    int
-	persistPath  string
-	configPath   string
-	persistDir   string
-	writeMx      sync.Mutex // separate lock for file writes
+	mu          sync.RWMutex
+	traffics    []types.CapturedTraffic
+	histories   map[string]*types.EndpointHistory // Key: "METHOD:PATH"
+	alerts      map[string]*types.Alert
+	alertOrder  []string
+	config      types.ProxyConfig
+	maxTraffics int
+	maxAlerts   int
+	persistPath string
+	configPath  string
+	persistDir  string
+	writeMx     sync.Mutex // separate lock for file writes
 }
 
 func NewStore(targetURL, proxyPort string) *Store {

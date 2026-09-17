@@ -27,7 +27,7 @@ The backend team changes a database column type or schema payload without notify
   - **Additive Changes**: Tracks newly introduced non-breaking properties.
 - **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from locked baseline schemas.
 - **JavaScript & Node.js Native Support**: Installable via `npx` / `npm` and importable into Express/Fastify/Next.js applications.
-- **Embedded Web Dashboard**: Native single-binary web interface accessible at `http://localhost:8787` with real-time SSE updates.
+- **Embedded Web Dashboard**: Native single-binary web interface at `http://localhost:8787/_driftwood/` with real-time SSE updates.
 - **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Removed Field`, `Nullability Violation`) to test contract alerts instantly.
 - **Persistent Contract Storage**: Saved baseline contracts persist across restarts in `~/.driftwood/baselines.json`.
 
@@ -59,14 +59,36 @@ alerted on.
 
 ### 1. Go Lang
 
+The dashboard is compiled into the binary, so it has to be built before the binary
+that carries it:
+
 ```bash
 git clone https://github.com/donaina/Driftwood.git
 cd Driftwood
-go build -o drift cmd/drift/main.go
+make build
 ./drift --port 8787 --target http://localhost:3000
 ```
 
+`make build` installs the frontend dependencies, builds the dashboard, and then
+builds the binary. By hand, that is:
+
+```bash
+npm --prefix frontend-react ci
+npm --prefix frontend-react run build
+go build -o drift ./cmd/drift
+```
+
+Skipping the frontend step fails the build rather than surprising you at runtime:
+`web/web.go` embeds `web/dist`, and `//go:embed` is a compile error when its
+directory is missing.
+
 ### 2. JavaScript & TypeScript
+
+> **Not on the npm registry yet.** `@donaina/driftwood` has never been published —
+> the release workflow needs a tag pushed, and GitHub Actions on this repository
+> currently fails on a billing lock, so no release has ever been cut. The commands
+> below are the intended interface, not a working one. Build from source above in
+> the meantime.
 
 #### Run directly via `npx`:
 
@@ -100,7 +122,7 @@ await driftwood.start();
 
 Driftwood automatically converts locked baseline API payload contracts into TypeScript type definitions:
 
-- **Dashboard UI**: Click **`Export TypeScript Types (.d.ts)`** on [http://localhost:8787](http://localhost:8787).
+- **Dashboard UI**: Click **`Export TypeScript Types (.d.ts)`** on [http://localhost:8787/_driftwood/](http://localhost:8787/_driftwood/).
 - **HTTP Endpoint**: Download directly via `GET http://localhost:8787/_driftwood/api/export/typescript`.
 
 Example output:
@@ -124,7 +146,7 @@ export interface GetUsersResponse {
 1. **Low Overhead**: Built with Go standard library `httputil.NewSingleHostReverseProxy` for ultra-low latency transparent proxying.
 2. **Memory Safety**: Uses thread-safe mutex locking (`sync.RWMutex`) and a bounded ring buffer (500 requests max) to prevent memory leaks under high traffic load.
 3. **Resilient SSE Streaming**: Non-blocking Server-Sent Events hub with drop safety ensures slow dashboard clients don't block API proxy throughput.
-4. **Single Binary Deployment**: Zero runtime dependencies—the full Web Dashboard is compiled into the binary using `go:embed`.
+4. **Single Binary Deployment**: Zero runtime dependencies — the dashboard page and `web/dist` are compiled into the binary with `go:embed`, so it serves its own UI from any working directory and can be moved anywhere on its own.
 
 ---
 
@@ -136,6 +158,8 @@ export interface GetUsersResponse {
 ├── cmd/
 │   └── drift/         # Main Go application entry point
 ├── docs/                # Architectural & schema diff specification docs
+├── frontend-react/      # React view sources and the Vite build
+│   └── src/             # Components, one entry per view the dashboard mounts
 ├── internal/
 │   ├── capture/         # Network traffic payload & header sanitization
 │   ├── config/          # Configuration loader
@@ -150,13 +174,20 @@ export interface GetUsersResponse {
 ├── pkg/
 │   └── types/           # Core domain models (SchemaNode, ContractDiff, etc.)
 ├── tests/               # End-to-end proxy integration tests
-├── web/                 # Web Dashboard single-page app (embedded via go:embed)
+├── web/                 # Dashboard: index.html, shell.css, and the go:embed
+│   └── dist/            #   Vite's output, embedded into the binary
 ├── index.js             # JavaScript/Node.js module export
 ├── index.d.ts           # TypeScript module declarations
+├── Makefile             # build / test / serve / verify — the local gate
 ├── package.json         # NPM package metadata
 ├── CONTRIBUTING.md      # Developer contribution guide
 └── LICENSE              # MIT License
 ```
+
+The dashboard is a single `index.html` that mounts React views into itself, so the
+Vite build in `frontend-react/` writes into `web/dist/` rather than a `dist/` of its
+own. That is what lets `web/web.go` embed it — `//go:embed` cannot reach outside its
+own package directory.
 
 ---
 
@@ -176,17 +207,43 @@ export interface GetUsersResponse {
 └────────────────────────────────────────────────────────┘
        │
        ▼
-[ Web Dashboard & Diff Viewer ] (http://localhost:8787)
+[ Web Dashboard & Diff Viewer ] (http://localhost:8787/_driftwood/)
 ```
+
+### How requests are routed
+
+Driftwood listens on one port and splits it by path:
+
+| Path | Goes to |
+| --- | --- |
+| `/_driftwood/*` | The dashboard and its control API. Never proxied. |
+| Everything else | Your target API — proxied, sniffed, diffed and recorded. |
+
+There is no `/api/` special case. Point your frontend at Driftwood instead of your
+backend and every route it calls is observed, whether that is `/v1/orders`,
+`/graphql` or `/api/users`. A path outside `/_driftwood/` that the backend does not
+recognise is answered by the backend, with the backend's own 404 — Driftwood does
+not invent a response for it.
 
 ---
 
 ## Testing
 
-Run the full test suite (including unit tests and end-to-end proxy tests):
+```bash
+make verify
+```
+
+That is the gate: it checks formatting, vets, builds the dashboard, runs the whole
+test suite under the race detector, and asserts the build produced exactly one
+stylesheet at the stable path `web/dist/assets/driftwood.css`. GitHub Actions on
+this repository fails on a billing lock, so `make verify` is the check that
+actually runs, not a wrapper around one.
+
+The suite on its own:
 
 ```bash
-go test -v ./...
+make test          # go test ./... -race
+make fmt           # gofmt -w over the Go source
 ```
 
 ---

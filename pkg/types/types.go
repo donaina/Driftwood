@@ -73,10 +73,10 @@ type StoredAlert struct {
 
 // Alert represents a contract alert with optional AI explanation
 type Alert struct {
-	TrafficID      string          `json:"traffic_id"`
-	Endpoint       string          `json:"endpoint"`
-	ContractStatus string          `json:"contract_status"`
-	Diff           *ContractDiff   `json:"diff,omitempty"`
+	TrafficID      string                 `json:"traffic_id"`
+	Endpoint       string                 `json:"endpoint"`
+	ContractStatus string                 `json:"contract_status"`
+	Diff           *ContractDiff          `json:"diff,omitempty"`
 	AIExplanation  map[string]interface{} `json:"ai_explanation,omitempty"`
 }
 
@@ -149,10 +149,10 @@ type Observation struct {
 
 // EndpointHistory stores versioned history for a single endpoint
 type EndpointHistory struct {
-	Method        string             `json:"method"`
-	Path          string             `json:"path"`
+	Method        string              `json:"method"`
+	Path          string              `json:"path"`
 	Versions      []*ContractBaseline `json:"versions"`
-	LockedVersion int                `json:"locked_version"` // 0 = latest, else specific version
+	LockedVersion int                 `json:"locked_version"` // 0 = latest, else specific version
 	// ObservationCount is the true total number of sightings, including those
 	// aged out of Observations. It used to be incremented by SaveBaseline, so
 	// it counted baseline saves — a number that only moved when a human clicked

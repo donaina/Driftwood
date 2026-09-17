@@ -91,12 +91,12 @@ func (m *MockController) serveUsersPayload(w http.ResponseWriter, mode MockMode)
 		}
 	case ModeAddedField:
 		payload = map[string]interface{}{
-			"id":         99812,
-			"username":   "alex_dev",
-			"email":      "alex@company.com",
-			"score":      98.5,
-			"is_active":  true,
-			"roles":      []string{"admin", "developer"},
+			"id":          99812,
+			"username":    "alex_dev",
+			"email":       "alex@company.com",
+			"score":       98.5,
+			"is_active":   true,
+			"roles":       []string{"admin", "developer"},
 			"new_feature": "beta_v2_enabled", // WARNING/INFO: new field added
 		}
 	case ModeNormal:

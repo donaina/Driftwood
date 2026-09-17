@@ -76,18 +76,18 @@ func SanitizeBody(body string) string {
 
 func sanitizeJSON(obj map[string]interface{}) {
 	sensitiveKeys := map[string]bool{
-		"password":       true,
-		"secret":         true,
-		"token":          true,
-		"apikey":         true,
-		"api_key":        true,
-		"access_token":   true,
-		"refresh_token":  true,
-		"authorization":  true,
-		"credit_card":    true,
-		"creditcard":     true,
-		"cc_number":      true,
-		"ssn":            true,
+		"password":        true,
+		"secret":          true,
+		"token":           true,
+		"apikey":          true,
+		"api_key":         true,
+		"access_token":    true,
+		"refresh_token":   true,
+		"authorization":   true,
+		"credit_card":     true,
+		"creditcard":      true,
+		"cc_number":       true,
+		"ssn":             true,
 		"social_security": true,
 	}
 

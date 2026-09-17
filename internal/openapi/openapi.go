@@ -35,30 +35,30 @@ type Server struct {
 type PathItem map[string]Operation
 
 type Operation struct {
-	OperationID string                 `json:"operationId"`
-	Summary     string                 `json:"summary"`
-	Description string                 `json:"description"`
-	Parameters  []Parameter            `json:"parameters"`
-	RequestBody *RequestBody           `json:"requestBody"`
-	Responses   map[string]Response    `json:"responses"`
+	OperationID string              `json:"operationId"`
+	Summary     string              `json:"summary"`
+	Description string              `json:"description"`
+	Parameters  []Parameter         `json:"parameters"`
+	RequestBody *RequestBody        `json:"requestBody"`
+	Responses   map[string]Response `json:"responses"`
 }
 
 type Parameter struct {
-	Name        string `json:"name"`
-	In          string `json:"in"`
-	Description string `json:"description"`
-	Required    bool   `json:"required"`
+	Name        string  `json:"name"`
+	In          string  `json:"in"`
+	Description string  `json:"description"`
+	Required    bool    `json:"required"`
 	Schema      *Schema `json:"schema"`
 }
 
 type RequestBody struct {
-	Description string              `json:"description"`
+	Description string               `json:"description"`
 	Content     map[string]MediaType `json:"content"`
-	Required    bool                `json:"required"`
+	Required    bool                 `json:"required"`
 }
 
 type Response struct {
-	Description string              `json:"description"`
+	Description string               `json:"description"`
 	Content     map[string]MediaType `json:"content"`
 }
 
@@ -67,41 +67,41 @@ type MediaType struct {
 }
 
 type Schema struct {
-	Type                 string              `json:"type"`
-	Format               string              `json:"format"`
-	Title                string              `json:"title"`
-	Description          string              `json:"description"`
-	Enum                 []interface{}       `json:"enum"`
-	Const                interface{}         `json:"const"`
-	Default              interface{}         `json:"default"`
-	MultipleOf           *float64            `json:"multipleOf"`
-	Maximum              *float64            `json:"maximum"`
-	ExclusiveMaximum     interface{}         `json:"exclusiveMaximum"`
-	Minimum              *float64            `json:"minimum"`
-	ExclusiveMinimum     interface{}         `json:"exclusiveMinimum"`
-	MaxLength            *int                `json:"maxLength"`
-	MinLength            *int                `json:"minLength"`
-	Pattern              string              `json:"pattern"`
-	MaxItems             *int                `json:"maxItems"`
-	MinItems             *int                `json:"minItems"`
-	UniqueItems          bool                `json:"uniqueItems"`
-	MaxProperties        *int                `json:"maxProperties"`
-	MinProperties        *int                `json:"minProperties"`
-	Required             []string            `json:"required"`
-	Properties           map[string]*Schema  `json:"properties"`
-	AdditionalProperties interface{}         `json:"additionalProperties"`
-	Items                *Schema             `json:"items"`
-	AllOf                []*Schema           `json:"allOf"`
-	AnyOf                []*Schema           `json:"anyOf"`
-	OneOf                []*Schema           `json:"oneOf"`
-	Not                  *Schema             `json:"not"`
-	Ref                  string              `json:"$ref"`
+	Type                 string             `json:"type"`
+	Format               string             `json:"format"`
+	Title                string             `json:"title"`
+	Description          string             `json:"description"`
+	Enum                 []interface{}      `json:"enum"`
+	Const                interface{}        `json:"const"`
+	Default              interface{}        `json:"default"`
+	MultipleOf           *float64           `json:"multipleOf"`
+	Maximum              *float64           `json:"maximum"`
+	ExclusiveMaximum     interface{}        `json:"exclusiveMaximum"`
+	Minimum              *float64           `json:"minimum"`
+	ExclusiveMinimum     interface{}        `json:"exclusiveMinimum"`
+	MaxLength            *int               `json:"maxLength"`
+	MinLength            *int               `json:"minLength"`
+	Pattern              string             `json:"pattern"`
+	MaxItems             *int               `json:"maxItems"`
+	MinItems             *int               `json:"minItems"`
+	UniqueItems          bool               `json:"uniqueItems"`
+	MaxProperties        *int               `json:"maxProperties"`
+	MinProperties        *int               `json:"minProperties"`
+	Required             []string           `json:"required"`
+	Properties           map[string]*Schema `json:"properties"`
+	AdditionalProperties interface{}        `json:"additionalProperties"`
+	Items                *Schema            `json:"items"`
+	AllOf                []*Schema          `json:"allOf"`
+	AnyOf                []*Schema          `json:"anyOf"`
+	OneOf                []*Schema          `json:"oneOf"`
+	Not                  *Schema            `json:"not"`
+	Ref                  string             `json:"$ref"`
 }
 
 type Components struct {
-	Schemas         map[string]*Schema `json:"schemas"`
-	Responses       map[string]Response `json:"responses"`
-	Parameters      map[string]Parameter `json:"parameters"`
+	Schemas         map[string]*Schema     `json:"schemas"`
+	Responses       map[string]Response    `json:"responses"`
+	Parameters      map[string]Parameter   `json:"parameters"`
 	RequestBodies   map[string]RequestBody `json:"requestBodies"`
 	SecuritySchemes map[string]interface{} `json:"securitySchemes"`
 }
@@ -225,7 +225,7 @@ func schemaToNode(sch *Schema, comps Components) (*types.JSONSchemaNode, error) 
 	}
 
 	node := &types.JSONSchemaNode{
-		Nullable:    false,
+		Nullable:     false,
 		RequiredKeys: []string{},
 	}
 

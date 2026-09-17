@@ -54,14 +54,14 @@ func IsControlPath(path string) bool { return inNamespace(path, ControlPrefix) }
 func IsMockPath(path string) bool { return inNamespace(path, MockPrefix) }
 
 type Proxy struct {
-	targetURL       atomic.Pointer[url.URL]
-	store           *storage.Store
-	hub             *events.Hub
-	mockCtrl        *mock.MockController
-	transport       *http.Transport
-	server          *http.Server
-	allowPrivate    bool // for testing/dev - bypass SSRF for private IPs
-	droppedAlerts   int64 // counter for dropped breaking alerts
+	targetURL     atomic.Pointer[url.URL]
+	store         *storage.Store
+	hub           *events.Hub
+	mockCtrl      *mock.MockController
+	transport     *http.Transport
+	server        *http.Server
+	allowPrivate  bool  // for testing/dev - bypass SSRF for private IPs
+	droppedAlerts int64 // counter for dropped breaking alerts
 }
 
 func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
@@ -101,14 +101,14 @@ func NewProxyForTest(target string, store *storage.Store, hub *events.Hub, mockC
 
 func newTransport() *http.Transport {
 	return &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		DialContext:         (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-		TLSHandshakeTimeout: 5 * time.Second,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig:     &tls.Config{InsecureSkipVerify: false},
-		MaxIdleConns:        100,
-		IdleConnTimeout:     90 * time.Second,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: false},
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
 	}
 }
 
@@ -457,10 +457,10 @@ func (p *Proxy) processAndStoreTraffic(
 			url := "http://localhost:8788/explain"
 			deltas, _ := json.Marshal(contractDiff.Deltas)
 			body := map[string]interface{}{
-				"endpoint":       fmt.Sprintf("%s %s", method, path),
-				"deltas":         json.RawMessage(deltas),
+				"endpoint":        fmt.Sprintf("%s %s", method, path),
+				"deltas":          json.RawMessage(deltas),
 				"baseline_sample": baselineSample,
-				"current_sample": respBody,
+				"current_sample":  respBody,
 			}
 			bodyBytes, _ := json.Marshal(body)
 			req, _ := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))

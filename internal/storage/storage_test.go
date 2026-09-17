@@ -14,9 +14,9 @@ func TestStore_RoundTrip(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{
@@ -25,7 +25,7 @@ func TestStore_RoundTrip(t *testing.T) {
 			AutoSaveBaseline: true,
 			InterceptJSON:    true,
 		},
-		alertOrder:  make([]string, 0),
+		alertOrder: make([]string, 0),
 	}
 
 	cb, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`)
@@ -37,9 +37,9 @@ func TestStore_RoundTrip(t *testing.T) {
 	}
 
 	s2 := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
 		config: types.ProxyConfig{
@@ -75,12 +75,12 @@ func TestStore_CorruptFileRecovery(t *testing.T) {
 	}
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -100,12 +100,12 @@ func TestStore_AtomicWrite(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -128,12 +128,12 @@ func TestStore_RingBufferTraffic(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 3,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -159,12 +159,12 @@ func TestStore_RingBufferAlerts(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -196,12 +196,12 @@ func TestStore_GetBaseline_ReturnsCopy(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -227,12 +227,12 @@ func TestStore_GetAllBaselines_ReturnsCopies(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -254,12 +254,12 @@ func TestStore_VersionedHistory(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -286,12 +286,12 @@ func TestStore_VersionHistoryPreserved(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -317,12 +317,12 @@ func TestStore_VersionHistoryPreserved(t *testing.T) {
 
 	// Reload from file and verify history preserved
 	s2 := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 	}
 	_ = s2.loadHistoriesFromFile()
 
@@ -337,12 +337,12 @@ func TestStore_SeedIfAbsent(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 
@@ -360,12 +360,12 @@ func TestStore_FrequencyBasedRequiredKeys(t *testing.T) {
 	persistPath := filepath.Join(tmpDir, "baselines.json")
 
 	s := &Store{
-		traffics:   make([]types.CapturedTraffic, 0),
-		histories:  make(map[string]*types.EndpointHistory),
-		alerts:     make(map[string]*types.Alert),
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
 		persistPath: persistPath,
-		config: types.ProxyConfig{TargetURL: "http://localhost:3000"},
+		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
 	}
 

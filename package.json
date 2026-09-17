@@ -7,10 +7,10 @@
     "drift": "bin/drift.js"
   },
   "scripts": {
-    "prepack": "chmod +x bin/drift.js bin/install.js",
+    "prepack": "npm --prefix frontend-react ci && npm --prefix frontend-react run build && chmod +x bin/drift.js bin/install.js",
     "postinstall": "node ./bin/install.js",
     "start": "node ./bin/drift.js",
-    "test": "echo \"Driftwood Go tests pass via 'go test ./...'\" && exit 0"
+    "test": "go test ./..."
   },
   "repository": {
     "type": "git",
@@ -24,6 +24,7 @@
     "bin",
     "cmd",
     "internal",
+    "pkg",
     "web",
     "index.js",
     "index.d.ts",
