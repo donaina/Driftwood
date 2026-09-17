@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Button, Field, Panel, PanelTitle, toast } from './ui';
 
 const CustomAlertThresholds: React.FC = () => {
   const [thresholds, setThresholds] = useState({
@@ -61,7 +62,7 @@ const CustomAlertThresholds: React.FC = () => {
 
   const handleSaveConfig = () => {
     // In a real implementation, this would save to backend
-    alert('Custom alert thresholds saved successfully!');
+    toast('Thresholds Saved', 'Custom alert thresholds have been saved.');
     // Reset preset to custom since we manually configured
     setPreset('custom');
   };
@@ -74,7 +75,7 @@ const CustomAlertThresholds: React.FC = () => {
     <div className="space-y-8">
       {/* Header */}
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-text-main mb-4">
+        <h2 className="text-2xl font-semibold tracking-tight text-text-main mb-4">
           Custom Alert Thresholds
         </h2>
         <p className="text-text-muted max-w-xl mx-auto">
@@ -83,47 +84,55 @@ const CustomAlertThresholds: React.FC = () => {
       </div>
 
       {/* Preset Configurations */}
-      <div className="bg-bg-card rounded-xl border border-border-color p-6">
-        <h3 className="text-xl font-semibold text-text-main mb-4">
+      <Panel>
+        <PanelTitle className="mb-4">
           Preset Configurations
-        </h3>
+        </PanelTitle>
         <div className="grid gap-4 sm:grid-cols-4">
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'strict' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
+            type="button"
+            aria-pressed={preset === 'strict'}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-sm border transition-all duration-100 active:translate-y-px hover:bg-bg-hover ${preset === 'strict' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={() => handlePresetChange({ target: { value: 'strict' } } as React.ChangeEvent<HTMLSelectElement>)}
           >
-            <span className="text-accent-breaking text-2xl font-bold">■</span>
-            <h4 className="font-semibold text-text-main">Strict</h4>
+            <span className="text-accent-breaking text-2xl font-semibold">■</span>
+            <PanelTitle level={4} size="base">Strict</PanelTitle>
             <p className="text-text-sm text-text-muted text-center">
               All changes treated as breaking
             </p>
           </button>
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'recommended' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
+            type="button"
+            aria-pressed={preset === 'recommended'}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-sm border transition-all duration-100 active:translate-y-px hover:bg-bg-hover ${preset === 'recommended' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={() => handlePresetChange({ target: { value: 'recommended' } } as React.ChangeEvent<HTMLSelectElement>)}
           >
-            <span className="text-accent-warning text-2xl font-bold">▲</span>
-            <h4 className="font-semibold text-text-main">Recommended</h4>
+            <span className="text-accent-warning text-2xl font-semibold">▲</span>
+            <PanelTitle level={4} size="base">Recommended</PanelTitle>
             <p className="text-text-sm text-text-muted text-center">
               Balanced approach for most teams
             </p>
           </button>
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'lenient' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
+            type="button"
+            aria-pressed={preset === 'lenient'}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-sm border transition-all duration-100 active:translate-y-px hover:bg-bg-hover ${preset === 'lenient' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={() => handlePresetChange({ target: { value: 'lenient' } } as React.ChangeEvent<HTMLSelectElement>)}
           >
-            <span className="text-accent-healthy text-2xl font-bold">●</span>
-            <h4 className="font-semibold text-text-main">Lenient</h4>
+            <span className="text-accent-healthy text-2xl font-semibold">●</span>
+            <PanelTitle level={4} size="base">Lenient</PanelTitle>
             <p className="text-text-sm text-text-muted text-center">
               Only critical changes as breaking
             </p>
           </button>
           <button
-            className={`flex flex-col items-center space-y-3 p-4 rounded-lg border hover:bg-bg-hover transition-all ${preset === 'custom' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
+            type="button"
+            aria-pressed={preset === 'custom'}
+            className={`flex flex-col items-center space-y-3 p-4 rounded-sm border transition-all duration-100 active:translate-y-px hover:bg-bg-hover ${preset === 'custom' ? 'border-accent-healthy bg-accent-healthy/10' : 'border-transparent'}`}
             onClick={handleResetToPreset}
           >
-            <span className="text-accent-info text-2xl font-bold">○</span>
-            <h4 className="font-semibold text-text-main">Custom</h4>
+            <span className="text-accent-info text-2xl font-semibold">○</span>
+            <PanelTitle level={4} size="base">Custom</PanelTitle>
             <p className="text-text-sm text-text-muted text-center">
               Manual configuration
             </p>
@@ -132,110 +141,93 @@ const CustomAlertThresholds: React.FC = () => {
         <p className="mt-4 text-text-sm text-text-muted">
           Select a preset to quickly configure threshold settings for different team needs.
         </p>
-      </div>
+      </Panel>
 
       {/* Per-Change Type Configuration */}
-      <div className="bg-bg-card rounded-xl border border-border-color p-6">
-        <h3 className="text-xl font-semibold text-text-main mb-6">
+      <Panel>
+        <PanelTitle className="mb-6">
           Per-Change Type Configuration
-        </h3>
+        </PanelTitle>
         <div className="grid gap-6">
           {/* Type Changes */}
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-text-muted mb-2">
-              Type Changes (int → string, etc.)
-            </label>
+          <Field label="Type Changes (int → string, etc.)">
             <select
               value={thresholds.typeChange}
               onChange={(e) => handleThresholdChange(e, 'typeChange')}
-              className="w-full px-4 py-3 rounded-lg border border-border-color bg-bg-hover text-text-main focus:outline-none focus:ring-2 focus:ring-accent-info focus:border-transparent"
+              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
               <option value="info">Info</option>
             </select>
-          </div>
+          </Field>
 
           {/* Required → Optional Fields */}
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-text-muted mb-2">
-              Required → Optional Fields
-            </label>
+          <Field label="Required → Optional Fields">
             <select
               value={thresholds.requiredOptional}
               onChange={(e) => handleThresholdChange(e, 'requiredOptional')}
-              className="w-full px-4 py-3 rounded-lg border border-border-color bg-bg-hover text-text-main focus:outline-none focus:ring-2 focus:ring-accent-info focus:border-transparent"
+              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
               <option value="info">Info</option>
             </select>
-          </div>
+          </Field>
 
           {/* Added/Removed Fields */}
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-text-muted mb-2">
-              Added/Removed Fields
-            </label>
+          <Field label="Added/Removed Fields">
             <select
               value={thresholds.addedRemoved}
               onChange={(e) => handleThresholdChange(e, 'addedRemoved')}
-              className="w-full px-4 py-3 rounded-lg border border-border-color bg-bg-hover text-text-main focus:outline-none focus:ring-2 focus:ring-accent-info focus:border-transparent"
+              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
               <option value="info">Info</option>
             </select>
-          </div>
+          </Field>
 
           {/* Status Code Changes */}
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-text-muted mb-2">
-              Status Code Changes
-            </label>
+          <Field label="Status Code Changes">
             <select
               value={thresholds.statusCode}
               onChange={(e) => handleThresholdChange(e, 'statusCode')}
-              className="w-full px-4 py-3 rounded-lg border border-border-color bg-bg-hover text-text-main focus:outline-none focus:ring-2 focus:ring-accent-info focus:border-transparent"
+              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
               <option value="info">Info</option>
             </select>
-          </div>
+          </Field>
 
           {/* Header Changes */}
-          <div className="space-y-4">
-            <label className="block text-sm font-medium text-text-muted mb-2">
-              Header Changes
-            </label>
+          <Field label="Header Changes">
             <select
               value={thresholds.headerChanges}
               onChange={(e) => handleThresholdChange(e, 'headerChanges')}
-              className="w-full px-4 py-3 rounded-lg border border-border-color bg-bg-hover text-text-main focus:outline-none focus:ring-2 focus:ring-accent-info focus:border-transparent"
+              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
               <option value="info">Info</option>
             </select>
-          </div>
+          </Field>
         </div>
-      </div>
+      </Panel>
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row sm:justify-end sm:gap-4 pt-6">
-        <button
-          onClick={handleResetToPreset}
-          className="px-6 py-3 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors flex-1 sm:auto"
-        >
+        <Button className="flex-1 sm:w-auto" onClick={handleResetToPreset}>
           Reset to Preset
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="primary"
+          className="flex-1 sm:w-auto"
           onClick={handleSaveConfig}
-          className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors flex-1 sm:auto"
         >
           Save Configuration
-        </button>
+        </Button>
       </div>
     </div>
   );

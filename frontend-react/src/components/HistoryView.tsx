@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import EndpointHistory, { type HistoryItem } from './EndpointHistory';
+import {
+  Button,
+  EmptyState,
+  Panel,
+  RefreshIcon,
+  SkeletonRows,
+  ViewHeader,
+  toast,
+} from './ui';
 
 /* This used to redeclare the wire type locally, as `History` with PascalCase
    fields. One copy got corrected and the other did not, which is exactly how
@@ -138,28 +147,26 @@ const HistoryView: React.FC = () => {
 
   const handleExportTimeline = (format: string, endpointKey: string) => {
     // Placeholder for export functionality
-    alert(`Export functionality for ${format.toUpperCase()} format for endpoint ${endpointKey} is planned for a future update.`);
+    toast(
+      `Export ${format.toUpperCase()}`,
+      `Export for ${endpointKey} is planned for a future update.`
+    );
     // In a full implementation, this would use html2canvas or similar library
     // to convert the timeline view to the requested format
   };
 
+  const refresh = (
+    <Button variant="primary" onClick={loadHistories}>
+      <RefreshIcon />
+      Refresh History
+    </Button>
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="text-center py-12">
-          <h2 className="text-3xl font-bold text-text-main mb-4">
-            Version History Browser
-          </h2>
-          <button
-            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
-            onClick={loadHistories}
-          >
-            🔄 Refresh History
-          </button>
-        </div>
-        <div className="flex justify-center">
-          <div className="animate-pulse h-8 w-8 rounded-full bg-accent-info/20"></div>
-        </div>
+        <ViewHeader title="Version History Browser" align="center" action={refresh} />
+        <SkeletonRows rows={4} />
       </div>
     );
   }
@@ -167,20 +174,12 @@ const HistoryView: React.FC = () => {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="text-center py-12">
-          <h2 className="text-3xl font-bold text-text-main mb-4">
-            Version History Browser
-          </h2>
-          <button
-            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
-            onClick={loadHistories}
-          >
-            🔄 Refresh History
-          </button>
-        </div>
-        <div className="bg-bg-card rounded-xl border border-border-color p-6 text-center">
-          <p className="text-text-muted">{error}</p>
-        </div>
+        <ViewHeader title="Version History Browser" align="center" action={refresh} />
+        {/* role="alert" rather than a live region: this is the response to
+            something the user just did, and it replaces the view. */}
+        <Panel tone="error" className="text-center text-accent-breaking" role="alert">
+          {error}
+        </Panel>
       </div>
     );
   }
@@ -188,43 +187,29 @@ const HistoryView: React.FC = () => {
   if (histories.length === 0) {
     return (
       <div className="space-y-6">
-        <div className="text-center py-12">
-          <h2 className="text-3xl font-bold text-text-main mb-4">
-            Version History Browser
-          </h2>
-          <button
-            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
-            onClick={loadHistories}
-          >
-            🔄 Refresh History
-          </button>
-        </div>
-        <div className="bg-bg-card rounded-xl border border-border-color p-6 text-center">
-          <p className="text-text-muted">
-            No baseline contracts found. History will appear as you track API traffic.
-          </p>
-        </div>
+        <ViewHeader title="Version History Browser" align="center" action={refresh} />
+        <EmptyState
+          title="No baseline contracts yet"
+          body={
+            <>
+              History is built from what the proxy observes, so it fills in as
+              requests pass through the Driftwood proxy rather than from
+              anything you do here. Point a client at the proxy address to
+              record the first response.
+            </>
+          }
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold text-text-main">
-          Version History Browser
-        </h2>
-        <button
-          className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
-          onClick={loadHistories}
-        >
-          🔄 Refresh History
-        </button>
-      </div>
+      <ViewHeader title="Version History Browser" action={refresh} />
       {actionError && (
-        <div className="bg-bg-card rounded-xl border border-accent-breaking p-4 text-accent-breaking">
+        <Panel pad="sm" tone="error" className="text-accent-breaking" role="alert">
           {actionError}
-        </div>
+        </Panel>
       )}
       <div className="space-y-6">
         {histories.map((history) => {

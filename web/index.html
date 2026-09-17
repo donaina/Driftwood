@@ -18,7 +18,11 @@
   <!-- Top Navbar -->
   <header>
     <div class="brand">
-      <div class="brand-title">Driftwood</div>
+      <!-- The document's one <h1>. It was a <div>, which left the page with
+           two <h1>s (the wizard's and the traffic view's), no <h2> at all,
+           and a jump from h1 straight to h3. The brand is the only heading
+           that is on screen no matter which view is showing. -->
+      <h1 class="brand-title">Driftwood</h1>
       <div class="status-pill" id="sse-status">
         <div class="status-dot"></div>
         <span id="status-text">Sniffer Active</span>
@@ -26,9 +30,11 @@
     </div>
 
     <div class="header-actions">
-      <div class="alert-counter" id="alert-counter-btn">
+      <!-- A real button: it switches to the alerts view, but as a <div> it
+           was unreachable by Tab like the nav items were. -->
+      <button type="button" class="alert-counter" id="alert-counter-btn">
         ■ <span id="alert-count">0</span> <span class="alert-counter-label">Breaking Contract Changes</span>
-      </div>
+      </button>
       <button class="btn btn-primary" id="triggerTestRequestBtn">
         Trigger Test Payload
       </button>
@@ -63,91 +69,91 @@
     <aside>
       <div class="nav-section">
         <div class="section-title">Navigation</div>
-        <div class="nav-item active" id="nav-traffic" title="Live Network Traffic">
+        <button type="button" class="nav-item active" id="nav-traffic" title="Live Network Traffic">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><polyline points="1.5 8 4.75 8 6.75 3.75 9.25 12.25 11.25 8 14.5 8"/></svg>
           <span class="nav-label">Live Network Traffic</span>
-        </div>
-        <div class="nav-item" id="nav-baselines" title="Endpoint Baselines">
+        </button>
+        <button type="button" class="nav-item" id="nav-baselines" title="Endpoint Baselines">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75 14.25 5 8 8.25 1.75 5 8 1.75Z"/><path d="M1.75 8.4 8 11.65 14.25 8.4"/><path d="M1.75 11.4 8 14.65 14.25 11.4"/></svg>
           <span class="nav-label">Endpoint Baselines</span>
-        </div>
-        <div class="nav-item" id="nav-history" title="Version History">
+        </button>
+        <button type="button" class="nav-item" id="nav-history" title="Version History">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2v3.33h3.33"/><path d="M2.03 8.67A6 6 0 1 0 4 3.53L2 5.33"/><path d="M8 4.67v3.33l2.67 1.33"/></svg>
           <span class="nav-label">Version History</span>
-        </div>
-        <div class="nav-item" id="nav-alerts" title="Contract Alerts">
+        </button>
+        <button type="button" class="nav-item" id="nav-alerts" title="Contract Alerts">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25 14.5 13.25H1.5L8 2.25Z"/><path d="M8 6.5v3"/><path d="M8 11.5v.01"/></svg>
           <span class="nav-label">Contract Alerts</span>
-        </div>
-        <div class="nav-item" id="nav-settings" title="Proxy Settings">
+        </button>
+        <button type="button" class="nav-item" id="nav-settings" title="Proxy Settings">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h2.75M8.75 5h4.75M2.5 11h4.75M10.75 11h2.75"/><circle cx="6.75" cy="5" r="1.55"/><circle cx="9.25" cy="11" r="1.55"/></svg>
           <span class="nav-label">Proxy Settings</span>
-        </div>
+        </button>
       </div>
 
       <div class="nav-section">
         <div class="section-title">Contract Drift Simulator</div>
-        <p style="font-size: var(--text-base); color: var(--text-main); margin-bottom: 1.5rem; font-weight: 500;">
+        <p class="sidebar-note">
           Learn how API changes affect contracts by simulating common breaking changes:
         </p>
-        <div class="demo-box" style="border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-          <div style="display: grid; gap: 1rem;">
+        <div class="demo-box">
+          <div class="stack">
             <div class="demo-scenario">
               <button class="demo-btn w-full" id="mode-NORMAL">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="row-between">
                   <div>
-                    <div style="font-weight: 600;">Normal Baseline</div>
-                    <div style="font-size: var(--text-base); color: var(--text-muted);">Standard API response</div>
+                    <div class="strong">Normal Baseline</div>
+                    <div class="meta">Standard API response</div>
                   </div>
-                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">●</div>
+                  <div class="signal-dot signal-dot--healthy">●</div>
                 </div>
               </button>
             </div>
 
             <div class="demo-scenario">
               <button class="demo-btn w-full" id="mode-TYPE_BREAK">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="row-between">
                   <div>
-                    <div style="font-weight: 600;">Type Mismatch</div>
-                    <div style="font-size: var(--text-base); color: var(--text-muted);">int → string (Breaking)</div>
+                    <div class="strong">Type Mismatch</div>
+                    <div class="meta">int → string (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">■</div>
+                  <div class="signal-dot signal-dot--breaking">■</div>
                 </div>
               </button>
             </div>
 
             <div class="demo-scenario">
               <button class="demo-btn w-full" id="mode-MISSING_FIELD">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="row-between">
                   <div>
-                    <div style="font-weight: 600;">Missing Field</div>
-                    <div style="font-size: var(--text-base); color: var(--text-muted);">Removed required field (Breaking)</div>
+                    <div class="strong">Missing Field</div>
+                    <div class="meta">Removed required field (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">■</div>
+                  <div class="signal-dot signal-dot--breaking">■</div>
                 </div>
               </button>
             </div>
 
             <div class="demo-scenario">
               <button class="demo-btn w-full" id="mode-NULL_BREAK">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="row-between">
                   <div>
-                    <div style="font-weight: 600;">Null Violation</div>
-                    <div style="font-size: var(--text-base); color: var(--text-muted);">Added null to required field (Breaking)</div>
+                    <div class="strong">Null Violation</div>
+                    <div class="meta">Added null to required field (Breaking)</div>
                   </div>
-                  <div style="background: var(--accent-breaking); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">■</div>
+                  <div class="signal-dot signal-dot--breaking">■</div>
                 </div>
               </button>
             </div>
 
             <div class="demo-scenario">
               <button class="demo-btn w-full" id="mode-ADDED_FIELD">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="row-between">
                   <div>
-                    <div style="font-weight: 600;">Added Field</div>
-                    <div style="font-size: var(--text-base); color: var(--text-muted);">Added optional field (Safe)</div>
+                    <div class="strong">Added Field</div>
+                    <div class="meta">Added optional field (Safe)</div>
                   </div>
-                  <div style="background: var(--accent-healthy); color: var(--bg-main); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--text-xs);">●</div>
+                  <div class="signal-dot signal-dot--healthy">●</div>
                 </div>
               </button>
             </div>
@@ -160,17 +166,17 @@
     <main>
       <!-- Setup Wizard (shown on first visit) -->
       <div class="view-panel" id="view-setup">
-        <div style="text-align: center; padding: 3rem;">
-          <div style="font-size: var(--text-4xl); margin-bottom: 1rem; color: var(--text-main); display: inline-block;">
+        <div class="setup-shell">
+          <div class="setup-wordmark">
             Driftwood
           </div>
-          <h1 style="font-size: var(--text-3xl); margin-bottom: 1.5rem; font-weight: 600;">Welcome to API Contract Monitoring</h1>
-          <p style="font-size: var(--text-lg); color: var(--text-muted); margin-bottom: 2rem; max-width: 400px; line-height: 1.6;">
+          <h2 class="setup-title">Welcome to API Contract Monitoring</h2>
+          <p class="setup-lead">
             Driftwood helps you detect unintended API breaking changes before they reach production. Let's get you set up in under a minute.
           </p>
 
           <!-- Step Indicator -->
-          <div id="setup-steps" style="display: flex; justify-content: center; margin-bottom: 2rem; gap: 1rem;">
+          <div class="row-actions row-actions--center sp-bottom-xl" id="setup-steps">
             <div class="setup-step active" data-step="1">1. Target API</div>
             <div class="setup-step" data-step="2">2. Detect Endpoints</div>
             <div class="setup-step" data-step="3">3. Set Baselines</div>
@@ -180,43 +186,53 @@
           <div id="setup-content">
             <!-- Step 1: Target API -->
             <div class="setup-step-content active" data-step="1">
-              <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; font-size: var(--text-base); margin-bottom: 0.5rem; color: var(--text-muted);">Where is your API running?</label>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <div class="sp-bottom-lg">
+                <label class="field-label">Where is your API running?</label>
+                <div class="row-wrap row-wrap--tight">
                   <button class="btn" id="detect-localhost">Auto-detect Localhost</button>
                   <button class="btn btn-primary" id="use-manual-url">Enter URL Manually</button>
                 </div>
               </div>
-              <div id="manual-url-input" style="display: none; margin-top: 1rem;">
+              <div id="manual-url-input" class="sp-top-md" style="display: none;">
                 <input type="text" id="setup-target-url" class="search-bar" placeholder="http://localhost:3000" />
-                <button class="btn btn-primary" id="setup-next-1" style="margin-top: 0.5rem;">Next</button>
+                <button class="btn btn-primary sp-top-sm" id="setup-next-1">Next</button>
               </div>
             </div>
 
             <!-- Step 2: Detect Endpoints -->
             <div class="setup-step-content" data-step="2" style="display: none;">
-              <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; font-size: var(--text-base); margin-bottom: 0.5rem; color: var(--text-muted);">Detecting API endpoints...</label>
-                <div id="setup-detection-status" style="color: var(--text-muted); font-size: var(--text-base);">
+              <div class="sp-bottom-lg">
+                <label class="field-label">Detecting API endpoints...</label>
+                <!-- The status line is the live region: the scan reports
+                     each endpoint it finds here, and without aria-live a
+                     screen reader is told nothing while it runs. -->
+                <div class="meta" id="setup-detection-status" role="status" aria-live="polite">
                   Scanning for common endpoints...
                 </div>
-                <div style="margin-top: 1rem; display: flex; justify-content: center;">
-                  <div class="vital-ring" style="width: 40px; height: 40px;"></div>
+                <!-- DESIGN.md §4 bans circular spinners. This step used a
+                     .vital-ring — a donut gauge that measures something — as
+                     a spinner, which both broke the ban and implied a
+                     progress value that does not exist. Skeleton bars are
+                     what §4 asks for and claim nothing. -->
+                <div class="skeleton-bars" aria-hidden="true">
+                  <div class="skeleton-bar"></div>
+                  <div class="skeleton-bar"></div>
+                  <div class="skeleton-bar"></div>
                 </div>
               </div>
-              <div style="text-align: center; margin-top: 2rem;">
+              <div class="align-center sp-top-lg">
                 <button class="btn btn-primary" id="setup-skip-detection">Skip Detection</button>
               </div>
             </div>
 
             <!-- Step 3: Set Baselines -->
             <div class="setup-step-content" data-step="3" style="display: none;">
-              <div style="margin-bottom: 1.5rem;">
-                <label style="display: block; font-size: var(--text-base); margin-bottom: 0.5rem; color: var(--text-muted);">Ready to monitor your API contract?</label>
-                <p style="color: var(--text-muted); font-size: var(--text-base); margin-bottom: 1.5rem;">
+              <div class="sp-bottom-lg">
+                <label class="field-label">Ready to monitor your API contract?</label>
+                <p class="meta sp-bottom-lg">
                   Driftwood will automatically learn the contract from your API's responses and alert you to any breaking changes.
                 </p>
-                <div style="display: flex; gap: 1rem; justify-content: center;">
+                <div class="row-actions row-actions--center">
                   <button class="btn" id="setup-skip-baselines">Skip for Now</button>
                   <button class="btn btn-primary" id="setup-complete">Start Monitoring</button>
                 </div>
@@ -225,13 +241,13 @@
           </div>
 
           <!-- Navigation Buttons -->
-          <div style="margin-top: 2rem; display: flex; justify-content: center; gap: 1rem;">
+          <div class="row-actions row-actions--center sp-top-lg">
             <button class="btn" id="setup-prev" style="display: none;">Previous</button>
             <button class="btn btn-primary" id="setup-next">Next</button>
           </div>
 
-          <div style="margin-top: 2rem; color: var(--text-muted); font-size: var(--text-base);">
-            <button class="btn" id="setup-close-wizard" style="text-decoration: underline; background: none; border: none; color: var(--text-muted); padding: 0;">
+          <div class="meta sp-top-lg">
+            <button class="btn link-quiet" id="setup-close-wizard">
               I'll configure later
             </button>
           </div>
@@ -242,7 +258,7 @@
       <div class="view-panel active" id="view-traffic">
         <div class="content-header">
           <div>
-            <h1 class="content-title">Live Network Traffic</h1>
+            <h2 class="content-title">Live Network Traffic</h2>
             <p class="content-subtitle">
               Every request Driftwood has sniffed, checked against its endpoint's baseline contract.
             </p>
@@ -298,40 +314,51 @@
 
       <!-- View 2: Baselines -->
       <div class="view-panel" id="view-baselines">
-        <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-          <h3 style="font-size: var(--text-md);">Cached API Contract Baselines</h3>
-          <a href="/_driftwood/api/export/typescript" download="driftwood-contracts.d.ts" class="btn btn-primary"
-            style="font-size: var(--text-xs); text-decoration: none;">
-            🔷 Export TypeScript Types (.d.ts)
+        <div class="row-between sp-bottom-md">
+          <h2 class="view-title view-title--flush">Cached API Contract Baselines</h2>
+          <a href="/_driftwood/api/export/typescript" download="driftwood-contracts.d.ts"
+            class="btn btn-primary type-xs">
+            <svg class="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 1.75v8.5" /><path d="M4.75 7 8 10.25 11.25 7" /><path d="M2.25 12.75h11.5" />
+            </svg>
+            Export TypeScript Types (.d.ts)
           </a>
         </div>
-        <div id="baselines-list-container" style="display: grid; gap: 1rem;">
+        <div class="stack" id="baselines-list-container">
           <!-- Dynamically populated -->
         </div>
       </div>
 
       <!-- View 4: Alerts -->
       <div class="view-panel" id="view-alerts">
-        <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Detected Contract Violations</h3>
-        <div id="alerts-container" style="display: grid; gap: 0.75rem;">
+        <h2 class="view-title">Detected Contract Violations</h2>
+        <!-- role="log" is the live region this product exists to have: alerts
+             arrive over SSE and are appended here, and without it a screen
+             reader is told nothing when a contract breaks. aria-relevant
+             "additions" announces the new violation without re-reading the
+             whole list on every arrival. Deliberately not on the traffic
+             table — a row is added per request, which would be a stream of
+             interruptions rather than a notification. -->
+        <div class="stack-tight" id="alerts-container" role="log" aria-live="polite"
+          aria-relevant="additions" aria-label="Detected contract violations">
           <!-- Dynamically populated -->
         </div>
       </div>
 
       <!-- View 5: Settings -->
       <div class="view-panel" id="view-settings">
-        <div
-          style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); max-width: 550px;">
-          <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Proxy Configuration</h3>
-          <div style="margin-bottom: 1rem;">
-            <label style="font-size: var(--text-base); color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Target
+        <div class="panel panel--narrow"
+         >
+          <h2 class="view-title">Proxy Configuration</h2>
+          <div class="sp-bottom-md">
+            <label class="field-label">Target
               API Backend URL</label>
-            <input type="text" id="target-url-input" class="search-bar" style="width: 100%;"
+            <input type="text" id="target-url-input" class="search-bar search-bar--block"
               value="http://localhost:3000" />
           </div>
-          <div style="margin-bottom: 1.5rem;">
-            <label
-              style="font-size: var(--text-base); color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <div class="sp-bottom-lg">
+            <label class="field-label--inline"
+             >
               <input type="checkbox" id="auto-baseline-check" checked /> Auto-lock initial payload as Baseline Contract
             </label>
           </div>
@@ -341,15 +368,15 @@
 
       <!-- View 5b: Alert Thresholds -->
       <div id="thresholds-react-root" class="react-panel">
-        <div style="background: var(--bg-card); padding: 1.5rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); max-width: 600px;">
-          <h3 style="font-size: var(--text-md); margin-bottom: 1rem;">Custom Alert Thresholds</h3>
-          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+        <div class="panel panel--wide">
+          <h2 class="view-title">Custom Alert Thresholds</h2>
+          <p class="muted sp-bottom-lg">
             Configure what constitutes breaking vs non-breaking changes for your team's context.
           </p>
 
-          <div style="margin-bottom: 2rem;">
-            <h4 style="color: var(--text-main); margin-bottom: 0.5rem;">Preset Configurations</h4>
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+          <div class="sp-bottom-xl">
+            <h3 class="subhead">Preset Configurations</h3>
+            <div class="row-wrap">
               <button class="btn btn-outline" onclick="applyThresholdPreset('strict')">
                 Strict
               </button>
@@ -360,54 +387,54 @@
                 Lenient
               </button>
             </div>
-            <p style="color: var(--text-muted); font-size: var(--text-base); margin-top: 0.5rem;">
+            <p class="meta sp-top-sm">
               Select a preset to quickly configure threshold settings for different team needs.
             </p>
           </div>
 
-          <div style="margin-bottom: 2rem;">
-            <h4 style="color: var(--text-main); margin-bottom: 0.5rem;">Per-Change Type Configuration</h4>
-            <div style="background: var(--bg-hover); border-radius: var(--radius-sm); padding: 1.5rem;">
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div class="sp-bottom-xl">
+            <h3 class="subhead">Per-Change Type Configuration</h3>
+            <div class="inset">
+              <div class="grid-2 sp-bottom-md">
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Type Changes (int → string, etc.)</label>
-                  <select id="threshold-type-change" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
+                  <label class="field-label field-label--tight">Type Changes (int → string, etc.)</label>
+                  <select class="field-input" id="threshold-type-change">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
                   </select>
                 </div>
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Required → Optional Fields</label>
-                  <select id="threshold-required-optional" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
-                    <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                  </select>
-                </div>
-              </div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Added/Removed Fields</label>
-                  <select id="threshold-added-removed" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
-                    <option value="breaking">Breaking</option>
-                    <option value="warning">Warning</option>
-                    <option value="info">Info</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Status Code Changes</label>
-                  <select id="threshold-status-code" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
+                  <label class="field-label field-label--tight">Required → Optional Fields</label>
+                  <select class="field-input" id="threshold-required-optional">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
                   </select>
                 </div>
               </div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div class="grid-2 sp-bottom-md">
                 <div>
-                  <label style="display: block; margin-bottom: 0.25rem; font-size: var(--text-base); color: var(--text-muted);">Header Changes</label>
-                  <select id="threshold-header-changes" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); background: var(--bg-card); color: var(--text-main);">
+                  <label class="field-label field-label--tight">Added/Removed Fields</label>
+                  <select class="field-input" id="threshold-added-removed">
+                    <option value="breaking">Breaking</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label field-label--tight">Status Code Changes</label>
+                  <select class="field-input" id="threshold-status-code">
+                    <option value="breaking">Breaking</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid-2">
+                <div>
+                  <label class="field-label field-label--tight">Header Changes</label>
+                  <select class="field-input" id="threshold-header-changes">
                     <option value="breaking">Breaking</option>
                     <option value="warning">Warning</option>
                     <option value="info">Info</option>
@@ -440,15 +467,26 @@
     </main>
   </div>
 
-  <!-- Detail Drawer -->
+  <!-- Detail Drawer. A modal sheet: the scrim makes the rest of the page
+       unclickable, so it has to say so — without role="dialog" and
+       aria-modal a screen reader reads straight through it into the table
+       behind. aria-labelledby points at the method+path, which is what the
+       sheet is actually about. tabindex="-1" lets the drawer itself take
+       focus as a fallback when it holds no focusable control. -->
   <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
-  <div class="drawer" id="drawer">
+  <div class="drawer" id="drawer" role="dialog" aria-modal="true"
+    aria-labelledby="drawer-path" tabindex="-1">
     <div class="drawer-header">
       <div>
         <span class="method-badge method-get" id="drawer-method">GET</span>
-        <span style="font-weight: 600; margin-left: 0.5rem;" id="drawer-path">/api/users</span>
+        <span class="strong sp-left-sm" id="drawer-path">/api/users</span>
       </div>
-      <button class="btn" id="closeDrawerBtn">✕ Close</button>
+      <button class="btn" id="closeDrawerBtn">
+        <svg class="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4 12 12" /><path d="M12 4 4 12" />
+        </svg>
+        Close
+      </button>
     </div>
     <div class="drawer-body">
       <div class="diff-card" id="drawer-diff-section">
@@ -462,7 +500,7 @@
       <div class="diff-card">
         <div class="diff-card-title">
           <span>Observed Payload JSON</span>
-          <button class="btn" id="setAsBaselineFromDrawerBtn" style="font-size: var(--text-xs);">Set as Baseline</button>
+          <button class="btn type-xs" id="setAsBaselineFromDrawerBtn">Set as Baseline</button>
         </div>
         <pre class="code-box" id="drawer-response-body">{}</pre>
       </div>
@@ -470,7 +508,7 @@
   </div>
 
   <!-- Toast Container -->
-  <div class="toast-container" id="toast-container"></div>
+  <div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
 
   <script>
     let trafficHistory = [];
@@ -690,14 +728,15 @@
         const timeStr = new Date(t.timestamp).toLocaleTimeString();
 
         return `
-          <tr onclick="openDrawer(${jsArg(t.id)})">
+          <tr tabindex="0" onclick="openDrawer(${jsArg(t.id)})"
+              onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDrawer(${jsArg(t.id)}); }">
             <td><span class="method-badge ${methodClass}">${t.method}</span></td>
-            <td style="font-family: 'JetBrains Mono', monospace; font-size: var(--text-base);">${escapeHtml(t.path)}</td>
-            <td><span style="color: ${t.status_code < 400 ? 'var(--accent-healthy)' : 'var(--accent-breaking)'}">${t.status_code}</span></td>
-            <td style="color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">${t.duration_ms}ms</td>
+            <td class="metric">${escapeHtml(t.path)}</td>
+            <td><span class="mono ${t.status_code < 400 ? 'status-ok' : 'status-bad'}">${t.status_code}</span></td>
+            <td class="muted mono">${t.duration_ms}ms</td>
             <td><span class="contract-badge ${badgeClass}">${badgeText}</span></td>
             <td>${drawRowSparkline(t)}</td>
-            <td class="cell-time" style="color: var(--text-muted);">${timeStr}</td>
+            <td class="cell-time muted">${timeStr}</td>
           </tr>
         `;
       }).join('');
@@ -707,20 +746,20 @@
     function renderBaselines() {
       const container = document.getElementById('baselines-list-container');
       if (baselinesList.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">No baseline contracts set yet. Standard payloads will automatically set baselines when sniffed.</div>`;
+        container.innerHTML = `<div class="note">No baseline contracts set yet. Standard payloads will automatically set baselines when sniffed.</div>`;
         return;
       }
 
       container.innerHTML = baselinesList.map(b => {
         return `
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+          <div class="panel panel--flush">
+            <div class="baseline-head">
               <div>
                 <span class="method-badge method-${b.method.toLowerCase()}">${b.method}</span>
-                <span style="font-family: 'JetBrains Mono', monospace; margin-left: 0.5rem; font-weight: 600;">${b.path}</span>
-                <span style="font-size: var(--text-xs); color: var(--text-muted); margin-left: 1rem;">v${b.version}</span>
+                <span class="mono strong sp-left-sm">${b.path}</span>
+                <span class="type-xs muted sp-left-md">v${b.version}</span>
               </div>
-              <button class="btn btn-danger" style="font-size: var(--text-xs);" onclick="deleteBaseline(${jsArg(b.method)}, ${jsArg(b.path)})">Delete</button>
+              <button class="btn btn-danger type-xs" onclick="deleteBaseline(${jsArg(b.method)}, ${jsArg(b.path)})">Delete</button>
             </div>
             <pre class="code-box">${escapeHtml(b.sample_payload)}</pre>
           </div>
@@ -731,7 +770,7 @@
     function renderAlerts() {
       const container = document.getElementById('alerts-container');
       if (alertsHistory.length === 0) {
-        container.innerHTML = `<div style="color: var(--text-muted); padding: 1.5rem; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">No contract violations detected. Your frontend contract is healthy!</div>`;
+        container.innerHTML = `<div class="note">No contract violations detected. Your frontend contract is healthy!</div>`;
         return;
       }
 
@@ -741,21 +780,21 @@
         if (a.AIExplanation && Object.keys(a.AIExplanation).length > 0) {
           const ai = a.AIExplanation;
           aiExplanationHTML = `
-            <div style="margin-top: 0.5rem; padding: 0.75rem; background: color-mix(in srgb, var(--accent-healthy) 10%, transparent); border-left: 3px solid var(--accent-healthy); border-radius: var(--radius-xs); font-size: var(--text-base);">
-              <div style="font-weight: 600; margin-bottom: 0.25rem;">AI Explanation:</div>
+            <div class="callout">
+              <div class="strong sp-bottom-xs">AI Explanation:</div>
               <div><strong>Summary:</strong> ${escapeHtml(ai.summary || '')}</div>
               <div><strong>Impact:</strong> ${escapeHtml(ai.impact || '')}</div>
               <div><strong>Root Cause:</strong> ${escapeHtml(ai.root_cause || '')}</div>
               <div><strong>Suggested Action:</strong> ${escapeHtml(ai.suggested_action || '')}</div>
-              <div style="margin-top: 0.25rem;"><strong>Confidence:</strong> ${(ai.confidence || 0).toFixed(2)}</div>
+              <div class="sp-top-xs"><strong>Confidence:</strong> ${(ai.confidence || 0).toFixed(2)}</div>
             </div>
           `;
         }
         return `
           <div class="${severityClass}">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+            <div class="row-between sp-bottom-xs">
               <span class="delta-path">${a.json_path}</span>
-              <span style="font-weight: 700; font-size: var(--text-xs); text-transform: uppercase;">${a.severity}</span>
+              <span class="label-caps">${a.severity}</span>
             </div>
             <div>${escapeHtml(a.message)}</div>
             ${aiExplanationHTML}
@@ -786,11 +825,11 @@
         deltasContainer.innerHTML = selectedTraffic.diff.deltas.map(d => `
           <div class="delta-item ${d.severity.toLowerCase()}">
             <div class="delta-path">${d.json_path}</div>
-            <div style="margin-top: 0.25rem;">${escapeHtml(d.message)}</div>
+            <div class="sp-top-xs">${escapeHtml(d.message)}</div>
           </div>
         `).join('');
       } else {
-        deltasContainer.innerHTML = '<div style="color: var(--accent-healthy); font-weight: 500;">● Payload perfectly matches baseline contract!</div>';
+        deltasContainer.innerHTML = '<div class="delta-ok">● Payload perfectly matches baseline contract!</div>';
       }
 
       try {
@@ -800,13 +839,58 @@
         document.getElementById('drawer-response-body').innerText = selectedTraffic.response_body || '{}';
       }
 
-      document.getElementById('drawer').classList.add('open');
+      const drawer = document.getElementById('drawer');
+      drawerOpener = document.activeElement;
+      drawer.classList.add('open');
       document.getElementById('drawer-overlay').classList.add('open');
+      drawer.addEventListener('keydown', trapDrawerFocus);
+      // Focus has to actually land inside. With aria-modal the rest of the
+      // page is inert to a screen reader, so leaving focus on the row behind
+      // the scrim strands the user outside a dialog they just opened.
+      (focusablesIn(drawer)[0] || drawer).focus();
+    }
+
+    /* The drawer's focus contract. Escape closes, and Tab cycles within the
+       sheet rather than walking out into the table behind it — the scrim
+       makes that table unclickable, so tabbing into it is a dead end. */
+    let drawerOpener = null;
+
+    function focusablesIn(el) {
+      return Array.from(el.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), ' +
+        'select:not([disabled]), textarea:not([disabled]), ' +
+        '[tabindex]:not([tabindex="-1"])'
+      ));
+    }
+
+    function trapDrawerFocus(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeDrawer();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const items = focusablesIn(e.currentTarget);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
 
     function closeDrawer() {
-      document.getElementById('drawer').classList.remove('open');
+      const drawer = document.getElementById('drawer');
+      drawer.classList.remove('open');
       document.getElementById('drawer-overlay').classList.remove('open');
+      drawer.removeEventListener('keydown', trapDrawerFocus);
+      // Back to whatever opened it, not to the top of the document.
+      if (drawerOpener && document.contains(drawerOpener)) drawerOpener.focus();
+      drawerOpener = null;
     }
 
     async function setAsBaselineFromDrawer() {
@@ -983,10 +1067,10 @@
       const toast = document.createElement('div');
       toast.className = 'toast breaking';
       toast.innerHTML = `
-        <div style="font-size: var(--text-xl); color: var(--accent-breaking);">■</div>
+        <div class="type-xl status-bad">■</div>
         <div>
-          <div style="font-weight: 700; margin-bottom: 0.2rem; color: var(--text-main);">${escapeHtml(title)}</div>
-          <div style="font-size: var(--text-base); color: var(--text-muted);">${escapeHtml(msg)}</div>
+          <div class="toast-title">${escapeHtml(title)}</div>
+          <div class="meta">${escapeHtml(msg)}</div>
         </div>
       `;
       container.appendChild(toast);
@@ -1841,7 +1925,7 @@ window.showHistoryLibrary = function() {
 <!-- Guided Tour Overlay -->
 <div id="guided-tour-overlay" class="guided-tour-overlay" style="display: none;">
   <div class="guided-tour-content">
-    <h3>Welcome to Driftwood</h3>
+    <h2>Welcome to Driftwood</h2>
     <p id="guided-tour-text"></p>
     <button id="guided-tour-next" class="guided-tour-btn">Next →</button>
     <div class="guided-tour-dots">

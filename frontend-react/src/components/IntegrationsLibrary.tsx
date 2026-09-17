@@ -1,6 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Button, EmptyState, Panel, PanelTitle } from './ui';
+
+/* The filter values are the integration `id`s, so the row filters on the same
+   key the data is already keyed by. The buttons carried `data-filter`
+   attributes and an `active` class that was hardcoded to "All Frameworks":
+   the row was designed to filter and was never wired, so five of the six
+   buttons did nothing when pressed and the sixth raised an alert. */
+const FILTERS = [
+  { id: 'all', label: 'All Frameworks' },
+  { id: 'express', label: 'Express' },
+  { id: 'fastapi', label: 'FastAPI' },
+  { id: 'nestjs', label: 'NestJS' },
+  { id: 'django', label: 'Django' },
+  { id: 'rails', label: 'Rails' },
+];
 
 const IntegrationsLibrary: React.FC = () => {
+  const [activeFilter, setActiveFilter] = useState('all');
   // In a real implementation, this would fetch data from the backend or have hardcoded examples
   const integrations = [
     {
@@ -108,76 +124,64 @@ end`,
     }
   ];
 
+  const visible =
+    activeFilter === 'all'
+      ? integrations
+      : integrations.filter((i) => i.id === activeFilter);
+
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-text-main mb-4">
+        <h2 className="text-2xl font-semibold tracking-tight text-text-main mb-4">
           Integration Guides
         </h2>
         <p className="text-text-muted max-w-xl mx-auto">
           Copy-paste ready integration examples for popular frameworks
         </p>
         <div className="flex justify-center mt-4">
-          <button
-            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
-            onClick={() => alert('Show All')}
-          >
+          <Button variant="primary" onClick={() => setActiveFilter('all')}>
             Show All
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-bg-card rounded-xl border border-border-color p-6">
+      <Panel>
         <div className="flex flex-wrap gap-2">
-          <button
-            className="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors active"
-            data-filter="all"
-          >
-            All Frameworks
-          </button>
-          <button
-            className="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-            data-filter="express"
-          >
-            Express
-          </button>
-          <button
-            className="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-            data-filter="fastapi"
-          >
-            FastAPI
-          </button>
-          <button
-            className="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-            data-filter="nestjs"
-          >
-            NestJS
-          </button>
-          <button
-            className="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-            data-filter="django"
-          >
-            Django
-          </button>
-          <button
-            className="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-            data-filter="rails"
-          >
-            Rails
-          </button>
+          {FILTERS.map((f) => (
+            <Button
+              key={f.id}
+              size="md"
+              variant={activeFilter === f.id ? 'primary' : 'secondary'}
+              aria-pressed={activeFilter === f.id}
+              onClick={() => setActiveFilter(f.id)}
+            >
+              {f.label}
+            </Button>
+          ))}
         </div>
-      </div>
+      </Panel>
 
       {/* Integrations Grid */}
       <div className="space-y-6">
-        {integrations.map(integration => (
-          <div key={integration.id} className="bg-bg-card rounded-xl border border-border-color p-6">
+        {visible.length === 0 && (
+          <EmptyState
+            title="No guide for that framework yet"
+            body="The library covers Express, FastAPI, NestJS, Django and Rails. Choose All Frameworks to see the full set."
+            action={
+              <Button variant="primary" onClick={() => setActiveFilter('all')}>
+                Show All
+              </Button>
+            }
+          />
+        )}
+        {visible.map(integration => (
+          <Panel key={integration.id}>
             <div className="mb-4">
               <h3 className="text-xl font-semibold text-text-main flex items-center space-x-2">
                 <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-accent-info/20">
-                  <span className="text-accent-info text-lg font-bold">{integration.name.charAt(0)}</span>
+                  <span className="text-accent-info text-lg font-semibold">{integration.name.charAt(0)}</span>
                 </div>
                 {integration.name}
               </h3>
@@ -188,9 +192,9 @@ end`,
 
             {/* Code Block */}
             <div className="mb-4">
-              <h4 className="font-semibold text-text-main mb-2">
+              <PanelTitle level={4} size="base" className="mb-2">
                 Integration Code
-              </h4>
+              </PanelTitle>
               <div className="bg-bg-hover rounded-lg border border-border-color p-4">
                 <pre className="text-xs font-mono text-text-main whitespace-pre-wrap">
 {integration.code}
@@ -200,16 +204,16 @@ end`,
 
             {/* Setup Steps */}
             <div className="mb-4">
-              <h4 className="font-semibold text-text-main mb-2">
+              <PanelTitle level={4} size="base" className="mb-2">
                 Setup Steps:
-              </h4>
+              </PanelTitle>
               <ol className="list-decimal list-inside space-y-1 text-sm text-text-muted">
                 {integration.setupSteps.map((step, index) => (
                   <li key={index}>{step}</li>
                 ))}
               </ol>
             </div>
-          </div>
+          </Panel>
         ))}
       </div>
     </div>

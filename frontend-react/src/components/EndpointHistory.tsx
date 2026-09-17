@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Button, DownloadIcon, LockIcon, Panel, PanelTitle } from './ui';
 
 /* The wire type, spelled the way `/_driftwood/api/histories` actually
    serialises it. pkg/types/types.go tags EndpointHistory and ContractBaseline
@@ -154,7 +155,9 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
     };
 
     const getNodeSymbol = () => {
-      if (isLocked) return '🔒'; // Lock symbol for currently locked version
+      // A drawn padlock, not an emoji: the status shapes beside it are
+      // text glyphs that take currentColor, and an emoji would not.
+      if (isLocked) return <LockIcon />;
       switch (changeType) {
         case 'healthy': return '●';
         case 'breaking': return '■';
@@ -179,7 +182,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
             border-${isSelected ? '2' : '1'} ${isSelected ? 'border-accent-info' : getBorderColor().includes('var(--') ?
                   getBorderColor().replace('var(--', '').replace(')', '') : getBorderColor()}`}>
             <span className={`text-${isLocked ? 'accent-info' : getNodeColor().includes('var(--') ?
-                  getNodeColor().replace('var(--', '').replace(')', '') : getNodeColor()} font-bold`}>
+                  getNodeColor().replace('var(--', '').replace(')', '') : getNodeColor()} font-semibold`}>
               {getNodeSymbol()}
             </span>
           </div>
@@ -198,7 +201,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
               meanings is how the badge ended up decorative. */}
           <button
             type="button"
-            className={`mt-2 px-2 py-1 rounded-lg border text-xs transition-colors cursor-pointer ${
+            className={`mt-2 px-2 py-1 rounded-sm border text-xs transition-all duration-100 active:translate-y-px cursor-pointer ${
               isLocked
                 ? 'border-accent-info text-accent-info'
                 : 'border-border-color text-text-muted hover:bg-bg-hover hover:text-text-main'
@@ -214,7 +217,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
               onToggleLock(history, versionNumber, !isLocked);
             }}
           >
-            {isLocked ? '🔒 Locked' : 'Lock'}
+            {isLocked ? <><LockIcon /> Locked</> : 'Lock'}
           </button>
           {isProvisional && (
             /* Confirming is offered on the version itself rather than on the
@@ -224,7 +227,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
                only as trustworthy as that guess. */
             <button
               type="button"
-              className="mt-1 px-2 py-1 rounded-lg border border-accent-warning text-accent-warning text-xs transition-colors cursor-pointer hover:bg-bg-hover"
+              className="mt-1 px-2 py-1 rounded-sm border border-accent-warning text-accent-warning text-xs transition-all duration-100 active:translate-y-px cursor-pointer hover:bg-bg-hover"
               title={`Accept v${versionNumber} as the contract for this endpoint. Until you do, drift is measured against a response Driftwood merely observed, so a problem that was already there will not be reported.`}
               onClick={(event) => {
                 event.stopPropagation();
@@ -249,10 +252,10 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
        records what actually changed between versions. */
     return (
       <div className="mb-6">
-        <h3 className="text-xl font-semibold text-text-main mb-2">
+        <PanelTitle className="mb-2">
           Contract Stability Score
-        </h3>
-        <div className="bg-bg-card rounded-xl border border-border-color p-4">
+        </PanelTitle>
+        <Panel pad="sm">
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium text-text-muted">
               Current Stability:
@@ -265,7 +268,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
             Not measured yet — Driftwood does not currently record what changed
             between two versions of an endpoint.
           </div>
-        </div>
+        </Panel>
       </div>
     );
   };
@@ -277,7 +280,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
      and it is the state every endpoint starts in. */
   if (history.versions.length === 0) {
     return (
-      <div className="bg-bg-card rounded-xl border border-border-color p-6">
+      <Panel>
         <div className="flex justify-between items-start">
           <div className="flex items-center space-x-3">
             <span className={`method-badge method-${history.method.toLowerCase()}`}>
@@ -298,12 +301,12 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
           traffic here, but it has nothing to compare it against, so it cannot
           tell you whether this endpoint has drifted.
         </p>
-      </div>
+      </Panel>
     );
   }
 
   return (
-    <div className="bg-bg-card rounded-xl border border-border-color p-6">
+    <Panel>
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center space-x-3">
           <span className={`method-badge method-${history.method.toLowerCase()}`}>
@@ -325,33 +328,27 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
 
       {renderStabilityChart()}
 
-      <div className="bg-bg-card rounded-xl border border-border-color p-4">
+      <Panel pad="sm">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold text-text-main">
+          <PanelTitle>
             Contract Evolution Timeline
-          </h3>
+          </PanelTitle>
           <div className="flex space-x-2">
-            <button
-              className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-              onClick={() => onExportTimeline('png', endpointKey)}
-            >
-              📥 PNG
-            </button>
-            <button
-              className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-              onClick={() => onExportTimeline('svg', endpointKey)}
-            >
-              📥 SVG
-            </button>
-            <button
-              className="px-3 py-1.5 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors"
-              onClick={() => onClearVersionSelection(endpointKey)}
+            <Button size="sm" onClick={() => onExportTimeline('png', endpointKey)}>
+              <DownloadIcon />
+              PNG
+            </Button>
+            <Button size="sm" onClick={() => onExportTimeline('svg', endpointKey)}>
+              <DownloadIcon />
+              SVG
+            </Button>
+            <Button size="sm" onClick={() => onClearVersionSelection(endpointKey)}
             >
               Clear Selection
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Panel>
 
       <div className="flex items-start space-x-4">
         {enhancedVersions.map((version, index) =>
@@ -361,10 +358,10 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
 
       {selectedVersions.length === 2 && (
         <div className="mt-6">
-          <div className="bg-bg-card rounded-xl border border-border-color p-4">
-            <h3 className="text-xl font-semibold text-text-main mb-2">
+          <Panel pad="sm">
+            <PanelTitle className="mb-2">
               Version Comparison
-            </h3>
+            </PanelTitle>
             <p className="text-text-muted">
               Comparing versions {selectedVersions[0]} and {selectedVersions[1]}
             </p>
@@ -372,10 +369,10 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
               Detailed diff view would be shown here in a full implementation.
               This would require enhanced backend API to provide version-to-version diff data.
             </p>
-          </div>
+          </Panel>
         </div>
       )}
-    </div>
+    </Panel>
   );
 };
 

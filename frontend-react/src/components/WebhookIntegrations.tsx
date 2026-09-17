@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Button, Field, Panel, PanelTitle, toast } from './ui';
 
 const webhookServices = [
   {
@@ -71,42 +72,47 @@ const WebhookIntegrations: React.FC = () => {
     const urlInput = document.getElementById(`webhook-url-${serviceId}`) as HTMLInputElement | null;
     const url = urlInput ? urlInput.value : '';
     // In a real implementation, this would save to backend
-    alert(`Configuration saved for ${serviceId} with URL: ${url}`);
+    toast('Webhook Saved', `Configuration saved for ${serviceId} with URL: ${url}`);
   };
 
   const testWebhook = (serviceId: string) => {
     // In a real implementation, this would send a test payload
-    alert(`Test webhook sent to ${serviceId}`);
+    toast('Webhook Test', `Test webhook sent to ${serviceId}`);
   };
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-text-main mb-4">
+        <h2 className="text-2xl font-semibold tracking-tight text-text-main mb-4">
           Webhook & Alert Integrations
         </h2>
         <p className="text-text-muted max-w-xl mx-auto">
           Connect Driftwood to your team's communication tools for real-time alerts on API contract changes
         </p>
+        {/* Disabled rather than raising an alert: it has never added a webhook,
+            and a control that reports success for work it did not do is worse
+            than one that says it cannot. Webhooks are configured in the proxy
+            config, which is what the note below points at. */}
         <div className="flex justify-center mt-4">
-          <button
-            className="px-6 py-3 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors"
-            onClick={() => alert('Add new webhook configuration')}
+          <Button
+            variant="primary"
+            disabled
+            title="Webhooks are configured in the Driftwood proxy config file, not from the dashboard."
           >
             Add Webhook
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Webhook Services Grid */}
       <div className="grid gap-6">
         {webhookServices.map(service => (
-          <div key={service.id} className="bg-bg-card rounded-xl border border-border-color p-6">
+          <Panel key={service.id}>
             <div className="mb-4">
               <h3 className="text-xl font-semibold text-text-main flex items-center space-x-2">
                 <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-accent-info/20">
-                  <span className="text-accent-info text-lg font-bold">{service.name.charAt(0)}</span>
+                  <span className="text-accent-info text-lg font-semibold">{service.name.charAt(0)}</span>
                 </div>
                 {service.name}
               </h3>
@@ -117,9 +123,9 @@ const WebhookIntegrations: React.FC = () => {
 
             {/* Setup Steps */}
             <div className="mb-4">
-              <h4 className="font-semibold text-text-main mb-2">
+              <PanelTitle level={4} size="base" className="mb-2">
                 Setup Steps:
-              </h4>
+              </PanelTitle>
               <ol className="list-decimal list-inside space-y-1 text-sm text-text-muted">
                 {service.setupSteps.map((step, index) => (
                   <li key={index}>{step}</li>
@@ -129,35 +135,29 @@ const WebhookIntegrations: React.FC = () => {
 
             {/* Configuration */}
             <div className="mb-4">
-              <h4 className="font-semibold text-text-main mb-2">
+              <PanelTitle level={4} size="base" className="mb-2">
                 Configuration
-              </h4>
+              </PanelTitle>
               <div className="space-y-4">
                 {/* Webhook URL */}
-                <div>
-                  <label className="block text-sm font-medium text-text-muted mb-2">
-                    Webhook URL:
-                  </label>
+                <Field label="Webhook URL:">
                   <input
                     type="url"
                     id={`webhook-url-${service.id}`}
                     placeholder="Enter your webhook URL here"
-                    className="w-full px-4 py-3 rounded-lg border border-border-color bg-bg-hover text-text-main focus:outline-none focus:ring-2 focus:ring-accent-info focus:border-transparent"
+                    className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
                   />
-                </div>
+                </Field>
 
                 {/* Alert Types */}
-                <div>
-                  <label className="block text-sm font-medium text-text-muted mb-2">
-                    Alert Types:
-                  </label>
+                <Field label="Alert Types:">
                   <div className="flex space-x-4">
                     <label className="flex items-center space-x-2">
                       <input
                         type="checkbox"
                         value="breaking"
                         defaultChecked
-                        className="h-4 w-4 text-accent-info focus:ring-accent-info border-border-color"
+                        className="h-4 w-4 text-accent-info focus:outline-none focus:border-accent-healthy border-border-color"
                       />
                       Breaking Changes
                     </label>
@@ -165,7 +165,7 @@ const WebhookIntegrations: React.FC = () => {
                       <input
                         type="checkbox"
                         value="warning"
-                        className="h-4 w-4 text-accent-warning focus:ring-accent-warning border-border-color"
+                        className="h-4 w-4 text-accent-warning focus:outline-none focus:border-accent-healthy border-border-color"
                       />
                       Warnings
                     </label>
@@ -173,31 +173,30 @@ const WebhookIntegrations: React.FC = () => {
                       <input
                         type="checkbox"
                         value="info"
-                        className="h-4 w-4 text-accent-healthy focus:ring-accent-healthy border-border-color"
+                        className="h-4 w-4 text-accent-healthy focus:outline-none focus:border-accent-healthy border-border-color"
                       />
                       Informational
                     </label>
                   </div>
-                </div>
+                </Field>
               </div>
             </div>
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row sm:justify-end sm:gap-4 pt-4">
-              <button
-                onClick={() => testWebhook(service.id)}
-                className="px-4 py-2 rounded-lg border border-border-color text-text-main hover:bg-bg-hover transition-colors flex-1 sm:auto"
-              >
+              <Button size="md" className="flex-1 sm:w-auto" onClick={() => testWebhook(service.id)}>
                 Test Connection
-              </button>
-              <button
+              </Button>
+              <Button
+                size="md"
+                variant="primary"
+                className="flex-1 sm:w-auto"
                 onClick={() => saveWebhookConfig(service.id)}
-                className="px-4 py-2 rounded-lg bg-accent-healthy text-bg-main hover:bg-accent-healthy/90 transition-colors flex-1 sm:auto"
               >
                 Save Configuration
-              </button>
+              </Button>
             </div>
-          </div>
+          </Panel>
         ))}
       </div>
     </div>
