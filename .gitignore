@@ -45,6 +45,11 @@ web/dist/*
 # build cannot be mistaken for the current one or shipped by accident.
 frontend-react/dist/
 
+# The marketing site's build. It deploys on its own, so nothing about it is
+# embedded or shipped with the binary — a committed copy here would only be a
+# second, staler answer to what `make site` produces.
+site/dist/
+
 # Output of the release-binaries workflow.
 /dist/
 
