@@ -58,20 +58,15 @@ type DiffDelta struct {
 	Actual   string       `json:"actual"`
 }
 
-// AlertWithExplanation extends DiffDelta with an optional AI-generated explanation
-type AlertWithExplanation struct {
-	DiffDelta
-	AIExplanation *string `json:"ai_explanation,omitempty"`
-}
-
-// StoredAlert represents an alert stored for retrieval via the API
-type StoredAlert struct {
-	TrafficID string
-	DiffDelta
-	AIExplanation *string `json:"ai_explanation,omitempty"`
-}
-
-// Alert represents a contract alert with optional AI explanation
+// Alert represents a contract alert with optional AI explanation.
+//
+// An alert is one endpoint breaking, not one field changing: the deltas that
+// describe the break hang off Diff, and the explanation attached to the alert
+// is the sidecar's reading of all of them together. Two earlier types sketched
+// this the other way round — an alert per delta, with the explanation as a bare
+// *string — and never acquired a caller. They were deleted rather than left
+// beside the real shape, because a second, wrong description of the same
+// concept is how the next reader picks the wrong one.
 type Alert struct {
 	TrafficID      string                 `json:"traffic_id"`
 	Endpoint       string                 `json:"endpoint"`

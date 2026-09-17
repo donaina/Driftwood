@@ -53,6 +53,32 @@ func IsControlPath(path string) bool { return inNamespace(path, ControlPrefix) }
 // IsMockPath reports whether path addresses a mock fixture endpoint.
 func IsMockPath(path string) bool { return inNamespace(path, MockPrefix) }
 
+// The AI explainer is an optional sidecar: a separate Node service that turns a
+// structural delta into prose. Driftwood is complete without it — an absent or
+// unreachable sidecar costs one refused connection and a missing paragraph, and
+// nothing else in the pipeline waits on it.
+const (
+	// explainBudget bounds how many sidecar calls may be in flight at once.
+	//
+	// A contract that has broken stays broken: every later request to that
+	// endpoint is another BREAKING change and another explanation of the same
+	// deltas. Left unbounded, one broken endpoint under load fans out a goroutine
+	// per request, each holding a connection to the sidecar for up to its 8s
+	// timeout — so the detector's own alerting becomes the thing that takes the
+	// sidecar down. Past the budget the explanation is dropped rather than
+	// queued, the same choice the SSE hub makes for a slow client: a paragraph
+	// about an alert the user is already reading is worth less than a fast one,
+	// and the alert itself never waited on it.
+	explainBudget = 4
+)
+
+// explainURL is the sidecar's explanation route.
+//
+// A var rather than a const only so that a test can aim it at an httptest
+// server. Nothing outside a test writes it, and the sidecar has no discovery
+// mechanism of its own, so the address is fixed at the default build.
+var explainURL = "http://localhost:8788/explain"
+
 type Proxy struct {
 	targetURL     atomic.Pointer[url.URL]
 	store         *storage.Store
@@ -62,6 +88,11 @@ type Proxy struct {
 	server        *http.Server
 	allowPrivate  bool  // for testing/dev - bypass SSRF for private IPs
 	droppedAlerts int64 // counter for dropped breaking alerts
+
+	// explainSlots is the concurrency budget for sidecar calls. A buffered
+	// channel rather than a semaphore dependency, because a non-blocking send is
+	// exactly the "drop it when full" behaviour wanted here.
+	explainSlots chan struct{}
 }
 
 func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
@@ -70,13 +101,7 @@ func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mo
 		return nil, fmt.Errorf("invalid target URL: %w", err)
 	}
 
-	p := &Proxy{
-		store:        store,
-		hub:          hub,
-		mockCtrl:     mockCtrl,
-		transport:    newTransport(),
-		allowPrivate: false,
-	}
+	p := newProxy(store, hub, mockCtrl, false)
 	p.targetURL.Store(parsed)
 	return p, nil
 }
@@ -88,15 +113,26 @@ func NewProxyForTest(target string, store *storage.Store, hub *events.Hub, mockC
 		return nil, fmt.Errorf("invalid target URL: %w", err)
 	}
 
-	p := &Proxy{
+	p := newProxy(store, hub, mockCtrl, true)
+	p.targetURL.Store(parsed)
+	return p, nil
+}
+
+// newProxy is the one place a Proxy is assembled. The two constructors above
+// differ only in whether SSRF checks are on, and they had already drifted: a
+// field added to one and not the other left the test proxy with a nil
+// explainSlots, and a send on a nil channel takes the default branch forever, so
+// every explanation was silently dropped in exactly the tests meant to catch
+// that.
+func newProxy(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, allowPrivate bool) *Proxy {
+	return &Proxy{
 		store:        store,
 		hub:          hub,
 		mockCtrl:     mockCtrl,
 		transport:    newTransport(),
-		allowPrivate: true,
+		allowPrivate: allowPrivate,
+		explainSlots: make(chan struct{}, explainBudget),
 	}
-	p.targetURL.Store(parsed)
-	return p, nil
 }
 
 func newTransport() *http.Transport {
@@ -445,42 +481,109 @@ func (p *Proxy) processAndStoreTraffic(
 			"diff":            contractDiff,
 		}
 
-		// Call AI explainer sidecar for breaking changes (async, non-blocking)
-		go func() {
-			// Get baseline if exists
-			var baselineSample string
-			baseline, hasBaseline := p.store.GetBaseline(method, path)
-			if hasBaseline && baseline != nil {
-				baselineSample = baseline.SamplePayload
-			}
+		/* The alert goes out first, and the explanation follows it if it arrives.
 
-			url := "http://localhost:8788/explain"
-			deltas, _ := json.Marshal(contractDiff.Deltas)
-			body := map[string]interface{}{
-				"endpoint":        fmt.Sprintf("%s %s", method, path),
-				"deltas":          json.RawMessage(deltas),
-				"baseline_sample": baselineSample,
-				"current_sample":  respBody,
-			}
-			bodyBytes, _ := json.Marshal(body)
-			req, _ := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
-			req.Header.Set("Content-Type", "application/json")
+		   It cannot go out with the alert: the sidecar call takes up to 8s, and
+		   waiting on an optional paragraph would delay every breaking-change
+		   notification by a round trip to a service that is allowed to be absent.
 
-			client := &http.Client{Timeout: 8 * time.Second}
-			resp, err := client.Do(req)
-			if err == nil && resp.StatusCode == 200 {
-				var aiResp map[string]interface{}
-				if json.NewDecoder(resp.Body).Decode(&aiResp) == nil {
-					alertData["ai_explanation"] = aiResp
-				}
-				resp.Body.Close()
-			} else if resp != nil {
-				resp.Body.Close()
-			}
-		}()
+		   What stood here tried to have both. The goroutine wrote
+		   alertData["ai_explanation"] while Publish was marshalling that same
+		   map, so the write landed after the bytes had already gone and the
+		   published alert never carried an explanation — and the read and the
+		   write were unsynchronized, which the race detector flags and which can
+		   crash the process outright.
 
+		   The explanation now travels the other way: the goroutine files it
+		   against the stored alert through UpdateAlertAIExplanation, the seam
+		   that method was written for, and then announces that it landed. */
 		p.hub.Publish("alert", alertData)
+		p.explainAsync(traffic.ID, method, path, contractDiff, respBody)
 	}
+}
+
+// explainAsync asks the AI sidecar to explain a breaking change and files the
+// answer against the alert it belongs to.
+//
+// Nothing here is a closure over the handler's locals, and that is deliberate:
+// the handler returns immediately, so anything it still owns is both a lifetime
+// hazard and, in the case of a map it shares with a concurrent Marshal, a data
+// race. Every value this needs arrives as a parameter.
+func (p *Proxy) explainAsync(trafficID, method, path string, contractDiff *types.ContractDiff, respBody string) {
+	select {
+	case p.explainSlots <- struct{}{}:
+	default:
+		// Saturated. The alert is already delivered, so the optional half is
+		// the half that goes.
+		return
+	}
+	defer func() { <-p.explainSlots }()
+
+	deltas, err := json.Marshal(contractDiff.Deltas)
+	if err != nil {
+		return
+	}
+
+	/* Both samples are redacted here, on the way out.
+
+	   They leave the process for a third-party API, and a response body is the
+	   likeliest place in this product for a token or an email address to be
+	   sitting. Baselines are stored raw, so sanitizing the stored copy would be
+	   a migration over data already on disk; redacting at the boundary means
+	   the copy that leaves is clean no matter when the baseline was written. */
+	var baselineSample string
+	if baseline, ok := p.store.GetBaseline(method, path); ok && baseline != nil {
+		baselineSample = capture.SanitizeBody(baseline.SamplePayload)
+	}
+
+	bodyBytes, err := json.Marshal(map[string]interface{}{
+		"endpoint":        fmt.Sprintf("%s %s", method, path),
+		"deltas":          json.RawMessage(deltas),
+		"baseline_sample": baselineSample,
+		"current_sample":  capture.SanitizeBody(respBody),
+	})
+	if err != nil {
+		return
+	}
+
+	req, err := http.NewRequest("POST", explainURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Deliberately not NewRequestWithContext: the context in scope belongs to
+	// the proxied request and is cancelled the moment its handler returns, which
+	// is before this goroutine has finished. The client timeout is the bound it
+	// actually needs, and the sidecar is local.
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+
+	var explanation map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&explanation); err != nil || len(explanation) == 0 {
+		return
+	}
+
+	if err := p.store.UpdateAlertAIExplanation(trafficID, explanation); err != nil {
+		// The alert aged out of the ring buffer while the sidecar was thinking.
+		// There is nothing left to attach this to and nothing wrong.
+		return
+	}
+
+	/* A dashboard that was already open received the alert over SSE without the
+	   explanation, so the explanation needs its own announcement.
+
+	   A distinct event type rather than a second "alert": re-publishing the
+	   alert would fire the browser's breaking-change toast a second time for a
+	   change it has already announced. */
+	p.hub.Publish("alert_explained", map[string]interface{}{"traffic_id": trafficID})
 }
 
 func sanitizeHeaders(headers map[string]string) map[string]string {

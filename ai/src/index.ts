@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
-import { explainDiffs, hasApiKey } from "./explainer";
+import { explainDiffs, hasApiKey, MODEL } from "./explainer";
 import {
   ExplainRequest,
   ExplainResponse,
@@ -23,7 +23,7 @@ app.get("/health", (_req: Request, res: Response<HealthResponse>) => {
   res.json({
     status: hasApiKey() ? "healthy" : "degraded",
     has_api_key: hasApiKey(),
-    model: "claude-3-5-sonnet-20241022",
+    model: MODEL,
   });
 });
 
@@ -92,6 +92,7 @@ app.post(
 // Start server
 app.listen(PORT, () => {
   console.log(`[AI] Driftwood AI Explainer listening on http://localhost:${PORT}`);
+  console.log(`[AI] Model: ${MODEL}`);
   console.log(`[AI] API Key: ${hasApiKey() ? "CONFIGURED" : "NOT SET (degraded mode)"}`);
 });
 

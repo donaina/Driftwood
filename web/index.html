@@ -599,6 +599,14 @@
             renderTrafficTable();
           } else if (msg.type === 'baseline_updated') {
             loadBaselines();
+          } else if (msg.type === 'alert_explained') {
+            /* The alert arrived earlier without its explanation, because the
+               sidecar answers after the alert is published rather than holding
+               the alert back for it. This is the second half of that delivery:
+               the paragraph is stored now, so re-reading the list is how a page
+               that is already open gets it. Same call onNewAlert makes, for the
+               same reason. */
+            loadAlerts();
           }
         } catch (err) {
           console.error('SSE Error:', err);
@@ -767,6 +775,14 @@
       }).join('');
     }
 
+    /* An alert is one endpoint breaking, not one field changing. The stored
+       shape is {traffic_id, endpoint, contract_status, diff: {deltas: [...]}} —
+       the per-field detail lives under diff.deltas, and this renderer read
+       `a.severity`, `a.json_path` and `a.message` as though each alert were a
+       single delta. None of those three exists at the top level, so every row
+       printed the literal word "undefined", in amber, whatever had broken.
+       openDrawer and onNewAlert have always read diff.deltas correctly; this
+       now matches them. */
     function renderAlerts() {
       const container = document.getElementById('alerts-container');
       if (alertsHistory.length === 0) {
@@ -775,36 +791,62 @@
       }
 
       container.innerHTML = alertsHistory.map(a => {
-        const severityClass = a.severity === 'BREAKING' ? 'delta-item' : 'delta-item warning';
-        let aiExplanationHTML = '';
-        if (a.AIExplanation && Object.keys(a.AIExplanation).length > 0) {
-          const ai = a.AIExplanation;
-          aiExplanationHTML = `
-            <div class="callout">
-              <div class="strong sp-bottom-xs">AI Explanation:</div>
-              <div><strong>Summary:</strong> ${escapeHtml(ai.summary || '')}</div>
-              <div><strong>Impact:</strong> ${escapeHtml(ai.impact || '')}</div>
-              <div><strong>Root Cause:</strong> ${escapeHtml(ai.root_cause || '')}</div>
-              <div><strong>Suggested Action:</strong> ${escapeHtml(ai.suggested_action || '')}</div>
-              <div class="sp-top-xs"><strong>Confidence:</strong> ${(ai.confidence || 0).toFixed(2)}</div>
-            </div>
-          `;
-        }
-        return `
-          <div class="${severityClass}">
+        const deltas = (a.diff && a.diff.deltas) || [];
+        const status = (a.contract_status || '').toUpperCase();
+
+        /* BREAKING is the base .delta-item; the other two are its named
+           variants. Only BREAKING and WARNING alerts are ever stored, but an
+           unrecognised status gets the quiet treatment rather than being
+           dressed as the loudest one. */
+        const tone = status === 'BREAKING' ? '' : status === 'WARNING' ? ' warning' : ' info';
+
+        /* The explanation is keyed `ai_explanation` on the wire — types.Alert
+           tags it lower_snake like every other field. This read
+           `a.AIExplanation`, which no response has ever contained, so the block
+           below stayed unreachable even once the sidecar began answering. It is
+           also absent until the sidecar replies, which is the other reason the
+           whole thing is conditional. */
+        const ai = a.ai_explanation;
+        const aiExplanationHTML = ai && Object.keys(ai).length > 0 ? `
+          <div class="callout">
+            <div class="strong sp-bottom-xs">AI Explanation:</div>
+            <div><strong>Summary:</strong> ${escapeHtml(ai.summary || '')}</div>
+            <div><strong>Impact:</strong> ${escapeHtml(ai.impact || '')}</div>
+            <div><strong>Root Cause:</strong> ${escapeHtml(ai.root_cause || '')}</div>
+            <div><strong>Suggested Action:</strong> ${escapeHtml(ai.suggested_action || '')}</div>
+            <div class="sp-top-xs"><strong>Confidence:</strong> ${Number(ai.confidence || 0).toFixed(2)}</div>
+          </div>
+        ` : '';
+
+        const deltasHTML = deltas.map(d => `
+          <div>
             <div class="row-between sp-bottom-xs">
-              <span class="delta-path">${a.json_path}</span>
-              <span class="label-caps">${a.severity}</span>
+              <span class="delta-path">${escapeHtml(d.json_path)}</span>
+              <span class="label-caps">${escapeHtml(d.severity)}</span>
             </div>
-            <div>${escapeHtml(a.message)}</div>
+            <div>${escapeHtml(d.message)}</div>
+          </div>
+        `).join('');
+
+        return `
+          <div class="delta-item${tone}">
+            <div class="row-between sp-bottom-xs">
+              <span class="delta-path">${escapeHtml(a.endpoint)}</span>
+              <span class="label-caps">${escapeHtml(status)}</span>
+            </div>
+            <div class="stack-tight">${deltasHTML}</div>
             ${aiExplanationHTML}
           </div>
         `;
       }).join('');
     }
 
+    /* Counts breaking alerts — endpoints whose contract broke — which is what
+       the header label says. This filtered on `a.severity`, a field no alert
+       carries, so the number sat at 0 while contracts were breaking: the one
+       figure the product exists to show, stuck. */
     function updateAlertCount() {
-      const count = alertsHistory.filter(a => a.severity === 'BREAKING').length;
+      const count = alertsHistory.filter(a => (a.contract_status || '').toUpperCase() === 'BREAKING').length;
       document.getElementById('alert-count').innerText = count;
     }
 

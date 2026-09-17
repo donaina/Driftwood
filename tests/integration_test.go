@@ -13,6 +13,14 @@ import (
 )
 
 func TestEndToEndProxyAndDiff(t *testing.T) {
+	/* storage.NewStore resolves its persist path from the home directory, and
+	   the first JSON response through the proxy is auto-saved as a baseline —
+	   so without this the suite writes test endpoints into the developer's real
+	   ~/.driftwood/baselines.json. GET:/api/products is one of them, and it is
+	   this test that put it there. internal/server and cmd/drift already do
+	   this; this file and internal/proxy did not. */
+	t.Setenv("HOME", t.TempDir())
+
 	// Start mock backend server
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

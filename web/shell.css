@@ -1938,8 +1938,14 @@
     padding: 1.5rem;
   }
 
-  /* The setup wizard's AI-explanation block. Accent bar on a tinted ground,
-     the same shape §4 gives a delta. */
+  /* The AI sidecar's explanation, inside an alert on the Alerts view. Accent
+     bar on a tinted ground, the same shape §4 gives a delta — it sits within a
+     .delta-item, so it has to read as a distinct register without competing
+     with the thing it is explaining.
+
+     This said "the setup wizard's", which no longer describes anything: the
+     wizard has no AI block, and this class has exactly one call site, in
+     renderAlerts. */
   .callout {
     margin-top: 0.5rem;
     padding: 0.75rem;
