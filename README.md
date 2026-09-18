@@ -210,6 +210,17 @@ binary with buffering off, because `/events` is a long-lived SSE stream. This
 project's own deployment is managed by Aeroplane, which generates its own config, so
 nothing in that file needs editing to deploy.
 
+**`railpack.json`.** The deployment build does not run `make` — it runs
+[Railpack](https://railpack.com), which detects a Go project from `go.mod` and emits
+`go build -o out ./cmd/drift` on its own. That build has no Node in it, so `web/dist`
+and `site/dist` are still holding their placeholders when `//go:embed` runs, and the
+binary ships with neither surface: every asset URL answers `200` with the page's own
+HTML. `railpack.json` is an overlay on that generated plan — it adds Node, and puts the
+two Vite builds ahead of the Go build. The `"..."` is the generated commands, expanded
+where it appears, so the ordering is the whole point: `//go:embed` captures the
+directory at compile time, and a Go build that runs first captures nothing. `make
+build` remains the local equivalent, and `make verify` the gate.
+
 ---
 
 ## TypeScript Interface Generation

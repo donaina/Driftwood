@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "packages": {
+    "node": "22"
+  },
+  "steps": {
+    "build": {
+      "commands": [
+        "npm --prefix frontend-react ci",
+        "npm --prefix frontend-react run build",
+        "npm --prefix site ci",
+        "npm --prefix site run build",
+        "..."
+      ]
+    }
+  }
+}
