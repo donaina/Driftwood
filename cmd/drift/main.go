@@ -19,6 +19,7 @@ import (
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/server"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/site"
 	"github.com/donaina/driftwood/web"
 )
 
@@ -32,6 +33,11 @@ func main() {
 	target := flag.String("target", "http://localhost:3000", "Target API URL to proxy")
 	port := flag.String("port", "8787", "Driftwood Proxy & Web Server Port")
 	host := flag.String("host", "127.0.0.1", "Interface to bind. Loopback by default: the dashboard is an unauthenticated control plane, so exposing it to the network is a decision to make on purpose")
+	// Off by default, and the help text says why rather than leaving it to be
+	// discovered: "/" belongs to the proxied target otherwise, and answering
+	// somebody's application root with a marketing page is not a thing to do
+	// unasked.
+	serveSite := flag.Bool("site", false, "Also serve the marketing site at / and /try. Off by default: with it on, \"/\" is answered by the site and no longer reaches the proxied target")
 	flag.Parse()
 
 	// Which flags the user actually typed. A flag left at its default is not a
@@ -40,6 +46,17 @@ func main() {
 	// user had configured.
 	given := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { given[f.Name] = true })
+
+	// The flag is for a person; the environment variable is for a container.
+	// Every other setting here is flag-only, and this one would be too — except
+	// that a container's start command cannot always carry an argument while its
+	// environment always can, and this is the one setting that has to be turned
+	// on in production. A flag that was actually typed still wins, so
+	// `--site=false` turns it back off where the variable is set.
+	siteOn := *serveSite
+	if !given["site"] {
+		siteOn = envTruthy("DRIFTWOOD_SITE")
+	}
 
 	log.Println("==================================================")
 	log.Println("⚡ Driftwood - Real-Time API Contract Drift Sniffer")
@@ -73,7 +90,13 @@ func main() {
 		log.Fatalf("Failed to initialize proxy: %v", err)
 	}
 
-	srv := server.NewServer(store, hub, prx, mockCtrl)
+	// Nil unless it was asked for, which is what keeps "/" proxied by default.
+	var siteHandler http.Handler
+	if siteOn {
+		siteHandler = http.HandlerFunc(site.ServeSite)
+	}
+
+	srv := server.NewServer(store, hub, prx, mockCtrl, siteHandler)
 	addr := net.JoinHostPort(*host, cfg.ProxyPort)
 
 	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://%s", addr)
@@ -84,6 +107,11 @@ func main() {
 		log.Printf("[Driftwood] Bound to loopback only. Pass --host 0.0.0.0 to serve the network; the control plane has no authentication of its own.")
 	}
 	log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", cfg.TargetURL)
+	if siteOn {
+		// Said out loud because it changes where "/" goes, which is otherwise
+		// indistinguishable from a broken proxy.
+		log.Printf("[Driftwood] Serving the marketing site at http://%s/ and http://%s/try. \"/\" is answered by the site and no longer reaches the target.", addr, addr)
+	}
 	log.Printf("[Driftwood] Built-in Mock Simulator: http://localhost:%s/_driftwood/mock/users", cfg.ProxyPort)
 	// Said out loud for the same reason as the loopback note above: the failure
 	// is otherwise silent and looks like a bug in the dashboard rather than a
@@ -93,6 +121,13 @@ func main() {
 	// the engine — so it warns rather than refusing to start.
 	if !web.AssetsBuilt() {
 		log.Printf("[Driftwood] The dashboard has no built assets: web/dist holds only the placeholder that keeps //go:embed compiling. Run `make build` (or `npm --prefix frontend-react run build`). Until then every asset URL returns the page itself, so the dashboard will render with no styling and no scripts.")
+	}
+	// The same warning for the same reason. The site's failure mode is louder —
+	// a missing build 404s rather than serving an unstyled page — but it is still
+	// silent about why, and a 404 at "/" on a box where the binary started
+	// cleanly reads as a routing bug rather than a missing build step.
+	if siteOn && !site.AssetsBuilt() {
+		log.Printf("[Driftwood] The site has no built assets: site/dist holds only the placeholder that keeps //go:embed compiling. Run `make build` (or `npm --prefix site run build`). Until then / and /try answer 404.")
 	}
 
 	httpServer := &http.Server{
@@ -138,6 +173,19 @@ func main() {
 
 	<-serverCtx.Done()
 	fmt.Println("Driftwood server stopped.")
+}
+
+// envTruthy reports whether name holds a value that means "on".
+//
+// Only the spellings people actually write are accepted, and anything else —
+// including a typo, and including "false" — is off. An environment variable that
+// turns a feature on has to fail in the direction that changes nothing.
+func envTruthy(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 func handleImport(args []string) {

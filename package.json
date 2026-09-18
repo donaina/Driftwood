@@ -25,6 +25,7 @@
     "cmd",
     "internal",
     "pkg",
+    "site",
     "web",
     "index.js",
     "index.d.ts",

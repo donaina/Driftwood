@@ -160,9 +160,9 @@ silently is not working. `AI_MODEL` overrides the model it calls.
 ### 4. The website (optional)
 
 `site/` is the marketing site and a try-it-out page, in a browser, for someone who
-has not installed anything. It is a separate Vite build that deploys independently
-of the binary — it is not compiled into it, and nothing in the Go build depends on
-it.
+has not installed anything. It is a separate Vite build, embedded into the binary
+the same way the dashboard is, so `make build` produces one file that carries both
+surfaces and serving it needs no static host.
 
 ```bash
 make site                      # → site/dist
@@ -174,6 +174,20 @@ else, so the two read as one product without the dashboard's shell — traffic t
 drawer, toasts, wizard — coming along. `make verify` builds it and asserts its CSS
 actually carries those tokens: the import is a one-line change that would otherwise
 fail silently, rendering the site with no colours at all and still exiting `0`.
+
+**Serving it.** Off by default, because the site claims `/` and `/` otherwise belongs
+to the target you are proxying:
+
+```bash
+./drift --site --port 8787 --target http://localhost:3000
+```
+
+`/` is then the landing page, `/try` the try-it-out page, and `/_driftwood/` still the
+dashboard. `DRIFTWOOD_SITE=1` does the same thing for a container whose start command
+cannot carry an argument; a `--site` you typed yourself outranks it, so
+`--site=false` turns it back off. A build that never ran is warned about at startup
+rather than left to be diagnosed as a routing bug — the same treatment `web/dist`
+already gets.
 
 **Run it against a live instance.** The try-it-out page drives the real control API
 at `/_driftwood/*` and needs it same-origin, because the control plane's CORS
@@ -191,8 +205,10 @@ does not fall back to canned output — a demo that quietly substitutes pre-reco
 results is worse than no demo, because the reader takes away a belief that nothing
 they did established.
 
-`Caddyfile.driftwood` is the production layout: the static site at `/`, `/_driftwood/*`
-proxied to the binary with buffering off, because `/events` is a long-lived SSE stream.
+`Caddyfile.driftwood` is an example layout for a hand-managed host: everything to the
+binary with buffering off, because `/events` is a long-lived SSE stream. This
+project's own deployment is managed by Aeroplane, which generates its own config, so
+nothing in that file needs editing to deploy.
 
 ---
 
@@ -224,7 +240,7 @@ export interface GetUsersResponse {
 1. **Low Overhead**: Built on Go's standard library `net/http/httputil.ReverseProxy`, with a custom `Rewrite` and transport for ultra-low latency transparent proxying.
 2. **Memory Safety**: Uses thread-safe mutex locking (`sync.RWMutex`) and a bounded ring buffer (500 requests max) to prevent memory leaks under high traffic load.
 3. **Resilient SSE Streaming**: Non-blocking Server-Sent Events hub with drop safety ensures slow dashboard clients don't block API proxy throughput.
-4. **Single Binary Deployment**: Zero runtime dependencies — the dashboard page and `web/dist` are compiled into the binary with `go:embed`, so it serves its own UI from any working directory and can be moved anywhere on its own.
+4. **Single Binary Deployment**: Zero runtime dependencies — the dashboard page, `web/dist`, the marketing site and `site/dist` are all compiled into the binary with `go:embed`, so it serves both surfaces from any working directory and can be moved anywhere on its own.
 
 ---
 
@@ -252,8 +268,8 @@ export interface GetUsersResponse {
 │   └── storage/         # Thread-safe in-memory store & disk persistence
 ├── pkg/
 │   └── types/           # Core domain models (SchemaNode, ContractDiff, etc.)
-├── site/                # Marketing site & try-it-out page (separate Vite build,
-│   └── src/             #   deployed independently — not embedded in the binary)
+├── site/                # Marketing site & try-it-out page (Vite build, embedded
+│   └── src/             #   into the binary by site/site.go and served by it)
 ├── tests/               # End-to-end proxy integration tests
 ├── web/                 # Dashboard: index.html, shell.css, and the go:embed
 │   └── dist/            #   Vite's output, embedded into the binary
@@ -298,11 +314,19 @@ Driftwood listens on one port and splits it by path:
 | Path | Goes to |
 | --- | --- |
 | `/_driftwood/*` | The dashboard and its control API. Never proxied. |
+| `/`, `/index.html`, `/try`, `/try.html`, `/assets/*`, `/favicon.svg`, `/dashboard-light.png`, `/dashboard-dark.png` | The marketing site — **only when started with `--site`**. |
 | Everything else | Your target API — proxied, sniffed, diffed and recorded. |
+
+The site is off by default and claiming `/` is the whole reason: on a machine where
+you are developing against an app, `/` is that app's front page. The paths above are
+claimed as a set and none of them is a prefix of another surface, so `/assets-old/x`
+and `/pricing` still belong to the target. Inside the set a missing file is a `404`
+— never the page, and never the proxy — because an asset URL that answers `200` with
+HTML is the failure this project has already shipped once.
 
 There is no `/api/` special case. Point your frontend at Driftwood instead of your
 backend and every route it calls is observed, whether that is `/v1/orders`,
-`/graphql` or `/api/users`. A path outside `/_driftwood/` that the backend does not
+`/graphql` or `/api/users`. A path outside the paths above that the backend does not
 recognise is answered by the backend, with the backend's own 404 — Driftwood does
 not invent a response for it.
 

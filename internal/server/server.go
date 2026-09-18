@@ -14,6 +14,7 @@ import (
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/storage"
 	"github.com/donaina/driftwood/pkg/types"
+	"github.com/donaina/driftwood/site"
 	"github.com/donaina/driftwood/web"
 )
 
@@ -22,14 +23,24 @@ type Server struct {
 	hub      *events.Hub
 	proxy    *proxy.Proxy
 	mockCtrl *mock.MockController
+
+	// site serves the marketing site when the operator asked for it, and is nil
+	// otherwise. Nil is the default and the common case: the site claims "/", and
+	// "/" is otherwise the proxied target, so turning it on takes a decision.
+	//
+	// Held as an http.Handler rather than as a bool so a test can install a stub
+	// without reaching into the embed, and so this package does not have to know
+	// how the site is stored to hand it a request.
+	site http.Handler
 }
 
-func NewServer(store *storage.Store, hub *events.Hub, prx *proxy.Proxy, mockCtrl *mock.MockController) *Server {
+func NewServer(store *storage.Store, hub *events.Hub, prx *proxy.Proxy, mockCtrl *mock.MockController, siteHandler http.Handler) *Server {
 	return &Server{
 		store:    store,
 		hub:      hub,
 		proxy:    prx,
 		mockCtrl: mockCtrl,
+		site:     siteHandler,
 	}
 }
 
@@ -53,6 +64,19 @@ func (s *Server) Router() http.HandlerFunc {
 		// by the dashboard with a 200 and never seen by the sniffer at all. The
 		// engine was real; it was simply never handed the traffic.
 		if !proxy.IsControlPath(path) {
+			// The marketing site, when the operator asked for it.
+			//
+			// Inside this branch rather than beside it, deliberately: the site is
+			// then structurally incapable of shadowing /_driftwood/*, rather than
+			// merely not doing so today. A path the site claims but has no file
+			// for is a 404 from site.ServeSite — it must never fall through to the
+			// proxy, and it must never answer with index.html, which is how every
+			// unknown asset returning 200 and the page itself has shipped here
+			// before.
+			if s.site != nil && site.Claims(path) {
+				s.site.ServeHTTP(w, r)
+				return
+			}
 			proxyHandler(w, r)
 			return
 		}

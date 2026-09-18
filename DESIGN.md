@@ -213,11 +213,24 @@ three equal cards, which is both the banned shape and a lie about content that i
 
 ## 8. The Marketing Site
 
-A second surface, at `site/`, deployed separately from the binary. It exists because the two
-have different jobs and different audiences: the dashboard is **Operate** — someone is reading
-a live traffic table and wants the breaking row in under a second — while the landing page is
-**Persuade** and the try-it-out page is **Operate on a demo**, in a browser, for someone who has
-not installed anything.
+A second surface, at `site/`, built separately from the dashboard and embedded into the same
+binary by `site/site.go`. It exists because the two have different jobs and different audiences:
+the dashboard is **Operate** — someone is reading a live traffic table and wants the breaking row
+in under a second — while the landing page is **Persuade** and the try-it-out page is **Operate
+on a demo**, in a browser, for someone who has not installed anything.
+
+**One origin, and that is not an implementation detail.** The site is served by the binary at
+`/` and `/try`, on the same host as the control plane, because the try-it-out page drives that
+plane and the plane refuses cross-origin calls by design — its allowlist is a hardcoded localhost
+list (`isAllowedOrigin`), since an unauthenticated control plane with a wildcard would let any
+page on the internet retarget a running instance. Serving the site from a static host beside the
+binary would mean widening that allowlist to serve files. It is opt-in (`--site`, or
+`DRIFTWOOD_SITE` for a container) because it claims `/`, and on a developer's machine `/` belongs
+to the app being proxied.
+
+The site is served from a fixed set of paths and **a missing file under one of them is a `404`** —
+never the page, never the proxy. That is the rule the try-it-out page's liveness probe is built
+around, stated once here because both surfaces depend on it being true.
 
 **It shares §2's tokens and nothing else.** `site/src/styles.css` imports
 `frontend-react/src/tokens.css` — the same file the dashboard's `index.css` imports — and writes
@@ -252,7 +265,8 @@ changed.
 
 **The try-it-out page must never fall back to canned data.** It drives a real instance over
 the control API, same-origin, because the control plane's CORS allowlist is localhost-only
-(`internal/server/server.go`, `isAllowedOrigin`) — see `Caddyfile.driftwood`. If it cannot reach
+(`internal/server/server.go`, `isAllowedOrigin`) — which is why the site is served by the binary
+rather than from a static host beside it. If it cannot reach
 an instance it says so and shows the command to start one. A demo that quietly substitutes
 pre-recorded output is worse than no demo, because the reader takes away a belief that nothing
 they did established. Its liveness probe validates that the reply *parses as JSON*, not that the
