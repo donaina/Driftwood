@@ -21,7 +21,7 @@ export const ClosingCta: React.FC = () => (
           and point it at the API you are actually worried about.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <LinkButton href="/try.html" variant="primary" size="lg">
+          <LinkButton href="/try" variant="primary" size="lg">
             Try it in your browser
           </LinkButton>
           <LinkButton href={GITHUB_URL} variant="secondary" size="lg" external>

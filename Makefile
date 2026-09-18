@@ -16,7 +16,7 @@ PORT   ?= 8787
 
 # Every directory that holds Go source. Scoped rather than `.` so gofmt does not
 # walk frontend-react/node_modules.
-GO_DIRS := cmd internal pkg web tests
+GO_DIRS := cmd internal pkg site web tests
 
 .PHONY: all build dashboard deps test vet fmt fmt-check serve verify clean \
         site site-deps ai-deps ai-build ai-serve
@@ -44,7 +44,12 @@ dashboard: deps
 
 # --------------------------------------------------------------------- go
 
-build: dashboard
+# Both surfaces, because both are embedded: the binary carries the dashboard and
+# the site, so building one without the other ships a half-empty binary. This is
+# also what makes the deployment self-contained — a build step that runs `make
+# build` produces everything, and one that runs a bare `go build` produces a
+# binary whose embeds hold only the placeholders.
+build: dashboard site
 	go build -o $(BINARY) ./cmd/drift
 
 serve: build
@@ -70,16 +75,18 @@ fmt-check:
 
 # ------------------------------------------------------------------- site
 
-# The marketing site: its own Vite build, deployed independently of the binary.
+# The marketing site: its own Vite build, embedded into the binary by
+# site/site.go and served by it.
 #
 # It shares the dashboard's token file but nothing else, so it builds on its own
-# and cannot break the embedded dashboard by changing. `emptyOutDir` is on in
-# its Vite config (unlike the dashboard's, which keeps a committed PLACEHOLDER
-# alive), so there is nothing to clear here first.
+# and cannot break the embedded dashboard by changing. It is otherwise the same
+# arrangement as the dashboard's build, down to the committed placeholder: Vite
+# is configured not to empty the directory, so the placeholder is cleared here
+# the way web/dist's is.
 #
 # Both entries are asserted because the failure mode is quiet: a config change
 # that drops one of them still exits 0 and still writes index.html, and the only
-# symptom is that /try.html 404s in production.
+# symptom is that /try 404s in production.
 SITE_NPM := npm --prefix site
 
 site-deps: site/node_modules
@@ -92,6 +99,7 @@ site/node_modules: site/package-lock.json
 	@touch $@
 
 site: site-deps
+	@find site/dist -mindepth 1 ! -name PLACEHOLDER -delete
 	$(SITE_NPM) run build
 	@for page in index.html try.html; do \
 		test -f site/dist/$$page || { \
@@ -156,3 +164,4 @@ ai-serve: ai-deps
 clean:
 	rm -f $(BINARY)
 	find web/dist -mindepth 1 ! -name PLACEHOLDER -delete
+	find site/dist -mindepth 1 ! -name PLACEHOLDER -delete

@@ -63,7 +63,7 @@ export const Nav: React.FC = () => {
           >
             Source
           </a>
-          <LinkButton href="/try.html" variant="primary">
+          <LinkButton href="/try" variant="primary">
             Try it out
           </LinkButton>
         </div>

@@ -39,7 +39,7 @@ func TestEndToEndProxyAndDiff(t *testing.T) {
 		t.Fatalf("failed to create proxy: %v", err)
 	}
 
-	srv := server.NewServer(store, hub, prx, mockCtrl)
+	srv := server.NewServer(store, hub, prx, mockCtrl, nil)
 	testProxyServer := httptest.NewServer(srv.Router())
 	defer testProxyServer.Close()
 

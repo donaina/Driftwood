@@ -1,0 +1,11 @@
+Vite writes the marketing site here, and site/site.go embeds the result, so the
+files themselves are not committed.
+
+This file is committed, and must stay: //go:embed is a compile error when its
+directory does not exist, so on a fresh clone its absence would break
+`go build ./...`, `go vet ./...` and `go test ./...` — the entire local gate.
+
+Run `make build` (or `npm --prefix site run build`) to populate it. A dist that
+holds only this file compiles, starts, and serves a site with no stylesheet and
+no scripts, so site.AssetsBuilt exists and cmd/drift warns on startup rather than
+letting the deploy look healthy.

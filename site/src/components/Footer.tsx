@@ -55,7 +55,7 @@ export const Footer: React.FC = () => (
                 </a>
               </li>
               <li>
-                <a href="/try.html" className="text-text-secondary no-underline hover:text-text-main">
+                <a href="/try" className="text-text-secondary no-underline hover:text-text-main">
                   Try it out
                 </a>
               </li>

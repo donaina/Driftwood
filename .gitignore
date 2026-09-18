@@ -45,10 +45,16 @@ web/dist/*
 # build cannot be mistaken for the current one or shipped by accident.
 frontend-react/dist/
 
-# The marketing site's build. It deploys on its own, so nothing about it is
-# embedded or shipped with the binary — a committed copy here would only be a
-# second, staler answer to what `make site` produces.
-site/dist/
+# The marketing site's build. site/site.go embeds the result and the binary
+# serves it, so the files themselves are not committed — a committed copy would
+# only be a second, staler answer to what `make site` produces.
+#
+# PLACEHOLDER is committed for the reason web/dist/PLACEHOLDER is, and the
+# pattern excludes the directory's *contents* for the same reason too: git cannot
+# re-include a file whose parent directory is excluded, so `site/dist/` here
+# would silently make the placeholder uncommittable.
+site/dist/*
+!site/dist/PLACEHOLDER
 
 # Output of the release-binaries workflow.
 /dist/

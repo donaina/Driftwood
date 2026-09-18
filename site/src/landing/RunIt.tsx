@@ -99,7 +99,7 @@ export const RunIt: React.FC = () => (
       <LinkButton href={GITHUB_URL} variant="primary" size="lg" external>
         Read the source
       </LinkButton>
-      <LinkButton href="/try.html" variant="secondary" size="lg">
+      <LinkButton href="/try" variant="secondary" size="lg">
         Or try it without installing
       </LinkButton>
     </div>

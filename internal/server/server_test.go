@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,7 +34,14 @@ type harness struct {
 	store  *storage.Store
 }
 
+// newHarness builds a server with no marketing site, which is the default and
+// the case every test outside the site's own below exercises.
 func newHarness(t *testing.T) *harness {
+	t.Helper()
+	return newHarnessWith(t, nil)
+}
+
+func newHarnessWith(t *testing.T, siteHandler http.Handler) *harness {
 	t.Helper()
 
 	// storage.NewStore resolves its persist path from the home directory, and
@@ -63,7 +71,7 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("NewProxyAllowPrivate: %v", err)
 	}
 
-	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl).Router())
+	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl, siteHandler).Router())
 	t.Cleanup(front.Close)
 
 	return &harness{router: front, hits: &hits, store: store}
@@ -124,6 +132,80 @@ func TestAnyNonControlPathIsProxied(t *testing.T) {
 		}
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("GET %s: status = %d, want 200", path, resp.StatusCode)
+		}
+	}
+}
+
+// siteStub stands in for the embedded site. Answering with a body nothing else
+// produces makes "the site served this" distinguishable from "the backend served
+// this", which is the same distinction the hit counter draws for the proxy.
+type siteStub struct{ paths []string }
+
+func (s *siteStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.paths = append(s.paths, r.URL.Path)
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = io.WriteString(w, "SITE:"+r.URL.Path)
+}
+
+// The site is opt-in, and turning it on moves exactly one thing: which paths
+// reach the proxy. Both halves are asserted against the same server, because the
+// failure that matters is not "the site did not load" — it is the site loading
+// and quietly taking the target's traffic with it.
+//
+// TestAnyNonControlPathIsProxied above is the other half of this and is
+// unchanged: with no site installed, "/" proxies like any other path.
+func TestInstalledSiteClaimsTheRootAndNothingElse(t *testing.T) {
+	stub := &siteStub{}
+	h := newHarnessWith(t, stub)
+
+	// Claimed: answered by the site, backend never dialled.
+	for _, path := range []string{"/", "/try", "/try.html", "/assets/main-abc.js", "/favicon.svg"} {
+		before := h.hitCount()
+		resp := h.do(t, http.MethodGet, path, nil)
+
+		if got := h.hitCount(); got != before {
+			t.Errorf("GET %s reached the backend; the site claims it", path)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: status = %d, want 200", path, resp.StatusCode)
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		if string(body) != "SITE:"+path {
+			t.Errorf("GET %s: body = %q, want the site's", path, body)
+		}
+	}
+
+	// Everything else still belongs to the target — including paths that share a
+	// prefix with something the site claims.
+	for _, path := range []string{"/api/users", "/v1/users", "/graphql", "/orders", "/pricing", "/assets-old/main.js"} {
+		before := h.hitCount()
+		resp := h.do(t, http.MethodGet, path, nil)
+
+		if got := h.hitCount(); got != before+1 {
+			t.Errorf("GET %s: backend hits %d -> %d, want exactly one", path, before, got)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: status = %d, want 200", path, resp.StatusCode)
+		}
+	}
+
+	// And the control plane is still the control plane. This is the one that has
+	// to hold even though the site claims "/", and it holds because the site is
+	// consulted inside the !IsControlPath branch rather than beside it.
+	resp := h.do(t, http.MethodGet, "/_driftwood/api/traffic", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /_driftwood/api/traffic: status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("GET /_driftwood/api/traffic: Content-Type = %q, want application/json — the site answered it", ct)
+	}
+
+	for _, p := range stub.paths {
+		if strings.HasPrefix(p, "/_driftwood") {
+			t.Errorf("the site handler was asked for %s; the control namespace must be out of its reach", p)
 		}
 	}
 }
