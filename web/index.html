@@ -56,6 +56,24 @@
            and a jump from h1 straight to h3. The brand is the only heading
            that is on screen no matter which view is showing. -->
       <h1 class="brand-title">Driftwood</h1>
+      <!-- The project switcher, and the only control that changes it. It sits
+           with the identity rather than in .header-actions because it says
+           WHICH workspace you are looking at, not what to do to it.
+
+           It is markup here rather than a React island: the shell already owns
+           the header, the SSE stream and switchTab, and a view that had to be
+           TOLD a switch happened by the thing that performed it is a second
+           owner of the same state.
+
+           aria-label rather than a visible label — the option text is the
+           label, and "Project" above a box containing "Acme" is the kind of
+           caption this design system does not use. It starts disabled with one
+           honest option rather than empty: an empty <select> is a blank box
+           that reads as a broken control, which is the same reasoning that
+           makes the vitals show "-" instead of nothing. -->
+      <select class="project-switcher" id="project-switcher" aria-label="Project" disabled>
+        <option>Loading projects…</option>
+      </select>
       <div class="status-pill" id="sse-status">
         <div class="status-dot"></div>
         <span id="status-text">Sniffer Active</span>
@@ -412,6 +430,12 @@
         <div class="panel panel--narrow"
          >
           <h2 class="view-title">Proxy Configuration</h2>
+          <!-- The target is per-project, so the field has to say whose it is.
+               A bare "Target API Backend URL" was unambiguous when there was
+               one target in the system; with a switcher above it, an unlabelled
+               field is a field you cannot tell the owner of. -->
+          <p class="meta sp-bottom-md">These apply to the active project, <strong
+              id="config-project-name">—</strong>.</p>
           <div class="sp-bottom-md">
             <label class="field-label">Target
               API Backend URL</label>
@@ -425,6 +449,36 @@
             </label>
           </div>
           <button class="btn btn-primary" onclick="saveConfig()">Save Settings</button>
+        </div>
+
+        <!-- Projects. Management lives here rather than behind the switcher
+             because the switcher is a switcher: it changes which project you
+             are looking at, and creating, renaming or deleting one is a
+             different kind of act with a different failure mode. This is also
+             the view that already owned the target field, and a project IS a
+             target plus a name. -->
+        <div class="panel panel--narrow">
+          <h2 class="view-title">Projects</h2>
+          <p class="meta sp-bottom-md">Each project keeps its own target,
+            baselines, traffic and alerts. Driftwood always has at least one.</p>
+
+          <div class="project-list" id="project-list">
+            <p class="project-list-empty">Loading projects…</p>
+          </div>
+
+          <div class="project-create">
+            <div class="sp-bottom-sm">
+              <label class="field-label" for="new-project-name">New project name</label>
+              <input type="text" id="new-project-name" class="field-input"
+                placeholder="Acme Corp" autocomplete="off" />
+            </div>
+            <div class="sp-bottom-lg">
+              <label class="field-label" for="new-project-target">Target API backend URL</label>
+              <input type="text" id="new-project-target" class="field-input"
+                placeholder="http://localhost:3000" autocomplete="off" />
+            </div>
+            <button class="btn btn-primary" id="create-project-btn">Create Project</button>
+          </div>
         </div>
       </div>
 
@@ -508,6 +562,21 @@
     let baselinesList = [];
     let selectedTraffic = null;
     let eventSource = null;
+
+    /* The project list as the server last described it, and the id this page
+       believes is active.
+
+       knownActiveProject is tracked separately from projects.active because
+       the two answer different questions: projects.active is what the server
+       says now, and knownActiveProject is what this page has already re-scoped
+       itself to. A projects_updated frame arriving from another tab is only
+       news if those differ. */
+    let projects = null;
+    let knownActiveProject = null;
+    // The row being renamed, or null. Inline rather than a modal: the shell has
+    // no dialog primitive, and window.prompt is unstyled and blocked in some
+    // embedded contexts.
+    let editingProjectId = null;
 
     // The first-paint empty state is authored in the traffic view's markup.
     // Capture it before the first render overwrites the tbody, so clearing
@@ -609,6 +678,18 @@
       on('setup-complete', completeSetup);
       on('setup-close-wizard', leaveSetupWizard);
 
+      /* Projects load for both paths, before the branch, because the switcher
+         is in the header and the header is on screen during the wizard too.
+         Loading it only on the ordinary path left the wizard showing
+         "Loading projects…" for as long as the wizard was open — a control
+         claiming to be waiting for something that was never coming.
+
+         The listener is attached here rather than inside the branch so it is
+         attached exactly once: initProjectSwitcher adds listeners, and the
+         two boot paths both run on a normal session. */
+      initProjectSwitcher();
+      loadProjects();
+
       /* Then decide what is on screen. The wizard is a view, not a mode: the
          bindings above are live either way, and leaving the wizard calls the
          same loaders this branch does. */
@@ -660,6 +741,15 @@
                that is already open gets it. Same call onNewAlert makes, for the
                same reason. */
             loadAlerts();
+          } else if (msg.type === 'projects_updated') {
+            /* Install-level, so this arrives even while watching one project:
+               a project appearing, disappearing or being renamed is news to
+               every dashboard. Only re-scope if the ACTIVE project moved —
+               otherwise a rename in another tab would throw away this page's
+               view and its scroll position for nothing. */
+            loadProjects().then(switched => {
+              if (switched) adoptProjectChange();
+            });
           }
         } catch (err) {
           console.error('SSE Error:', err);
@@ -671,9 +761,31 @@
       };
     }
 
+    /* Every project-scoped read carries the epoch it started in and is dropped
+       if the project changed while it was in flight.
+
+       Without this, switching to client B can be followed by client A's
+       response landing and being rendered — the dashboard would show one
+       client's contracts under another client's name, which is the exact
+       failure this whole phase exists to prevent. The window is one fetch
+       wide, which is precisely the size of window that never shows up in
+       testing and always shows up on someone's slow connection.
+
+       It is a counter rather than an AbortController because the response is
+       cheap and the answer only needs to be discarded, not cancelled. */
+    let projectEpoch = 0;
+
+    async function scopedFetch(path) {
+      const epoch = projectEpoch;
+      const res = await fetch(path);
+      if (epoch !== projectEpoch) return null;
+      return res;
+    }
+
     async function loadTraffic() {
       try {
-        const res = await fetch('/_driftwood/api/traffic');
+        const res = await scopedFetch('/_driftwood/api/traffic');
+        if (!res) return;
         trafficHistory = await res.json() || [];
         renderTrafficTable();
       } catch (err) { console.error(err); }
@@ -681,7 +793,8 @@
 
     async function loadBaselines() {
       try {
-        const res = await fetch('/_driftwood/api/baselines');
+        const res = await scopedFetch('/_driftwood/api/baselines');
+        if (!res) return;
         baselinesList = await res.json() || [];
         renderBaselines();
       } catch (err) { console.error(err); }
@@ -689,7 +802,8 @@
 
     async function loadAlerts() {
       try {
-        const res = await fetch('/_driftwood/api/alerts');
+        const res = await scopedFetch('/_driftwood/api/alerts');
+        if (!res) return;
         alertsHistory = await res.json() || [];
         renderAlerts();
         updateAlertCount();
@@ -698,11 +812,332 @@
 
     async function loadConfig() {
       try {
-        const res = await fetch('/_driftwood/api/config');
+        const res = await scopedFetch('/_driftwood/api/config');
+        if (!res) return;
         const cfg = await res.json();
         document.getElementById('target-url-input').value = cfg.target_url || '';
         document.getElementById('auto-baseline-check').checked = cfg.auto_save_baseline;
       } catch (err) { console.error(err); }
+    }
+
+    /* ---- Projects ------------------------------------------------------ */
+
+    /* Reads the project list and reports whether the active project moved.
+
+       The caller has to know, because a moved active project is not a redraw:
+       every view on screen is now showing another client's data and the event
+       stream is still subscribed to the old one. */
+    async function loadProjects() {
+      let next;
+      try {
+        const res = await fetch('/_driftwood/api/projects');
+        if (!res.ok) throw new Error((await res.text()).trim());
+        next = await res.json();
+      } catch (err) {
+        /* Disabled with the reason in it rather than emptied. An <select> that
+           goes blank reads as a layout bug; one that says it could not load
+           projects is a fact the operator can act on. */
+        const sel = document.getElementById('project-switcher');
+        if (sel) {
+          sel.innerHTML = '<option>Projects unavailable</option>';
+          sel.disabled = true;
+        }
+        const list = document.getElementById('project-list');
+        if (list) list.innerHTML = '<p class="project-row-note">Could not load projects.</p>';
+        console.error(err);
+        return false;
+      }
+
+      const switched = knownActiveProject !== null && next.active !== knownActiveProject;
+      knownActiveProject = next.active;
+      projects = next;
+      renderProjectSwitcher();
+      renderProjectList();
+      renderConfigProjectName();
+      return switched;
+    }
+
+    function activeProjectName() {
+      if (!projects) return '—';
+      const p = projects.projects.find(x => x.id === projects.active);
+      return p ? (p.name || p.id) : projects.active;
+    }
+
+    function renderConfigProjectName() {
+      const el = document.getElementById('config-project-name');
+      if (el) el.textContent = activeProjectName();
+    }
+
+    function renderProjectSwitcher() {
+      const sel = document.getElementById('project-switcher');
+      if (!sel || !projects) return;
+
+      /* Rebuilt rather than diffed. A project list is a handful of entries and
+         changes rarely, and a diff would need to reconcile the selection with
+         a list that may no longer contain it — which is the bug this avoids. */
+      sel.innerHTML = '';
+      projects.projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        // textContent, not innerHTML: a project name is whatever the operator
+        // typed, and this is the one place it reaches the DOM unescaped
+        // otherwise.
+        opt.textContent = p.name || p.id;
+        opt.selected = p.id === projects.active;
+        sel.appendChild(opt);
+      });
+      sel.disabled = projects.projects.length === 0;
+    }
+
+    function renderProjectList() {
+      const host = document.getElementById('project-list');
+      if (!host || !projects) return;
+
+      if (projects.projects.length === 0) {
+        host.innerHTML = '<p class="project-row-note">No projects.</p>';
+        return;
+      }
+
+      host.innerHTML = projects.projects.map(p => {
+        const id = escapeHtml(p.id);
+        if (p.id === editingProjectId) {
+          return `
+            <div class="project-row is-editing" data-id="${id}">
+              <div class="project-row-fields">
+                <input type="text" class="field-input" data-field="name"
+                  value="${escapeHtml(p.name)}" aria-label="Project name" />
+                <input type="text" class="field-input" data-field="target"
+                  value="${escapeHtml(p.target_url)}" aria-label="Target API backend URL"
+                  placeholder="http://localhost:3000" />
+              </div>
+              <div class="project-row-actions">
+                <button class="btn btn-primary" data-action="save">Save</button>
+                <button class="btn" data-action="cancel">Cancel</button>
+              </div>
+            </div>`;
+        }
+
+        const active = p.id === projects.active;
+        // The last project cannot be deleted — the store refuses it, and a
+        // button that is always going to fail is worse than one that is
+        // visibly unavailable.
+        const undeletable = projects.projects.length === 1;
+        return `
+          <div class="project-row${active ? ' is-active' : ''}" data-id="${id}">
+            <div class="project-row-main">
+              <span class="project-row-name">${escapeHtml(p.name || p.id)}</span>
+              <span class="project-row-target">${p.target_url
+                ? escapeHtml(p.target_url)
+                : 'No target set'}</span>
+            </div>
+            <div class="project-row-actions">
+              ${active
+                ? '<span class="project-row-badge">Active</span>'
+                : '<button class="btn" data-action="switch">Switch</button>'}
+              <button class="btn" data-action="edit">Edit</button>
+              <button class="btn btn-danger" data-action="delete"${undeletable ? ' disabled' : ''}>Delete</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function initProjectSwitcher() {
+      const sel = document.getElementById('project-switcher');
+      if (sel) sel.addEventListener('change', () => switchProject(sel.value));
+
+      /* One delegated listener on the list rather than one per row: the rows
+         are rebuilt on every change, so per-row handlers would have to be
+         re-attached on every render and would leak the old ones. */
+      const host = document.getElementById('project-list');
+      if (host) {
+        host.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn || btn.disabled) return;
+          const row = btn.closest('.project-row');
+          const id = row && row.dataset.id;
+          if (!id) return;
+
+          switch (btn.dataset.action) {
+            case 'switch': switchProject(id); break;
+            case 'edit': editingProjectId = id; renderProjectList(); break;
+            case 'cancel': editingProjectId = null; renderProjectList(); break;
+            case 'save': saveProjectEdit(id, row); break;
+            case 'delete': confirmDeleteProject(id, btn); break;
+          }
+        });
+      }
+
+      const createBtn = document.getElementById('create-project-btn');
+      if (createBtn) createBtn.addEventListener('click', createProject);
+    }
+
+    /* Posts a project mutation and reports whether it landed. The refusals are
+       all real and all carry a reason — a target the proxy will not dial, the
+       last project, the project limit — so the body is shown rather than a
+       generic failure. Those messages are written for an operator. */
+    async function postProject(path, body, failureTitle) {
+      try {
+        const res = await fetch('/_driftwood' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          showToast(failureTitle, (await res.text()).trim());
+          return false;
+        }
+        return true;
+      } catch (err) {
+        showToast(failureTitle, String(err));
+        return false;
+      }
+    }
+
+    /* Every project mutation ends here.
+
+       The response to a mutation says what that project looks like; only a
+       fresh list says which project is *active*, because creating and deleting
+       move it as a side effect. Reading it back is one code path instead of
+       four, and it cannot disagree with the server. */
+    async function refreshProjectsAndAdopt() {
+      if (await loadProjects()) adoptProjectChange();
+    }
+
+    /* Re-scopes this page to a project the server has already switched to.
+
+       Called for a switch this page performed and for one another tab did —
+       the work is identical, and only the toast differs, which is why the
+       toast is not here. */
+    function adoptProjectChange() {
+      projectEpoch++;
+      reconnectSSE();
+      reloadCurrentView();
+    }
+
+    /* The stream is scoped when it is opened, so a subscription to the old
+       project keeps delivering the old project's events until it is replaced.
+       Closing before reopening is what initSSE's own guard is about: an
+       EventSource that is not closed stays connected and unreachable, and every
+       event would then be handled twice. */
+    function reconnectSSE() {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      document.getElementById('status-text').innerText = 'Reconnecting...';
+      initSSE();
+    }
+
+    function reloadCurrentView() {
+      loadTraffic();
+      loadBaselines();
+      loadAlerts();
+      // /api/config is install-level but its target_url is the active
+      // project's, so the settings field is stale until this runs.
+      loadConfig();
+
+      /* React views fetch on mount, so remounting is what makes them read the
+         new project. The active nav item is the record of which view is
+         showing — switchTab sets it and nothing else does. If no view is
+         marked active the wizard is up, and its own loaders run on the way
+         out, so there is nothing to do. */
+      const nav = document.querySelector('.nav-item.active');
+      if (nav && nav.id.startsWith('nav-')) switchTab(nav.id.slice(4));
+    }
+
+    async function switchProject(id) {
+      if (id === knownActiveProject) return;
+      if (!await postProject('/api/projects/active', { id }, 'Project Not Switched')) {
+        // Put the select back where it was. It is showing the value the user
+        // picked, which the server just refused.
+        await loadProjects();
+        return;
+      }
+      await refreshProjectsAndAdopt();
+      showToast('Project Switched', `Now showing ${activeProjectName()}.`);
+    }
+
+    async function createProject() {
+      const nameField = document.getElementById('new-project-name');
+      const targetField = document.getElementById('new-project-target');
+      const name = nameField.value.trim();
+      const target = targetField.value.trim();
+
+      if (!name) {
+        showToast('Project Not Created', 'A project needs a name.');
+        return;
+      }
+
+      if (!await postProject('/api/projects/create', { name, target_url: target }, 'Project Not Created')) {
+        return;
+      }
+
+      nameField.value = '';
+      targetField.value = '';
+      await refreshProjectsAndAdopt();
+      showToast('Project Created', `${name} is ready.`);
+    }
+
+    /* Saves an edited row.
+
+       The target is sent whatever it holds, including empty, so the server is
+       what decides whether a target is acceptable. An empty one is refused
+       there — the update route can set a target but has no way to unset one,
+       and inventing a client-side rule for that would be a second description
+       of the same state that could drift from the server's. */
+    async function saveProjectEdit(id, row) {
+      const name = row.querySelector('[data-field="name"]').value.trim();
+      const target = row.querySelector('[data-field="target"]').value.trim();
+
+      if (!name) {
+        showToast('Project Not Saved', 'A project needs a name.');
+        return;
+      }
+
+      if (!await postProject('/api/projects/update', { id, name, target_url: target }, 'Project Not Saved')) {
+        // Left in edit mode with the text as typed, so the fix is one edit
+        // rather than retyping the row.
+        return;
+      }
+
+      editingProjectId = null;
+      await refreshProjectsAndAdopt();
+    }
+
+    /* Two clicks, and the second is armed only on the button that was pressed.
+
+       Deleting a project destroys its baselines, traffic and alerts, so it
+       cannot be one click. There is no dialog primitive in the shell, and a
+       modal for this would be the only one in the app. */
+    let pendingDeleteId = null;
+    let pendingDeleteTimer = null;
+
+    function confirmDeleteProject(id, btn) {
+      if (pendingDeleteId !== id) {
+        pendingDeleteId = id;
+        btn.textContent = 'Confirm delete';
+        btn.classList.add('is-armed');
+        clearTimeout(pendingDeleteTimer);
+        pendingDeleteTimer = setTimeout(() => {
+          if (pendingDeleteId === id) {
+            pendingDeleteId = null;
+            renderProjectList();
+          }
+        }, 5000);
+        return;
+      }
+      clearTimeout(pendingDeleteTimer);
+      pendingDeleteId = null;
+      deleteProject(id);
+    }
+
+    async function deleteProject(id) {
+      if (!await postProject('/api/projects/delete', { id }, 'Project Not Deleted')) {
+        return;
+      }
+      editingProjectId = null;
+      await refreshProjectsAndAdopt();
+      showToast('Project Deleted', 'Its baselines and traffic went with it.');
     }
 
     function onNewTraffic(item) {
@@ -1622,6 +2057,9 @@
       loadBaselines();
       loadAlerts();
       loadConfig();
+      // The wizard sets the active project's target, so the Projects panel is
+      // describing the pre-wizard value until this runs.
+      loadProjects();
       initVitals();
     }
 

@@ -531,9 +531,8 @@ func (s *Store) ProjectTarget(id string) (string, bool, bool) {
 // One call under one lock rather than a series of accessors, because the proxy
 // snapshots this into a single atomic value and a snapshot assembled from
 // separate calls could catch the store mid-switch — an active project from
-// before a change paired with targets from after it.
-// Routing returns where requests should currently go, together with the
-// generation those answers were read at.
+// before a change paired with targets from after it. That is also why the
+// generation is returned from here rather than fetched separately.
 //
 // The generation comes back from inside the read lock rather than from a
 // separate call to RoutingGeneration, and that is the whole point of returning

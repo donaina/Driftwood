@@ -196,6 +196,100 @@
     :root:not([data-theme="light"]) .theme-icon--sun { display: block; }
   }
 
+  /* The project switcher, in the header beside the wordmark.
+
+     A native <select>, deliberately. It is a control for choosing one of a
+     short list, which is what a select is, and rebuilding one out of a button
+     and a popover would be a worse keyboard and screen-reader experience in
+     exchange for a caret this design system does not need to invent.
+
+     The caret is therefore drawn as a background image: `appearance: none` is
+     required to strip the OS control's own chrome so the border and radius
+     match every other field, and that takes the arrow with it. */
+  .project-switcher {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: transparent;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.75 6 7.75 9 4.75' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 12px 12px;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 0.3rem 1.5rem 0.3rem 0.55rem;
+    cursor: pointer;
+    /* Truncates rather than pushing the row wider. A long client name is the
+       normal case, and the alternative is a header that grows to fit it. */
+    max-width: 11rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .project-switcher:hover:not(:disabled) {
+    border-color: var(--accent-primary);
+  }
+
+  /* color-scheme is what decides the popup's own colours, and it does not
+     inherit from the tokens — without this the list a dark-mode operator opens
+     is the browser's light one, which is the loudest thing on the page.
+     Scoped to the control rather than set on :root so it cannot change how any
+     other native widget on the page renders. */
+  .project-switcher { color-scheme: light; }
+  [data-theme="dark"] .project-switcher { color-scheme: dark; }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .project-switcher { color-scheme: dark; }
+  }
+
+  /* Disabled while the list is loading, and while it could not be loaded. The
+     option text carries the reason. */
+  .project-switcher:disabled {
+    cursor: default;
+    color: var(--text-muted);
+    opacity: 0.75;
+  }
+
+  /* Below 1200px the header has no room for it, so it is dropped.
+
+     Measured, not guessed, and the measurement is why this number is 1200
+     rather than the 900 that the first attempt used. With the switcher hidden
+     the header has exactly zero slack at every width from 320 to 1600 — every
+     control in it is already at its minimum, which is what the measured rules
+     above are. The switcher needs 176px.
+
+     Two things then break, at two different widths, and only the first is
+     visible to a scrollWidth check:
+
+       - the row overflows horizontally below 870px
+       - the status pill WRAPS TO TWO LINES below ~1130px
+
+     A wrapped line does not widen the container, so it never shows up as
+     overflow — it just makes the header's content 60px tall inside §5's fixed
+     58px box, which is what the 1024–1130 band looked like. 1200 clears the
+     wrap threshold with room for a fallback font in place of Geist; that was
+     checked by blocking the webfont and re-measuring, and the metrics did not
+     move.
+
+     It is dropped rather than shrunk to fit: at the width where a shrunken
+     one would fit it shows eight characters of a client's name, and the trade
+     is the same one §5's fixed height and the clipped wordmark already make.
+
+     Dropping a control strands its function unless the function exists
+     somewhere else, and here it does: Proxy Settings lists every project and
+     every row that is not active carries a Switch button. Below 1200px that
+     panel is the switcher, which is also why it is a destination and not a
+     menu. */
+  @media (max-width: 1199px) {
+    .project-switcher {
+      display: none;
+    }
+  }
+
   .btn {
     background: var(--surface-3);
     color: var(--text-main);
@@ -2052,6 +2146,127 @@
     color: var(--text-main);
     font-family: inherit;
     font-size: var(--text-base);
+  }
+
+  /* --- Projects ------------------------------------------------------
+     Rows in the Proxy Settings view. A list rather than a table: each row is
+     a name, a target and its own controls, and there is no column of values
+     that lines up across rows — the target is the only second field and it is
+     variable-width.
+
+     Proxy Settings is the only view with two panels, so the stack gap lives
+     here rather than as a rule on .view-panel, where it would silently start
+     spacing every other view's children.
+     ------------------------------------------------------------------- */
+  #view-settings.active {
+    gap: 1.5rem;
+  }
+
+  .project-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .project-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .project-row:last-child { border-bottom: 0; }
+
+  /* The active row is marked by a left rule as well as the badge, so which
+     project you are in survives a greyscale print or a colour-blind reader —
+     the same dual coding §4 asks of the contract states. */
+  .project-row.is-active {
+    background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent-primary);
+  }
+
+  .project-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .project-row-name {
+    font-weight: 600;
+    color: var(--text-main);
+    /* A long client name truncates instead of pushing the buttons out of the
+       panel. min-width: 0 on the parent is what lets this happen at all — a
+       flex item refuses to shrink below its content width without it. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-row-target {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+
+  .project-row-actions .btn {
+    padding: 0.35rem 0.6rem;
+    font-size: var(--text-xs);
+  }
+
+  /* --accent-primary, not --accent-healthy. Green means "this contract is
+     fine" everywhere else in this design system (§4's dual coding), and it is
+     already on this screen in the vitals ring. Using it for "this is the
+     project you are in" would put a second, unrelated meaning on the colour,
+     two inches from the first. Blue is the "you are here" colour here — it is
+     what the nav's active item and this row's own left rule use. */
+  .project-row-badge {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--accent-primary);
+    padding: 0.35rem 0.6rem;
+  }
+
+  .project-row-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .project-row-fields .field-input {
+    font-size: var(--text-xs);
+  }
+
+  .project-row-note {
+    padding: 0.75rem;
+    font-size: var(--text-base);
+    color: var(--text-muted);
+  }
+
+  /* Armed by the first click of a two-click delete. The fill is deliberate:
+     the button has changed meaning, and a colour change alone would read as
+     hover. */
+  .btn.is-armed {
+    background: var(--accent-breaking);
+    border-color: var(--accent-breaking);
+    color: var(--on-accent);
   }
 
   /* --- Signals -------------------------------------------------------
