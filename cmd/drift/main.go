@@ -240,8 +240,13 @@ func handleImport(args []string) {
 		log.Printf("[Driftwood] %v", storeErr)
 	}
 
-	// Import contracts
-	err = spec.ImportToStorage(store)
+	// Import contracts.
+	//
+	// The active project, for now: with one project there is nothing else it
+	// could be. `-project` is what makes this a choice, and it arrives with the
+	// rest of the project routes rather than as a flag that can only name one
+	// thing.
+	err = spec.ImportToStorage(store.ActiveProject(), store)
 	if err != nil {
 		log.Fatalf("Failed to import contracts: %v", err)
 	}
@@ -273,8 +278,9 @@ const demoBaselinePayload = `{"id": 99812, "username": "alex_dev", "email": "ale
 //
 // Only seeds when no baseline exists, so a locked one is never overwritten.
 func seedDemoBaselines(store *storage.Store) {
-	if _, exists := store.GetBaseline("GET", demoBaselinePath); exists {
+	projectID := store.ActiveProject()
+	if _, exists := store.GetBaseline(projectID, "GET", demoBaselinePath); exists {
 		return
 	}
-	_, _ = store.SaveBaseline("GET", demoBaselinePath, demoBaselinePayload)
+	_, _ = store.SaveBaseline(projectID, "GET", demoBaselinePath, demoBaselinePayload)
 }

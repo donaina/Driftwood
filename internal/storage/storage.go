@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,11 +47,35 @@ type persistedState struct {
 }
 
 type Store struct {
-	mu          sync.RWMutex
-	traffics    []types.CapturedTraffic
-	histories   map[string]*types.EndpointHistory // Key: "METHOD:PATH"
-	alerts      map[string]*types.Alert
-	alertOrder  []string
+	mu sync.RWMutex
+
+	/* Everything a project owns, keyed by project id.
+
+	   Nested rather than a project-prefixed key, so isolation is structural:
+
+	     histories  projectID -> "METHOD:PATH" -> that endpoint's history
+	     traffics   projectID -> the traffic ring
+	     alertOrder projectID -> the alert traffic IDs raised under it
+
+	   A prefix would make isolation a property of how carefully every key was
+	   built. The first key assembled without the prefix lands one project's
+	   baseline on top of another's, and nothing about the resulting map says so.
+
+	   The identifiers are used exactly as given, so an id containing a colon is
+	   not special. That is the other half of the same argument: with a prefix,
+	   "a:b" + ":" + "GET:/x" is a key another project can also produce. */
+	histories  map[string]map[string]*types.EndpointHistory
+	traffics   map[string][]types.CapturedTraffic
+	alertOrder map[string][]string
+
+	/* Alerts are keyed by traffic ID rather than by project.
+
+	   A traffic ID is unique across the whole store, so a project dimension here
+	   would carry no information — and would have to be kept in step with
+	   traffic's for no benefit. alertOrder is the one that needs a project,
+	   because ordering is the whole of what it provides. */
+	alerts map[string]*types.Alert
+
 	config      types.ProxyConfig
 	maxTraffics int
 	maxAlerts   int
@@ -114,10 +139,7 @@ func NewStore(targetURL, proxyPort string) (*Store, error) {
 
 	now := time.Now()
 	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
 		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
 		maxTraffics: 500,
 		maxAlerts:   200,
 		persistPath: filepath.Join(persistDir, "baselines.json"),
@@ -138,6 +160,7 @@ func NewStore(targetURL, proxyPort string) (*Store, error) {
 			InterceptJSON:    true,
 		},
 	}
+	s.ensureProjectLocked(defaultProjectID)
 
 	// Nothing else can see the store yet, so the load assigns its fields directly
 	// rather than taking the lock a shared store would need.
@@ -192,14 +215,248 @@ func (s *Store) GetConfig() types.ProxyConfig {
 // alternative — each accessor deciding for itself — is how two views of the same
 // data end up disagreeing about which project is on screen.
 //
-// Everything currently lives under the active project, because there is only one
-// and nothing can select another. When the switcher arrives, callers that mean
-// "the one the user is looking at" keep calling this, and callers that mean a
-// specific project pass its id.
+// Nothing here resolves the active project on a caller's behalf. Every data
+// accessor takes a project id, so a caller that means "the one the user is
+// looking at" says so by passing this, and a caller that means a specific
+// project passes that — and neither the store nor the accessor has to guess.
 func (s *Store) ActiveProject() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.active
+}
+
+// ensureProjectLocked makes sure the maps a project needs exist, and returns
+// them. The caller must hold s.mu.
+//
+// Lazy rather than eager because a project is created in three places — the
+// first-run default, a load from disk, and an explicit create — and only the
+// last of them has any reason to allocate empty rings for a project nobody has
+// sent traffic to yet. It also means a Store assembled by hand in a test is
+// usable, which is why the accessors call this rather than assuming the maps
+// were built for them.
+//
+// It does not touch s.projects. Registering a project and having somewhere to
+// put its data are separate: a read for a project that does not exist must
+// answer "nothing", not conjure the project into being.
+func (s *Store) ensureProjectLocked(projectID string) {
+	if s.histories == nil {
+		s.histories = make(map[string]map[string]*types.EndpointHistory)
+	}
+	if s.traffics == nil {
+		s.traffics = make(map[string][]types.CapturedTraffic)
+	}
+	if s.alertOrder == nil {
+		s.alertOrder = make(map[string][]string)
+	}
+	if _, ok := s.histories[projectID]; !ok {
+		s.histories[projectID] = make(map[string]*types.EndpointHistory)
+	}
+	if _, ok := s.traffics[projectID]; !ok {
+		s.traffics[projectID] = make([]types.CapturedTraffic, 0)
+	}
+	if _, ok := s.alertOrder[projectID]; !ok {
+		s.alertOrder[projectID] = make([]string, 0)
+	}
+}
+
+// ProjectExists reports whether this id names a project the store knows about.
+func (s *Store) ProjectExists(id string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.projects[id]
+	return ok
+}
+
+// ListProjects returns every project in creation order, and which one is active.
+func (s *Store) ListProjects() ([]types.Project, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]types.Project, 0, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		if p, ok := s.projects[id]; ok {
+			out = append(out, *p)
+		}
+	}
+	return out, s.active
+}
+
+// CreateProject registers a new project and returns it.
+//
+// The id is derived from the name and then made unique, rather than taken from
+// the caller. Callers are HTTP handlers and command-line arguments, and an id
+// that a caller chooses is an id a caller can choose badly — a duplicate, an
+// empty string, one that collides with the migrated "default". Deriving it means
+// the id is always well-formed and always free.
+func (s *Store) CreateProject(name string) (*types.Project, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("a project needs a name")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.projects) >= maxProjects {
+		return nil, fmt.Errorf("this install is at its limit of %d projects", maxProjects)
+	}
+
+	p := &types.Project{
+		ID:        s.uniqueProjectIDLocked(name),
+		Name:      name,
+		CreatedAt: time.Now(),
+	}
+	s.projects[p.ID] = p
+	s.projectOrder = append(s.projectOrder, p.ID)
+	s.ensureProjectLocked(p.ID)
+
+	out := *p
+	return &out, nil
+}
+
+// uniqueProjectIDLocked turns a name into a free id. The caller must hold s.mu.
+//
+// The suffix starts at 2 because "acme" and "acme-2" both exist as plausible
+// first choices, and a second project called "Acme" becoming "acme-2" is what a
+// person would expect; there is no "acme-1" anywhere to explain.
+func (s *Store) uniqueProjectIDLocked(name string) string {
+	base := slugify(name)
+	if base == "" {
+		base = "project"
+	}
+	if _, taken := s.projects[base]; !taken {
+		return base
+	}
+	for n := 2; ; n++ {
+		candidate := fmt.Sprintf("%s-%d", base, n)
+		if _, taken := s.projects[candidate]; !taken {
+			return candidate
+		}
+	}
+}
+
+// slugify reduces a name to something safe to use as an identifier and to put
+// in a URL.
+//
+// Deliberately lossy: anything that is not a letter, a digit or a dash becomes a
+// dash, so the result is always usable as an id without escaping. The name is
+// kept separately and shown to the user, so nothing here is the display name —
+// which is what makes it acceptable to throw information away.
+func slugify(name string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			// Collapse runs, and never lead with a dash: "  Acme  Ltd " should
+			// become "acme-ltd", not "-acme--ltd-".
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// RenameProject changes a project's display name. The id is not affected: ids
+// are in the document, in alert records and in any URL a user has kept, so
+// renaming something should not move it.
+func (s *Store) RenameProject(id, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("a project needs a name")
+	}
+
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	s.mu.Lock()
+	p, ok := s.projects[id]
+	if !ok {
+		s.mu.Unlock()
+		return fmt.Errorf("no project %q", id)
+	}
+	p.Name = name
+	s.mu.Unlock()
+
+	return s.persistLocked()
+}
+
+// SetActiveProject points the install at one of its projects.
+//
+// Persisted, because the active project is a decision the operator made rather
+// than a property of the process: a restart that silently resurfaced a different
+// client's contracts would be the kind of quiet misattribution this codebase
+// goes out of its way to avoid.
+func (s *Store) SetActiveProject(id string) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	s.mu.Lock()
+	if _, ok := s.projects[id]; !ok {
+		s.mu.Unlock()
+		return fmt.Errorf("no project %q", id)
+	}
+	s.active = id
+	s.ensureProjectLocked(id)
+	s.mu.Unlock()
+
+	return s.persistLocked()
+}
+
+// DeleteProject removes a project and everything recorded under it.
+//
+// It refuses to remove the last one. An install with no projects has no active
+// project, and every accessor is written against one existing — so the state is
+// not merely empty, it is one the rest of the store does not describe. Refusing
+// is also the honest answer: the user asked to delete a project, and there is
+// always something else to be looking at instead.
+func (s *Store) DeleteProject(id string) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	s.mu.Lock()
+	if _, ok := s.projects[id]; !ok {
+		s.mu.Unlock()
+		return fmt.Errorf("no project %q", id)
+	}
+	if len(s.projects) <= 1 {
+		s.mu.Unlock()
+		return fmt.Errorf("this is the only project, and Driftwood always has one")
+	}
+
+	// The alerts first. They are keyed by traffic ID rather than by project, so
+	// nothing else would collect them: without this the map keeps one entry per
+	// alert the project ever raised, reachable from nowhere, for the life of the
+	// process. Deleting a project is rare and this is the only place the
+	// dimension has to be reconstructed by hand.
+	for _, trafficID := range s.alertOrder[id] {
+		delete(s.alerts, trafficID)
+	}
+	delete(s.alertOrder, id)
+	delete(s.histories, id)
+	delete(s.traffics, id)
+	delete(s.projects, id)
+
+	for i, existing := range s.projectOrder {
+		if existing == id {
+			s.projectOrder = append(s.projectOrder[:i:i], s.projectOrder[i+1:]...)
+			break
+		}
+	}
+	// Only when the deleted project held it. Picking a new active project while
+	// the current one is still present would move the user's view as a side
+	// effect of deleting something else.
+	if s.active == id {
+		s.active = s.projectOrder[0]
+	}
+	s.mu.Unlock()
+
+	return s.persistLocked()
 }
 
 // UpdateConfig applies a configuration change and writes it to disk, so the
@@ -290,18 +547,38 @@ const maxObservations = 50
 // life of the process.
 const maxEndpoints = 200
 
-// makeRoomForEndpointLocked frees a slot if the history map is at its cap. The
-// caller must hold s.mu.
+// maxProjects bounds how many projects one install can hold.
+//
+// Every other cap here is per project, which bounds each project and not the
+// install: twenty projects each holding 200 endpoints, 500 traffic records and
+// 200 alerts is twenty times the memory of one, and nothing but a person
+// clicking "new project" can get there. Stating the number is what makes the
+// worst case a fact rather than an accident.
+//
+// Deliberately small. This is not multi-tenancy and does not pretend to be —
+// there is no identity in the system, and the projects belong to one operator
+// working across a handful of clients. A limit that is comfortable to reach by
+// hand is the right shape for a limit whose purpose is to be a backstop.
+const maxProjects = 20
+
+// makeRoomForEndpointLocked frees a slot if the project's history map is at its
+// cap. The caller must hold s.mu.
+//
+// Per project, and that is the whole point of it taking a project: a single
+// global map with a project field on each entry would be capped globally, so one
+// busy client could evict another client's contracts. That is not isolation with
+// a rough edge — it is isolation that does not hold, because the eviction is
+// driven by traffic the other project never sent.
 //
 // A map already over the cap — one written by an older build and loaded from
 // disk — is left at its size and simply stops growing. Draining it would be the
 // cap working as intended and also a silent deletion of records the user can
 // currently see, and growth is the part that runs away.
-func (s *Store) makeRoomForEndpointLocked() {
-	if len(s.histories) < maxEndpoints {
+func (s *Store) makeRoomForEndpointLocked(projectID string) {
+	if len(s.histories[projectID]) < maxEndpoints {
 		return
 	}
-	s.evictOneEndpointLocked()
+	s.evictOneEndpointLocked(projectID)
 }
 
 // evictOneEndpointLocked drops the endpoint that has gone longest without being
@@ -320,10 +597,11 @@ func (s *Store) makeRoomForEndpointLocked() {
 // pinned or confirmed, no slot is freed and the map is allowed past the cap:
 // those entries can only be created deliberately, one at a time, by a person,
 // which is a bound that traffic cannot drive past.
-func (s *Store) evictOneEndpointLocked() bool {
+func (s *Store) evictOneEndpointLocked(projectID string) bool {
+	histories := s.histories[projectID]
 	victim := ""
 	var victimAt time.Time
-	for key, h := range s.histories {
+	for key, h := range histories {
 		if h.LockedVersion != 0 || hasConfirmedVersion(h) {
 			continue
 		}
@@ -334,7 +612,7 @@ func (s *Store) evictOneEndpointLocked() bool {
 	if victim == "" {
 		return false
 	}
-	delete(s.histories, victim)
+	delete(histories, victim)
 	return true
 }
 
@@ -349,15 +627,24 @@ func hasConfirmedVersion(h *types.EndpointHistory) bool {
 	return false
 }
 
-func (s *Store) AddTraffic(t types.CapturedTraffic) {
+func (s *Store) AddTraffic(projectID string, t types.CapturedTraffic) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	traffics := append([]types.CapturedTraffic{t}, s.traffics...)
+	s.ensureProjectLocked(projectID)
+
+	// Stamped here rather than left to the caller, so the record says which
+	// project produced it even though the caller already had to name one. The
+	// alternative is a record whose project is only knowable from which list it
+	// was found in — which stops being true the moment two lists are on screen
+	// at once, and is what the traffic view would have had to reconstruct.
+	t.ProjectID = projectID
+
+	traffics := append([]types.CapturedTraffic{t}, s.traffics[projectID]...)
 	if len(traffics) > s.maxTraffics {
 		traffics = traffics[:s.maxTraffics]
 	}
-	s.traffics = traffics
+	s.traffics[projectID] = traffics
 
 	if t.Diff != nil && (t.Diff.HasBreakingChanges || t.Diff.HasWarnings) {
 		alert := &types.Alert{
@@ -367,22 +654,22 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 			Diff:           t.Diff,
 			AIExplanation:  nil,
 		}
-		key := t.ID
-		s.alerts[key] = alert
-		s.alertOrder = append(s.alertOrder, key)
-		if len(s.alertOrder) > s.maxAlerts {
-			delete(s.alerts, s.alertOrder[0])
+		s.alerts[t.ID] = alert
+		order := append(s.alertOrder[projectID], t.ID)
+		if len(order) > s.maxAlerts {
+			delete(s.alerts, order[0])
 			// Copy the tail rather than reslicing forward, for the reason spelled
-			// out in recordObservationLocked: `s.alertOrder[1:]` keeps the whole
+			// out in recordObservationLocked: `order[1:]` keeps the whole
 			// backing array alive, so the evicted traffic ID stays reachable and
 			// the array never grows back down. This allocates once per alert past
 			// the cap, and alerts are only raised for a breaking change or a
 			// warning, so that is a rare allocation rather than a per-request one.
-			s.alertOrder = append([]string(nil), s.alertOrder[1:]...)
+			order = append([]string(nil), order[1:]...)
 		}
+		s.alertOrder[projectID] = order
 	}
 
-	s.recordObservationLocked(t)
+	s.recordObservationLocked(projectID, t)
 }
 
 // recordObservationLocked appends one sighting to the endpoint's history. The
@@ -394,21 +681,21 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 // ObservationCount counted baseline saves rather than observations, the
 // per-endpoint trend had no series to draw, and the lock had nothing to pin
 // because it pins an entry in a list that never grew on its own.
-func (s *Store) recordObservationLocked(t types.CapturedTraffic) {
+func (s *Store) recordObservationLocked(projectID string, t types.CapturedTraffic) {
 	key := historyKey(t.Method, t.Path)
 	at := t.Timestamp
 	if at.IsZero() {
 		at = time.Now()
 	}
 
-	h, exists := s.histories[key]
+	h, exists := s.histories[projectID][key]
 	if !exists {
 		// An endpoint that has been seen but never baselined still has a
 		// history worth showing — that it is unbaselined is itself the finding.
 		// Creating the entry does not create a baseline: GetBaseline guards on
 		// len(Versions) == 0, not on the map entry existing, so this endpoint
 		// reads as unbaselined exactly as before.
-		s.makeRoomForEndpointLocked()
+		s.makeRoomForEndpointLocked(projectID)
 		h = &types.EndpointHistory{
 			Method:    t.Method,
 			Path:      t.Path,
@@ -416,7 +703,7 @@ func (s *Store) recordObservationLocked(t types.CapturedTraffic) {
 			CreatedAt: at,
 			UpdatedAt: at,
 		}
-		s.histories[key] = h
+		s.histories[projectID][key] = h
 	}
 
 	h.Observations = append(h.Observations, types.Observation{
@@ -445,31 +732,36 @@ func (s *Store) UpdateAlertAIExplanation(trafficID string, explanation map[strin
 	return fmt.Errorf("alert not found for trafficID: %s", trafficID)
 }
 
-func (s *Store) GetTraffics(limit int) []types.CapturedTraffic {
+func (s *Store) GetTraffics(projectID string, limit int) []types.CapturedTraffic {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if limit <= 0 || limit > len(s.traffics) {
-		limit = len(s.traffics)
+	ring := s.traffics[projectID]
+	if limit <= 0 || limit > len(ring) {
+		limit = len(ring)
 	}
 	result := make([]types.CapturedTraffic, limit)
-	copy(result, s.traffics[:limit])
+	copy(result, ring[:limit])
 	return result
 }
 
-func (s *Store) ClearTraffic() {
+// ClearTraffic empties one project's traffic ring and leaves every other
+// project's alone. It is the dashboard's clear button, and clearing the view you
+// are looking at must not clear the ones you are not.
+func (s *Store) ClearTraffic(projectID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.traffics = make([]types.CapturedTraffic, 0)
+	s.ensureProjectLocked(projectID)
+	s.traffics[projectID] = make([]types.CapturedTraffic, 0)
 }
 
 // GetBaseline returns a COPY of the latest (or locked) version
-func (s *Store) GetBaseline(method, path string) (*types.ContractBaseline, bool) {
+func (s *Store) GetBaseline(projectID, method, path string) (*types.ContractBaseline, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	key := historyKey(method, path)
-	h, exists := s.histories[key]
+	h, exists := s.histories[projectID][key]
 	if !exists || len(h.Versions) == 0 {
 		return nil, false
 	}
@@ -488,12 +780,12 @@ func (s *Store) GetBaseline(method, path string) (*types.ContractBaseline, bool)
 }
 
 // GetHistory returns the full version history for an endpoint
-func (s *Store) GetHistory(method, path string) (*types.EndpointHistory, bool) {
+func (s *Store) GetHistory(projectID, method, path string) (*types.EndpointHistory, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	key := historyKey(method, path)
-	h, exists := s.histories[key]
+	h, exists := s.histories[projectID][key]
 	if !exists {
 		return nil, false
 	}
@@ -524,13 +816,19 @@ func copyObservations(in []types.Observation) []types.Observation {
 	return out
 }
 
-// GetAllHistories returns all endpoint histories (copies)
-func (s *Store) GetAllHistories() []*types.EndpointHistory {
+// GetAllHistories returns every endpoint history a project holds (copies).
+//
+// One project's, not the install's. It used to be the union of everything, and
+// every caller wanted a single project's data — so the union was a shape no
+// screen could use, and the first caller to render it would have shown one
+// client's endpoints under another client's name.
+func (s *Store) GetAllHistories(projectID string) []*types.EndpointHistory {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	list := make([]*types.EndpointHistory, 0, len(s.histories))
-	for _, h := range s.histories {
+	histories := s.histories[projectID]
+	list := make([]*types.EndpointHistory, 0, len(histories))
+	for _, h := range histories {
 		copy := *h
 		copy.Versions = make([]*types.ContractBaseline, len(h.Versions))
 		for i, v := range h.Versions {
@@ -544,12 +842,13 @@ func (s *Store) GetAllHistories() []*types.EndpointHistory {
 	return list
 }
 
-func (s *Store) GetAllBaselines() []*types.ContractBaseline {
+func (s *Store) GetAllBaselines(projectID string) []*types.ContractBaseline {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	list := make([]*types.ContractBaseline, 0, len(s.histories))
-	for _, h := range s.histories {
+	histories := s.histories[projectID]
+	list := make([]*types.ContractBaseline, 0, len(histories))
+	for _, h := range histories {
 		if len(h.Versions) > 0 {
 			v := h.Versions[len(h.Versions)-1] // latest
 			copy := *v
@@ -583,16 +882,16 @@ func deepCopySchema(node *types.JSONSchemaNode) *types.JSONSchemaNode {
 // so through SaveBaselineFrom instead — an imported OpenAPI document is a
 // declared contract, and recording it as merely manual would leave the dashboard
 // asking the user to confirm something they had already stated.
-func (s *Store) SaveBaseline(method, path, samplePayload string) (*types.ContractBaseline, error) {
-	return s.SaveBaselineFrom(method, path, samplePayload, types.BaselineSourceManual)
+func (s *Store) SaveBaseline(projectID, method, path, samplePayload string) (*types.ContractBaseline, error) {
+	return s.SaveBaselineFrom(projectID, method, path, samplePayload, types.BaselineSourceManual)
 }
 
 // SaveBaselineFrom records a new contract version and states where it came
 // from, so a version captured from live traffic can be told apart from one
 // somebody vouched for. The schema is inferred from the payload, which is the
 // best available answer when the payload is all the evidence there is.
-func (s *Store) SaveBaselineFrom(method, path, samplePayload, source string) (*types.ContractBaseline, error) {
-	return s.SaveBaselineWithSchema(method, path, samplePayload, nil, source)
+func (s *Store) SaveBaselineFrom(projectID, method, path, samplePayload, source string) (*types.ContractBaseline, error) {
+	return s.SaveBaselineWithSchema(projectID, method, path, samplePayload, nil, source)
 }
 
 // SaveBaselineWithSchema records a new contract version whose schema the caller
@@ -605,12 +904,13 @@ func (s *Store) SaveBaselineFrom(method, path, samplePayload, source string) (*t
 // in the generated example" — every optional property became mandatory, and the
 // list the document published was unreadable everywhere downstream. Passing the
 // parsed schema through is what makes the import mean what the document said.
-func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error) {
+func (s *Store) SaveBaselineWithSchema(projectID, method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error) {
 	// Held across the mutation and the write together: see the note on writeMx.
 	s.writeMx.Lock()
 	defer s.writeMx.Unlock()
 
 	s.mu.Lock()
+	s.ensureProjectLocked(projectID)
 
 	// The payload is validated even when a schema is supplied: it is stored
 	// verbatim as SamplePayload and served to the dashboard, so a malformed one
@@ -625,11 +925,11 @@ func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, decla
 	}
 
 	key := historyKey(method, path)
-	h, exists := s.histories[key]
+	h, exists := s.histories[projectID][key]
 	now := time.Now()
 
 	if !exists {
-		s.makeRoomForEndpointLocked()
+		s.makeRoomForEndpointLocked(projectID)
 		h = &types.EndpointHistory{
 			Method:        method,
 			Path:          path,
@@ -638,7 +938,7 @@ func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, decla
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
-		s.histories[key] = h
+		s.histories[projectID][key] = h
 	}
 
 	// Strip per-field sample values before persisting the schema. They are
@@ -701,13 +1001,13 @@ func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, decla
 }
 
 // SetLockedVersion pins an endpoint to a specific version
-func (s *Store) SetLockedVersion(method, path string, version int) error {
+func (s *Store) SetLockedVersion(projectID, method, path string, version int) error {
 	s.writeMx.Lock()
 	defer s.writeMx.Unlock()
 
 	s.mu.Lock()
 	key := historyKey(method, path)
-	h, exists := s.histories[key]
+	h, exists := s.histories[projectID][key]
 	if !exists {
 		s.mu.Unlock()
 		return fmt.Errorf("endpoint not found")
@@ -735,13 +1035,13 @@ func (s *Store) SetLockedVersion(method, path string, version int) error {
 // The version must be named explicitly. Zero is not accepted as "the latest":
 // confirming a version the caller did not name is how a guess gets blessed by
 // someone who was looking somewhere else.
-func (s *Store) ConfirmBaseline(method, path string, version int) error {
+func (s *Store) ConfirmBaseline(projectID, method, path string, version int) error {
 	s.writeMx.Lock()
 	defer s.writeMx.Unlock()
 
 	s.mu.Lock()
 	key := historyKey(method, path)
-	h, exists := s.histories[key]
+	h, exists := s.histories[projectID][key]
 	if !exists {
 		s.mu.Unlock()
 		return fmt.Errorf("endpoint not found")
@@ -779,13 +1079,13 @@ func (s *Store) ConfirmBaseline(method, path string, version int) error {
 // so a delete that never reached disk looked exactly like one that did — and the
 // contract came back on the next restart with nothing on screen or in the log to
 // explain why.
-func (s *Store) DeleteBaseline(method, path string) error {
+func (s *Store) DeleteBaseline(projectID, method, path string) error {
 	s.writeMx.Lock()
 	defer s.writeMx.Unlock()
 
 	s.mu.Lock()
 	key := historyKey(method, path)
-	if h, exists := s.histories[key]; exists {
+	if h, exists := s.histories[projectID][key]; exists {
 		h.Versions = make([]*types.ContractBaseline, 0)
 		h.LockedVersion = 0
 		h.UpdatedAt = time.Now()
@@ -795,7 +1095,7 @@ func (s *Store) DeleteBaseline(method, path string) error {
 	return s.persistLocked()
 }
 
-func (s *Store) GetAlerts(limit int) []types.Alert {
+func (s *Store) GetAlerts(projectID string, limit int) []types.Alert {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -803,8 +1103,10 @@ func (s *Store) GetAlerts(limit int) []types.Alert {
 		return []types.Alert{}
 	}
 
+	order := s.alertOrder[projectID]
+
 	// Determine how many to return
-	count := len(s.alertOrder)
+	count := len(order)
 	if limit < count {
 		count = limit
 	}
@@ -812,9 +1114,9 @@ func (s *Store) GetAlerts(limit int) []types.Alert {
 	// Create result slice
 	res := make([]types.Alert, 0, count)
 
-	// Iterate from most recent (end of alertOrder) to least recent
-	for i := len(s.alertOrder) - 1; i >= 0 && len(res) < count; i-- {
-		key := s.alertOrder[i]
+	// Iterate from most recent (end of the order) to least recent
+	for i := len(order) - 1; i >= 0 && len(res) < count; i-- {
+		key := order[i]
 		if alert, exists := s.alerts[key]; exists {
 			res = append(res, *alert)
 		}
@@ -833,9 +1135,10 @@ func (s *Store) GetAlerts(limit int) []types.Alert {
 // count on restart. In-memory-only is also what s.traffics already does, so the
 // two traffic series now agree on their lifetime: a fresh process has observed
 // nothing, and says so.
-func (s *Store) historiesForPersistLocked() map[string]*types.EndpointHistory {
-	out := make(map[string]*types.EndpointHistory, len(s.histories))
-	for k, h := range s.histories {
+func (s *Store) historiesForPersistLocked(projectID string) map[string]*types.EndpointHistory {
+	histories := s.histories[projectID]
+	out := make(map[string]*types.EndpointHistory, len(histories))
+	for k, h := range histories {
 		hc := *h
 		hc.Observations = nil
 		hc.ObservationCount = 0
@@ -858,36 +1161,35 @@ func (s *Store) stateForPersistLocked() *persistedState {
 		}
 	}
 
+	// An install always has a project. NewStore seeds the first one, loadFromFile
+	// repairs a document that lists none, and DeleteProject refuses to remove the
+	// last. This is the remaining case — a document whose active project is not
+	// in its own list — and picking the first real one is recoverable where
+	// writing a dangling id is not.
 	active := s.active
-	if _, ok := s.projects[active]; !ok {
-		if len(projects) > 0 {
-			active = projects[0].ID
-		} else {
-			// A store with no projects at all still writes a document that reads
-			// back as one. That is what a Store built by field literal is — the
-			// shape most of the tests construct — and the alternative is a file
-			// listing no project and holding its histories under the empty
-			// string, which loadFromFile would then have to repair into exactly
-			// this on the next read. Writing the repaired shape directly keeps
-			// the rule that what this function writes, loadFromFile reads back
-			// as the same store.
-			active = defaultProjectID
-			projects = append(projects, types.Project{
-				ID:        defaultProjectID,
-				Name:      defaultProjectName,
-				CreatedAt: time.Now(),
-			})
+	if _, ok := s.projects[active]; !ok && len(projects) > 0 {
+		active = projects[0].ID
+	}
+
+	// Every project's contracts, not only the active one's. Switching project
+	// must not be the moment a client's baselines are written down for the first
+	// time: a store that only ever persisted what was on screen would lose
+	// whatever the other projects had learned the moment the process stopped.
+	//
+	// Emitted in projectOrder for the same reason the project list is, so the
+	// document does not reshuffle itself on every save.
+	histories := make(map[string]map[string]*types.EndpointHistory, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		if _, ok := s.projects[id]; ok {
+			histories[id] = s.historiesForPersistLocked(id)
 		}
 	}
 
-	// Everything currently lives under the active project, because there is only
-	// one and nothing can select another. When projects become selectable this
-	// map gains a second entry and the rest of this function does not change.
 	return &persistedState{
 		Version:   storeVersion,
 		Active:    active,
 		Projects:  projects,
-		Histories: map[string]map[string]*types.EndpointHistory{active: s.historiesForPersistLocked()},
+		Histories: histories,
 	}
 }
 
@@ -993,11 +1295,22 @@ func (s *Store) loadFromFile() error {
 		}
 	}
 
-	if histories, ok := state.Histories[s.active]; ok {
-		s.histories = histories
-	}
-	if s.histories == nil {
-		s.histories = make(map[string]*types.EndpointHistory)
+	// Every project's histories, not only the active one's. A load that kept the
+	// active project's endpoints and dropped the rest would make switching
+	// project a destructive act: the other clients' contracts would still be in
+	// the file, and the first save after the switch would write the document
+	// from a store that no longer had them.
+	//
+	// A project listed in the document with no histories under it gets an empty
+	// map rather than a nil one, so every project the store reports is one the
+	// accessors can be pointed at without an existence check first.
+	s.histories = make(map[string]map[string]*types.EndpointHistory, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		histories, ok := state.Histories[id]
+		if !ok {
+			histories = make(map[string]*types.EndpointHistory)
+		}
+		s.histories[id] = histories
 	}
 
 	if converted {

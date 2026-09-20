@@ -78,7 +78,7 @@ func TestFreshInstallWritesAStoreDocumentWithOneProject(t *testing.T) {
 		t.Errorf("active project on a fresh install = %q, want %q", got, defaultProjectID)
 	}
 
-	if _, err := store.SaveBaseline("GET", "/api/users", `{"id": 1}`); err != nil {
+	if _, err := store.SaveBaseline(store.ActiveProject(), "GET", "/api/users", `{"id": 1}`); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestV1StoreMigratesWithoutLosingAContract(t *testing.T) {
 		{"POST", "/api/orders", `{"total": 10}`},
 		{"DELETE", "/api/sessions", `{}`},
 	} {
-		cb, ok := store.GetBaseline(endpoint.method, endpoint.path)
+		cb, ok := store.GetBaseline(store.ActiveProject(), endpoint.method, endpoint.path)
 		if !ok {
 			t.Errorf("%s %s did not survive the migration", endpoint.method, endpoint.path)
 			continue
@@ -199,7 +199,7 @@ func TestV2StoreIsReadAndNotRewritten(t *testing.T) {
 	if got := store.ActiveProject(); got != "acme" {
 		t.Errorf("active project = %q, want the one the document named", got)
 	}
-	if cb, ok := store.GetBaseline("GET", "/api/users"); !ok || cb.SamplePayload != `{"id": 7}` {
+	if cb, ok := store.GetBaseline(store.ActiveProject(), "GET", "/api/users"); !ok || cb.SamplePayload != `{"id": 7}` {
 		t.Error("the endpoint recorded in the document was not loaded")
 	}
 
@@ -276,7 +276,7 @@ func TestMalformedV2IsReportedNotConverted(t *testing.T) {
 
 			// The store still works, which is the point of reporting rather than
 			// refusing: a file problem is recoverable, an outage is not.
-			if _, err := store.SaveBaseline("GET", "/api/after", `{"ok": true}`); err != nil {
+			if _, err := store.SaveBaseline(store.ActiveProject(), "GET", "/api/after", `{"ok": true}`); err != nil {
 				t.Errorf("the store could not be used after a damaged file: %v", err)
 			}
 		})
@@ -391,7 +391,7 @@ func TestMigratedStoreLoadsAsCurrentOnTheNextStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second start reported an error against a store this build wrote: %v", err)
 	}
-	if _, ok := second.GetBaseline("GET", "/api/users"); !ok {
+	if _, ok := second.GetBaseline(second.ActiveProject(), "GET", "/api/users"); !ok {
 		t.Error("the endpoint did not survive the second start")
 	}
 	again, err := os.ReadFile(path)

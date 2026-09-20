@@ -30,11 +30,11 @@ func TestSeedDemoBaselines_OnlySeedsItsOwnMock(t *testing.T) {
 	store := newTestStore(t)
 	seedDemoBaselines(store)
 
-	all := store.GetAllBaselines()
+	all := store.GetAllBaselines(store.ActiveProject())
 	if len(all) != 1 {
 		t.Fatalf("seeded %d baselines, want exactly 1", len(all))
 	}
-	seeded, ok := store.GetBaseline("GET", demoBaselinePath)
+	seeded, ok := store.GetBaseline(store.ActiveProject(), "GET", demoBaselinePath)
 	if !ok {
 		t.Fatalf("the mock endpoint %s was not seeded", demoBaselinePath)
 	}
@@ -42,20 +42,20 @@ func TestSeedDemoBaselines_OnlySeedsItsOwnMock(t *testing.T) {
 		t.Errorf("seeded %s %s, which is outside the control namespace — Driftwood does not serve it",
 			seeded.Method, seeded.Path)
 	}
-	if _, exists := store.GetBaseline("GET", "/api/users"); exists {
+	if _, exists := store.GetBaseline(store.ActiveProject(), "GET", "/api/users"); exists {
 		t.Error("a baseline was seeded for /api/users, a path on the user's own API")
 	}
 }
 
 func TestSeedDemoBaselines_DoesNotOverwriteAnExistingContract(t *testing.T) {
 	store := newTestStore(t)
-	if _, err := store.SaveBaseline("GET", demoBaselinePath, `{"id": 1, "mine": true}`); err != nil {
+	if _, err := store.SaveBaseline(store.ActiveProject(), "GET", demoBaselinePath, `{"id": 1, "mine": true}`); err != nil {
 		t.Fatalf("seeding a baseline to protect: %v", err)
 	}
 
 	seedDemoBaselines(store)
 
-	got, _ := store.GetBaseline("GET", demoBaselinePath)
+	got, _ := store.GetBaseline(store.ActiveProject(), "GET", demoBaselinePath)
 	if !strings.Contains(got.SamplePayload, "mine") {
 		t.Errorf("the existing contract was overwritten by the demo seed: %s", got.SamplePayload)
 	}

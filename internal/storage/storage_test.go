@@ -13,26 +13,50 @@ import (
 	"github.com/donaina/driftwood/pkg/types"
 )
 
-func TestStore_RoundTrip(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
+// testStore builds a store the way NewStore does, in a home directory of this
+// test's own: a fresh install with one project, and a temp file to persist to.
+//
+// Tests used to build the struct by field literal, which made every field the
+// store gained a change in twenty-odd places — and the two that were missed did
+// not fail, they stopped asserting: maxAlerts was left at its zero value, so
+// every alert evicted itself and a test "verified" a bound that was never
+// approached. Going through the real constructor is what makes that class of
+// drift impossible, and it also means a store a test holds is the store a
+// running install holds.
+//
+// HOME is moved rather than a path being passed in, so NewStore's own resolution
+// of ~/.driftwood happens on the way here exactly as it does in production.
+func testStore(t *testing.T) *Store {
+	t.Helper()
 
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config: types.ProxyConfig{
-			TargetURL:        "http://localhost:3000",
-			ProxyPort:        "8787",
-			AutoSaveBaseline: true,
-			InterceptJSON:    true,
-		},
-		alertOrder: make([]string, 0),
+	t.Setenv("HOME", t.TempDir())
+	s, err := NewStore("http://localhost:3000", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
 	}
+	return s
+}
 
-	cb, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`)
+// reopenStore returns a store that shares from's files and has loaded nothing.
+//
+// This is the one place a field literal is the right way to build a store: the
+// point of it is to be empty, and the load is what fills it. The caller does the
+// loading, so a test that claims to cover the load path is the one taking it —
+// a helper that loaded on the caller's behalf would make that assertion vacuous.
+func reopenStore(t *testing.T, from *Store) *Store {
+	t.Helper()
+	return &Store{
+		alerts:      make(map[string]*types.Alert),
+		persistPath: from.persistPath,
+		configPath:  from.configPath,
+		config:      from.config,
+	}
+}
+
+func TestStore_RoundTrip(t *testing.T) {
+	s := testStore(t)
+
+	cb, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "Alice"}`)
 	if err != nil {
 		t.Fatalf("SaveBaseline failed: %v", err)
 	}
@@ -40,24 +64,12 @@ func TestStore_RoundTrip(t *testing.T) {
 		t.Errorf("version = %d, want 1", cb.Version)
 	}
 
-	s2 := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config: types.ProxyConfig{
-			TargetURL:        "http://localhost:3000",
-			ProxyPort:        "8787",
-			AutoSaveBaseline: true,
-			InterceptJSON:    true,
-		},
-	}
+	s2 := reopenStore(t, s)
 	if err := s2.loadFromFile(); err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
 
-	loaded, exists := s2.GetBaseline("GET", "/api/users")
+	loaded, exists := s2.GetBaseline(s2.ActiveProject(), "GET", "/api/users")
 	if !exists {
 		t.Fatal("baseline not loaded")
 	}
@@ -70,54 +82,41 @@ func TestStore_RoundTrip(t *testing.T) {
 }
 
 func TestStore_CorruptFileRecovery(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
+	// The store is built first and the corrupt bytes are then written to its own
+	// path. testStore goes through NewStore, which loads — so a file written
+	// before it would be consumed on the way in, and the load under test here
+	// would be a second one against a path that had already been moved aside.
+	s := testStore(t)
 
 	corrupt := `{ "not valid json`
-	if err := os.WriteFile(persistPath, []byte(corrupt), 0600); err != nil {
+	if err := os.WriteFile(s.persistPath, []byte(corrupt), 0600); err != nil {
 		t.Fatal(err)
-	}
-
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
 	}
 
 	err := s.loadFromFile()
 	if err == nil {
 		t.Fatal("expected error for corrupt file")
 	}
+	// The message has to name what happened and where the file went, because the
+	// operator's next move is to go and look at it.
+	if !strings.Contains(err.Error(), "moved to") {
+		t.Errorf("the error does not say the store was moved aside: %v", err)
+	}
 
-	backups, _ := filepath.Glob(persistPath + ".corrupt.*")
+	backups, _ := filepath.Glob(s.persistPath + ".corrupt.*")
 	if len(backups) == 0 {
 		t.Error("expected corrupt backup file")
 	}
 }
 
 func TestStore_AtomicWrite(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
-
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	s := testStore(t)
 
 	for i := 0; i < 10; i++ {
-		_, _ = s.SaveBaseline("GET", "/api/test", `{"v": `+string(rune(i+'0'))+`}`)
+		_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/test", `{"v": `+string(rune(i+'0'))+`}`)
 	}
 
-	if histories := readPersistedHistories(t, persistPath); histories["GET:/api/test"] == nil {
+	if histories := readPersistedHistories(t, s.persistPath); histories["GET:/api/test"] == nil {
 		t.Error("atomic write left no readable endpoint in the store document")
 	}
 }
@@ -149,21 +148,12 @@ func readPersistedHistories(t *testing.T, path string) map[string]*types.Endpoin
 }
 
 func TestStore_RingBufferTraffic(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
-
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 3,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	s := testStore(t)
+	// The only field this test is about. Everything else is the real store's.
+	s.maxTraffics = 3
 
 	for i := 0; i < 5; i++ {
-		s.AddTraffic(types.CapturedTraffic{
+		s.AddTraffic(s.ActiveProject(), types.CapturedTraffic{
 			ID:         fmtID(i),
 			Method:     "GET",
 			Path:       "/api/test",
@@ -173,34 +163,17 @@ func TestStore_RingBufferTraffic(t *testing.T) {
 		})
 	}
 
-	traffics := s.GetTraffics(10)
+	traffics := s.GetTraffics(s.ActiveProject(), 10)
 	if len(traffics) != 3 {
 		t.Errorf("traffics len = %d, want 3 (maxTraffics)", len(traffics))
 	}
 }
 
 func TestStore_RingBufferAlerts(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
-
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		// Set explicitly. It was left at its zero value, which made this test
-		// assert nothing: with maxAlerts 0 every alert evicted itself, so
-		// GetAlerts returned an empty slice and "len <= 200" held trivially. A
-		// bound that is never approached cannot be tested by asserting it is not
-		// exceeded.
-		maxAlerts:   200,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	s := testStore(t)
 
 	for i := 0; i < 250; i++ {
-		s.AddTraffic(types.CapturedTraffic{
+		s.AddTraffic(s.ActiveProject(), types.CapturedTraffic{
 			ID:         fmtID(i),
 			Method:     "GET",
 			Path:       "/api/test",
@@ -218,29 +191,18 @@ func TestStore_RingBufferAlerts(t *testing.T) {
 
 	// Exactly the cap, not merely "at most": 250 alerts went in, so anything less
 	// than 200 means the ring is dropping more than it should.
-	if alerts := s.GetAlerts(300); len(alerts) != 200 {
+	if alerts := s.GetAlerts(s.ActiveProject(), 300); len(alerts) != 200 {
 		t.Errorf("alerts len = %d, want exactly 200 (the ring buffer limit)", len(alerts))
 	}
 }
 
 func TestStore_GetBaseline_ReturnsCopy(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
+	s := testStore(t)
 
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "Alice"}`)
 
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`)
-
-	b1, _ := s.GetBaseline("GET", "/api/users")
-	b2, _ := s.GetBaseline("GET", "/api/users")
+	b1, _ := s.GetBaseline(s.ActiveProject(), "GET", "/api/users")
+	b2, _ := s.GetBaseline(s.ActiveProject(), "GET", "/api/users")
 
 	b1.SamplePayload = `{"id": 999}`
 
@@ -248,31 +210,20 @@ func TestStore_GetBaseline_ReturnsCopy(t *testing.T) {
 		t.Error("GetBaseline returned same pointer (alias), not copy")
 	}
 
-	b3, _ := s.GetBaseline("GET", "/api/users")
+	b3, _ := s.GetBaseline(s.ActiveProject(), "GET", "/api/users")
 	if b3.SamplePayload == `{"id": 999}` {
 		t.Error("store's internal baseline was mutated via returned pointer")
 	}
 }
 
 func TestStore_GetAllBaselines_ReturnsCopies(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
+	s := testStore(t)
 
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`)
+	_, _ = s.SaveBaseline(s.ActiveProject(), "POST", "/api/users", `{"id": 2}`)
 
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1}`)
-	_, _ = s.SaveBaseline("POST", "/api/users", `{"id": 2}`)
-
-	list1 := s.GetAllBaselines()
-	list2 := s.GetAllBaselines()
+	list1 := s.GetAllBaselines(s.ActiveProject())
+	list2 := s.GetAllBaselines(s.ActiveProject())
 
 	list1[0].SamplePayload = `{"mutated": true}`
 
@@ -282,28 +233,17 @@ func TestStore_GetAllBaselines_ReturnsCopies(t *testing.T) {
 }
 
 func TestStore_VersionedHistory(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
+	s := testStore(t)
 
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
-
-	v1, _ := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "v1"}`)
-	v2, _ := s.SaveBaseline("GET", "/api/users", `{"id": 2, "name": "v2"}`)
-	v3, _ := s.SaveBaseline("GET", "/api/users", `{"id": 3, "name": "v3"}`)
+	v1, _ := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "v1"}`)
+	v2, _ := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 2, "name": "v2"}`)
+	v3, _ := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 3, "name": "v3"}`)
 
 	if v1.Version != 1 || v2.Version != 2 || v3.Version != 3 {
 		t.Errorf("versions: %d, %d, %d", v1.Version, v2.Version, v3.Version)
 	}
 
-	list := s.GetAllBaselines()
+	list := s.GetAllBaselines(s.ActiveProject())
 	if len(list) != 1 {
 		t.Errorf("expected 1 endpoint, got %d", len(list))
 	}
@@ -314,26 +254,15 @@ func TestStore_VersionedHistory(t *testing.T) {
 
 // NEW TEST: Verify version history is preserved (not just latest)
 func TestStore_VersionHistoryPreserved(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
-
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	s := testStore(t)
 
 	// Save 3 versions
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "v1"}`)
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 2, "name": "v2"}`)
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 3, "name": "v3"}`)
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "v1"}`)
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 2, "name": "v2"}`)
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 3, "name": "v3"}`)
 
 	// Should be able to retrieve historical versions
-	hist, exists := s.GetHistory("GET", "/api/users")
+	hist, exists := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if !exists {
 		t.Fatal("history not found")
 	}
@@ -347,63 +276,37 @@ func TestStore_VersionHistoryPreserved(t *testing.T) {
 		}
 	}
 
-	// Reload from file and verify history preserved
-	s2 := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-	}
+	// Reload from file and verify history preserved. The reload has to read the
+	// directory s wrote to, which is what reopenStore is for: a second testStore
+	// would resolve a different HOME and load nothing, and the assertion below
+	// would pass against an empty store only by never being reached.
+	s2 := reopenStore(t, s)
 	_ = s2.loadFromFile()
 
-	hist2, _ := s2.GetHistory("GET", "/api/users")
+	hist2, _ := s2.GetHistory(s2.ActiveProject(), "GET", "/api/users")
 	if len(hist2.Versions) != 3 {
 		t.Errorf("persisted history versions = %d, want 3", len(hist2.Versions))
 	}
 }
 
 func TestStore_SeedIfAbsent(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
+	s := testStore(t)
 
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "locked": true}`)
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 999, "from": "seed"}`)
 
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1, "locked": true}`)
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 999, "from": "seed"}`)
-
-	loaded, _ := s.GetBaseline("GET", "/api/users")
+	loaded, _ := s.GetBaseline(s.ActiveProject(), "GET", "/api/users")
 	if loaded.Version != 2 {
 		t.Errorf("version = %d, want 2 (seed-if-absent should not overwrite)", loaded.Version)
 	}
 }
 
 func TestStore_FrequencyBasedRequiredKeys(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
+	s := testStore(t)
 
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		maxTraffics: 500,
-		persistPath: persistPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
-		alertOrder:  make([]string, 0),
-	}
+	_, _ = s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "Alice", "email": "alice@example.com"}`)
 
-	_, _ = s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice", "email": "alice@example.com"}`)
-
-	loaded, _ := s.GetBaseline("GET", "/api/users")
+	loaded, _ := s.GetBaseline(s.ActiveProject(), "GET", "/api/users")
 	if loaded.Schema == nil {
 		t.Fatal("schema is nil")
 	}
@@ -422,23 +325,15 @@ func fmtID(i int) string {
 	return "tr_" + string(rune(i+'0'))
 }
 
-// newObsStore builds a Store the way the tests above do, with the fields
-// AddTraffic touches initialised. maxAlerts is set so a test that happens to
-// record a diff does not silently discard the alert it just stored.
+// newObsStore builds a Store for the tests that traffic and alerts.
+//
+// It used to spell the caps out by hand, which is how maxAlerts came to be left
+// at zero in one place and the ring silently evicted the alert a test had just
+// stored. Going through the constructor means the caps are whatever the running
+// install uses, which is the thing worth testing anyway.
 func newObsStore(t *testing.T) *Store {
 	t.Helper()
-	dir := t.TempDir()
-	return &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxTraffics: 500,
-		maxAlerts:   200,
-		persistPath: filepath.Join(dir, "baselines.json"),
-		configPath:  filepath.Join(dir, "config.json"),
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000", ProxyPort: "8787"},
-	}
+	return testStore(t)
 }
 
 func observation(method, path string, status int, duration int64) types.CapturedTraffic {
@@ -456,9 +351,9 @@ func observation(method, path string, status int, duration int64) types.Captured
 func TestStore_AddTraffic_RecordsObservation(t *testing.T) {
 	s := newObsStore(t)
 
-	s.AddTraffic(observation("GET", "/api/users", 200, 12))
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 12))
 
-	h, ok := s.GetHistory("GET", "/api/users")
+	h, ok := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if !ok {
 		t.Fatal("AddTraffic did not create a history entry")
 	}
@@ -476,19 +371,19 @@ func TestStore_AddTraffic_RecordsObservation(t *testing.T) {
 func TestStore_AddTraffic_DoesNotCreateABaseline(t *testing.T) {
 	s := newObsStore(t)
 
-	s.AddTraffic(observation("GET", "/api/users", 200, 5))
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 5))
 
 	// An endpoint that has been seen but never accepted is still unbaselined.
 	// This is what makes "Driftwood found traffic it has no contract for" a
 	// state the product can show rather than one it papers over.
-	if _, ok := s.GetBaseline("GET", "/api/users"); ok {
+	if _, ok := s.GetBaseline(s.ActiveProject(), "GET", "/api/users"); ok {
 		t.Error("GetBaseline returned a baseline for an endpoint that only had traffic")
 	}
-	h, _ := s.GetHistory("GET", "/api/users")
+	h, _ := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if len(h.Versions) != 0 {
 		t.Errorf("versions = %d, want 0", len(h.Versions))
 	}
-	if got := len(s.GetAllBaselines()); got != 0 {
+	if got := len(s.GetAllBaselines(s.ActiveProject())); got != 0 {
 		t.Errorf("GetAllBaselines = %d, want 0", got)
 	}
 }
@@ -498,10 +393,10 @@ func TestStore_ObservationWindowIsCapped(t *testing.T) {
 
 	const total = maxObservations + 10
 	for i := 0; i < total; i++ {
-		s.AddTraffic(observation("GET", "/api/users", 200, int64(i)))
+		s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, int64(i)))
 	}
 
-	h, _ := s.GetHistory("GET", "/api/users")
+	h, _ := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if len(h.Observations) != maxObservations {
 		t.Fatalf("window = %d, want %d", len(h.Observations), maxObservations)
 	}
@@ -519,22 +414,22 @@ func TestStore_SaveBaseline_DoesNotCountAsAnObservation(t *testing.T) {
 	s := newObsStore(t)
 
 	for i := 0; i < 3; i++ {
-		if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`); err != nil {
+		if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "Alice"}`); err != nil {
 			t.Fatalf("SaveBaseline failed: %v", err)
 		}
 	}
 
-	h, _ := s.GetHistory("GET", "/api/users")
+	h, _ := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if h.ObservationCount != 0 {
 		t.Errorf("observation_count = %d after 3 baseline saves, want 0", h.ObservationCount)
 	}
 
 	// And a real observation is not displaced by a later save.
-	s.AddTraffic(observation("GET", "/api/users", 200, 5))
-	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 2, "name": "Bob"}`); err != nil {
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 5))
+	if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 2, "name": "Bob"}`); err != nil {
 		t.Fatalf("SaveBaseline failed: %v", err)
 	}
-	h, _ = s.GetHistory("GET", "/api/users")
+	h, _ = s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if h.ObservationCount != 1 || len(h.Observations) != 1 {
 		t.Errorf("count = %d, observations = %d after save, want 1 and 1",
 			h.ObservationCount, len(h.Observations))
@@ -547,8 +442,8 @@ func TestStore_SaveBaseline_DoesNotCountAsAnObservation(t *testing.T) {
 
 func TestStore_ObservationsAreNotPersisted(t *testing.T) {
 	s := newObsStore(t)
-	s.AddTraffic(observation("GET", "/api/users", 200, 7))
-	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`); err != nil {
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 7))
+	if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`); err != nil {
 		t.Fatalf("SaveBaseline failed: %v", err)
 	}
 
@@ -569,18 +464,11 @@ func TestStore_ObservationsAreNotPersisted(t *testing.T) {
 	}
 
 	// Same through a real reload.
-	reloaded := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxAlerts:   200,
-		persistPath: s.persistPath,
-	}
+	reloaded := reopenStore(t, s)
 	if err := reloaded.loadFromFile(); err != nil {
 		t.Fatalf("loadFromFile: %v", err)
 	}
-	h, ok := reloaded.GetHistory("GET", "/api/users")
+	h, ok := reloaded.GetHistory(reloaded.ActiveProject(), "GET", "/api/users")
 	if !ok {
 		t.Fatal("endpoint did not survive reload")
 	}
@@ -595,21 +483,21 @@ func TestStore_ObservationsAreNotPersisted(t *testing.T) {
 
 func TestStore_GetHistory_ObservationsAreACopy(t *testing.T) {
 	s := newObsStore(t)
-	s.AddTraffic(observation("GET", "/api/users", 200, 1))
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 1))
 
-	before, _ := s.GetHistory("GET", "/api/users")
-	s.AddTraffic(observation("GET", "/api/users", 500, 2))
+	before, _ := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 500, 2))
 
 	if len(before.Observations) != 1 {
 		t.Errorf("a previously returned history grew to %d observations", len(before.Observations))
 	}
 
 	// Appending to what the store handed back must not reach into the store.
-	after, _ := s.GetHistory("GET", "/api/users")
+	after, _ := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	after.Observations[0].StatusCode = 0
 	after.Observations = append(after.Observations, types.Observation{StatusCode: 999})
 
-	again, _ := s.GetHistory("GET", "/api/users")
+	again, _ := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if len(again.Observations) != 2 {
 		t.Errorf("store now holds %d observations, want 2", len(again.Observations))
 	}
@@ -621,15 +509,15 @@ func TestStore_GetHistory_ObservationsAreACopy(t *testing.T) {
 
 func TestStore_GetAllHistories_ObservationsAreACopy(t *testing.T) {
 	s := newObsStore(t)
-	s.AddTraffic(observation("GET", "/api/users", 200, 1))
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 1))
 
-	list := s.GetAllHistories()
+	list := s.GetAllHistories(s.ActiveProject())
 	if len(list) != 1 {
 		t.Fatalf("histories = %d, want 1", len(list))
 	}
 	list[0].Observations = append(list[0].Observations, types.Observation{StatusCode: 999})
 
-	again := s.GetAllHistories()
+	again := s.GetAllHistories(s.ActiveProject())
 	if len(again[0].Observations) != 1 {
 		t.Errorf("store now holds %d observations, want 1", len(again[0].Observations))
 	}
@@ -637,17 +525,17 @@ func TestStore_GetAllHistories_ObservationsAreACopy(t *testing.T) {
 
 func TestStore_DeleteBaseline_KeepsObservations(t *testing.T) {
 	s := newObsStore(t)
-	s.AddTraffic(observation("GET", "/api/users", 200, 1))
-	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`); err != nil {
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 1))
+	if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`); err != nil {
 		t.Fatalf("SaveBaseline failed: %v", err)
 	}
 
-	s.DeleteBaseline("GET", "/api/users")
+	s.DeleteBaseline(s.ActiveProject(), "GET", "/api/users")
 
-	if _, ok := s.GetBaseline("GET", "/api/users"); ok {
+	if _, ok := s.GetBaseline(s.ActiveProject(), "GET", "/api/users"); ok {
 		t.Error("baseline still present after DeleteBaseline")
 	}
-	h, ok := s.GetHistory("GET", "/api/users")
+	h, ok := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if !ok {
 		t.Fatal("DeleteBaseline discarded the endpoint's history")
 	}
@@ -662,22 +550,22 @@ func TestStore_DeleteBaseline_KeepsObservations(t *testing.T) {
 
 func TestStore_ConcurrentTrafficAndReads(t *testing.T) {
 	s := newObsStore(t)
-	s.AddTraffic(observation("GET", "/api/users", 200, 1))
+	s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, 1))
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for i := 0; i < 500; i++ {
-			s.AddTraffic(observation("GET", "/api/users", 200, int64(i)))
+			s.AddTraffic(s.ActiveProject(), observation("GET", "/api/users", 200, int64(i)))
 		}
 	}()
 
 	for i := 0; i < 500; i++ {
-		if h, ok := s.GetHistory("GET", "/api/users"); ok {
+		if h, ok := s.GetHistory(s.ActiveProject(), "GET", "/api/users"); ok {
 			for range h.Observations {
 			}
 		}
-		for _, h := range s.GetAllHistories() {
+		for _, h := range s.GetAllHistories(s.ActiveProject()) {
 			for range h.Observations {
 			}
 		}
@@ -687,24 +575,24 @@ func TestStore_ConcurrentTrafficAndReads(t *testing.T) {
 
 func TestStore_SetLockedVersion_PinsAndSurvivesReload(t *testing.T) {
 	s := newObsStore(t)
-	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice"}`); err != nil {
+	if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "Alice"}`); err != nil {
 		t.Fatalf("SaveBaseline v1: %v", err)
 	}
-	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1, "name": "Alice", "role": "admin"}`); err != nil {
+	if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1, "name": "Alice", "role": "admin"}`); err != nil {
 		t.Fatalf("SaveBaseline v2: %v", err)
 	}
 
 	// Unpinned, the endpoint is compared against its latest version.
-	if b, _ := s.GetBaseline("GET", "/api/users"); b.Version != 2 {
+	if b, _ := s.GetBaseline(s.ActiveProject(), "GET", "/api/users"); b.Version != 2 {
 		t.Fatalf("unpinned baseline version = %d, want 2", b.Version)
 	}
 
-	if err := s.SetLockedVersion("GET", "/api/users", 1); err != nil {
+	if err := s.SetLockedVersion(s.ActiveProject(), "GET", "/api/users", 1); err != nil {
 		t.Fatalf("SetLockedVersion: %v", err)
 	}
 	// Pinning is what makes the lock an operation rather than a badge: v2 is
 	// still an accepted version, but v1 is the contract the endpoint is held to.
-	b, ok := s.GetBaseline("GET", "/api/users")
+	b, ok := s.GetBaseline(s.ActiveProject(), "GET", "/api/users")
 	if !ok {
 		t.Fatal("GetBaseline found nothing after locking")
 	}
@@ -715,43 +603,36 @@ func TestStore_SetLockedVersion_PinsAndSurvivesReload(t *testing.T) {
 		t.Errorf("locked payload = %q, want the v1 payload", b.SamplePayload)
 	}
 
-	reloaded := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxAlerts:   200,
-		persistPath: s.persistPath,
-	}
+	reloaded := reopenStore(t, s)
 	if err := reloaded.loadFromFile(); err != nil {
 		t.Fatalf("loadFromFile: %v", err)
 	}
-	if b, _ := reloaded.GetBaseline("GET", "/api/users"); b.Version != 1 {
+	if b, _ := reloaded.GetBaseline(reloaded.ActiveProject(), "GET", "/api/users"); b.Version != 1 {
 		t.Errorf("after reload: baseline version = %d, want 1 (the pin did not persist)", b.Version)
 	}
 
 	// 0 releases the pin and the endpoint tracks its latest version again.
-	if err := reloaded.SetLockedVersion("GET", "/api/users", 0); err != nil {
+	if err := reloaded.SetLockedVersion(reloaded.ActiveProject(), "GET", "/api/users", 0); err != nil {
 		t.Fatalf("releasing the lock: %v", err)
 	}
-	if b, _ := reloaded.GetBaseline("GET", "/api/users"); b.Version != 2 {
+	if b, _ := reloaded.GetBaseline(reloaded.ActiveProject(), "GET", "/api/users"); b.Version != 2 {
 		t.Errorf("after release: baseline version = %d, want 2", b.Version)
 	}
 }
 
 func TestStore_SetLockedVersion_RejectsUnknownVersion(t *testing.T) {
 	s := newObsStore(t)
-	if _, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`); err != nil {
+	if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
 
-	if err := s.SetLockedVersion("GET", "/api/users", 7); err == nil {
+	if err := s.SetLockedVersion(s.ActiveProject(), "GET", "/api/users", 7); err == nil {
 		t.Error("locking to a version that does not exist should fail")
 	}
-	if err := s.SetLockedVersion("GET", "/nowhere", 1); err == nil {
+	if err := s.SetLockedVersion(s.ActiveProject(), "GET", "/nowhere", 1); err == nil {
 		t.Error("locking an endpoint with no history should fail")
 	}
-	if b, _ := s.GetBaseline("GET", "/api/users"); b.Version != 1 {
+	if b, _ := s.GetBaseline(s.ActiveProject(), "GET", "/api/users"); b.Version != 1 {
 		t.Errorf("a rejected lock changed the baseline to version %d", b.Version)
 	}
 }
@@ -769,16 +650,13 @@ func TestStore_UpdateConfig_Persists(t *testing.T) {
 	// A fresh store, same directory, no flags: the saved settings come back.
 	// This is what a restart looks like, and it is the whole point — UpdateConfig
 	// used to mutate memory only, so every setting reverted on restart.
-	restarted := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxAlerts:   200,
-		persistPath: s.persistPath,
-		configPath:  s.configPath,
-		config:      types.ProxyConfig{TargetURL: "http://localhost:3000", ProxyPort: "8787", AutoSaveBaseline: true},
-	}
+	restarted := reopenStore(t, s)
+	// The config here is what main would have built from this run's command line,
+	// not what the previous run ended up with: the saved file is what has to
+	// correct it. Copying s's config instead would compare the saved values
+	// against themselves and the assertions below would hold no matter what
+	// ApplyRememberedConfig did.
+	restarted.config = types.ProxyConfig{TargetURL: "http://localhost:3000", ProxyPort: "8787", AutoSaveBaseline: true}
 	if err := restarted.ApplyRememberedConfig(false, false); err != nil {
 		t.Fatalf("ApplyRememberedConfig: %v", err)
 	}
@@ -804,14 +682,10 @@ func TestStore_ApplyRememberedConfig_ExplicitFlagsWin(t *testing.T) {
 	// the remembered preference; one left at its default is not a decision, so
 	// the saved value stands. Which is which is passed in, because comparing
 	// against the default would read "explicitly set to the default" as silence.
-	flagged := &Store{
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		persistPath: s.persistPath,
-		configPath:  s.configPath,
-		config:      types.ProxyConfig{TargetURL: "http://typed.example:1234", ProxyPort: "8787"},
-	}
+	flagged := reopenStore(t, s)
+	// s's config has already been through UpdateConfig above, so starting from it
+	// would make "the typed target survived" true without the flag doing anything.
+	flagged.config = types.ProxyConfig{TargetURL: "http://typed.example:1234", ProxyPort: "8787"}
 	if err := flagged.ApplyRememberedConfig(true, false); err != nil {
 		t.Fatalf("ApplyRememberedConfig: %v", err)
 	}
@@ -872,7 +746,7 @@ func TestStore_IsConfigured(t *testing.T) {
 
 	t.Run("a seeded baseline does not configure it", func(t *testing.T) {
 		s := newObsStore(t)
-		if _, err := s.SaveBaseline("GET", "/_driftwood/mock/users", `{"id":1}`); err != nil {
+		if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/_driftwood/mock/users", `{"id":1}`); err != nil {
 			t.Fatalf("seeding a baseline: %v", err)
 		}
 		if s.IsConfigured() {
@@ -919,7 +793,7 @@ func TestStore_IsConfigured(t *testing.T) {
 func TestStore_SaveBaseline_RecordsItsSource(t *testing.T) {
 	s := newObsStore(t)
 
-	manual, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`)
+	manual, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`)
 	if err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
@@ -930,7 +804,7 @@ func TestStore_SaveBaseline_RecordsItsSource(t *testing.T) {
 		t.Error("a version a human saved reads as provisional")
 	}
 
-	auto, err := s.SaveBaselineFrom("GET", "/api/orders", `{"id": 2}`, types.BaselineSourceAuto)
+	auto, err := s.SaveBaselineFrom(s.ActiveProject(), "GET", "/api/orders", `{"id": 2}`, types.BaselineSourceAuto)
 	if err != nil {
 		t.Fatalf("SaveBaselineFrom: %v", err)
 	}
@@ -955,15 +829,15 @@ func TestStore_LegacyBaselineWithoutSourceReadsAsProvisional(t *testing.T) {
 
 func TestStore_ConfirmBaseline_UnmarksProvisional(t *testing.T) {
 	s := newObsStore(t)
-	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+	if _, err := s.SaveBaselineFrom(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("SaveBaselineFrom: %v", err)
 	}
 
-	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+	if err := s.ConfirmBaseline(s.ActiveProject(), "GET", "/api/users", 1); err != nil {
 		t.Fatalf("ConfirmBaseline: %v", err)
 	}
 
-	hist, ok := s.GetHistory("GET", "/api/users")
+	hist, ok := s.GetHistory(s.ActiveProject(), "GET", "/api/users")
 	if !ok {
 		t.Fatal("history for GET /api/users not found")
 	}
@@ -977,21 +851,19 @@ func TestStore_ConfirmBaseline_UnmarksProvisional(t *testing.T) {
 
 func TestStore_ConfirmBaseline_SurvivesReload(t *testing.T) {
 	s := newObsStore(t)
-	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+	if _, err := s.SaveBaselineFrom(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("SaveBaselineFrom: %v", err)
 	}
-	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+	if err := s.ConfirmBaseline(s.ActiveProject(), "GET", "/api/users", 1); err != nil {
 		t.Fatalf("ConfirmBaseline: %v", err)
 	}
 
-	reloaded := newObsStore(t)
-	reloaded.persistPath = s.persistPath
-	reloaded.configPath = s.configPath
+	reloaded := reopenStore(t, s)
 	if err := reloaded.loadFromFile(); err != nil {
 		t.Fatalf("loadFromFile: %v", err)
 	}
 
-	hist, ok := reloaded.GetHistory("GET", "/api/users")
+	hist, ok := reloaded.GetHistory(reloaded.ActiveProject(), "GET", "/api/users")
 	if !ok {
 		t.Fatal("history did not survive a reload")
 	}
@@ -1002,7 +874,7 @@ func TestStore_ConfirmBaseline_SurvivesReload(t *testing.T) {
 
 func TestStore_ConfirmBaseline_RejectsBadInput(t *testing.T) {
 	s := newObsStore(t)
-	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+	if _, err := s.SaveBaselineFrom(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("SaveBaselineFrom: %v", err)
 	}
 
@@ -1019,7 +891,7 @@ func TestStore_ConfirmBaseline_RejectsBadInput(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := s.ConfirmBaseline(tc.method, tc.path, tc.version); err == nil {
+			if err := s.ConfirmBaseline(s.ActiveProject(), tc.method, tc.path, tc.version); err == nil {
 				t.Errorf("ConfirmBaseline(%s %s, %d) = nil, want an error", tc.method, tc.path, tc.version)
 			}
 		})
@@ -1030,13 +902,13 @@ func TestStore_ConfirmBaseline_IsIdempotentOnAConfirmedVersion(t *testing.T) {
 	// Confirming twice asks for a state the caller already has. Reporting an
 	// error would turn a successful end state into a failure message.
 	s := newObsStore(t)
-	if _, err := s.SaveBaselineFrom("GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
+	if _, err := s.SaveBaselineFrom(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("SaveBaselineFrom: %v", err)
 	}
-	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+	if err := s.ConfirmBaseline(s.ActiveProject(), "GET", "/api/users", 1); err != nil {
 		t.Fatalf("first ConfirmBaseline: %v", err)
 	}
-	if err := s.ConfirmBaseline("GET", "/api/users", 1); err != nil {
+	if err := s.ConfirmBaseline(s.ActiveProject(), "GET", "/api/users", 1); err != nil {
 		t.Errorf("second ConfirmBaseline = %v, want nil", err)
 	}
 }
@@ -1052,25 +924,11 @@ func TestStore_ConfirmBaseline_IsIdempotentOnAConfirmedVersion(t *testing.T) {
 // does not merely lose a record, it leaves the endpoint unbaselined and hands
 // the next response the job of defining the contract.
 func TestStore_EndpointCapEvictsOnlyWhatItMayForget(t *testing.T) {
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxTraffics: 500,
-		maxAlerts:   200,
-		persistPath: filepath.Join(t.TempDir(), "baselines.json"),
-		config: types.ProxyConfig{
-			TargetURL:        "http://localhost:3000",
-			ProxyPort:        "8787",
-			AutoSaveBaseline: true,
-			InterceptJSON:    true,
-		},
-	}
+	s := testStore(t)
 
 	observe := func(path string) {
 		t.Helper()
-		s.AddTraffic(types.CapturedTraffic{
+		s.AddTraffic(s.ActiveProject(), types.CapturedTraffic{
 			ID:         path,
 			Method:     "GET",
 			Path:       path,
@@ -1082,19 +940,19 @@ func TestStore_EndpointCapEvictsOnlyWhatItMayForget(t *testing.T) {
 	for i := 0; i < maxEndpoints; i++ {
 		observe(fmt.Sprintf("/filler/%d", i))
 	}
-	if got := len(s.GetAllHistories()); got != maxEndpoints {
+	if got := len(s.GetAllHistories(s.ActiveProject())); got != maxEndpoints {
 		t.Fatalf("histories = %d after %d distinct endpoints, want %d", got, maxEndpoints, maxEndpoints)
 	}
 
 	// /filler/0 is pinned to a version and /filler/1 carries a version a human
 	// accepted. Neither may be spent to make room for a stranger.
-	if _, err := s.SaveBaselineFrom("GET", "/filler/0", `{"id": 1}`, types.BaselineSourceManual); err != nil {
+	if _, err := s.SaveBaselineFrom(s.ActiveProject(), "GET", "/filler/0", `{"id": 1}`, types.BaselineSourceManual); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetLockedVersion("GET", "/filler/0", 1); err != nil {
+	if err := s.SetLockedVersion(s.ActiveProject(), "GET", "/filler/0", 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SaveBaselineFrom("GET", "/filler/1", `{"id": 1}`, types.BaselineSourceManual); err != nil {
+	if _, err := s.SaveBaselineFrom(s.ActiveProject(), "GET", "/filler/1", `{"id": 1}`, types.BaselineSourceManual); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1102,10 +960,10 @@ func TestStore_EndpointCapEvictsOnlyWhatItMayForget(t *testing.T) {
 		observe(fmt.Sprintf("/new/%d", i))
 	}
 
-	if _, ok := s.GetHistory("GET", "/filler/0"); !ok {
+	if _, ok := s.GetHistory(s.ActiveProject(), "GET", "/filler/0"); !ok {
 		t.Error("an endpoint pinned to a version was evicted to make room")
 	}
-	if _, ok := s.GetHistory("GET", "/filler/1"); !ok {
+	if _, ok := s.GetHistory(s.ActiveProject(), "GET", "/filler/1"); !ok {
 		t.Error("an endpoint with a confirmed version was evicted to make room")
 	}
 	// The newest arrival survives because it is the one that did the evicting.
@@ -1113,13 +971,13 @@ func TestStore_EndpointCapEvictsOnlyWhatItMayForget(t *testing.T) {
 	// endpoints fixed in place, each new path spends the least recently seen
 	// provisional entry, so the map holds a window of recent endpoints rather
 	// than the first ones it ever saw.
-	if _, ok := s.GetHistory("GET", fmt.Sprintf("/new/%d", maxEndpoints-1)); !ok {
+	if _, ok := s.GetHistory(s.ActiveProject(), "GET", fmt.Sprintf("/new/%d", maxEndpoints-1)); !ok {
 		t.Error("the endpoint seen most recently was not recorded")
 	}
-	if _, ok := s.GetHistory("GET", "/filler/2"); ok {
+	if _, ok := s.GetHistory(s.ActiveProject(), "GET", "/filler/2"); ok {
 		t.Error("an endpoint nothing protects was never evicted: the map is not bounded after all")
 	}
-	if got := len(s.GetAllHistories()); got > maxEndpoints {
+	if got := len(s.GetAllHistories(s.ActiveProject())); got > maxEndpoints {
 		t.Errorf("histories = %d, want the map held at its cap of %d", got, maxEndpoints)
 	}
 }
@@ -1148,17 +1006,17 @@ func TestPersistingMethodsSerialiseOnTheWriteLock(t *testing.T) {
 		call func(*Store) error
 	}{
 		{"SaveBaseline", func(s *Store) error {
-			_, err := s.SaveBaseline("GET", "/api/x", `{"a": 1}`)
+			_, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/x", `{"a": 1}`)
 			return err
 		}},
 		{"SetLockedVersion", func(s *Store) error {
-			return s.SetLockedVersion("GET", "/api/x", 1)
+			return s.SetLockedVersion(s.ActiveProject(), "GET", "/api/x", 1)
 		}},
 		{"ConfirmBaseline", func(s *Store) error {
-			return s.ConfirmBaseline("GET", "/api/x", 1)
+			return s.ConfirmBaseline(s.ActiveProject(), "GET", "/api/x", 1)
 		}},
 		{"DeleteBaseline", func(s *Store) error {
-			s.DeleteBaseline("GET", "/api/x")
+			s.DeleteBaseline(s.ActiveProject(), "GET", "/api/x")
 			return nil
 		}},
 		{"UpdateConfig", func(s *Store) error {
@@ -1172,7 +1030,7 @@ func TestPersistingMethodsSerialiseOnTheWriteLock(t *testing.T) {
 			s := newPersistingStore(t)
 
 			// Seed the endpoint, so the calls that address a version have one.
-			if _, err := s.SaveBaseline("GET", "/api/x", `{"a": 1}`); err != nil {
+			if _, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/x", `{"a": 1}`); err != nil {
 				t.Fatalf("seeding the endpoint: %v", err)
 			}
 
@@ -1204,16 +1062,7 @@ func TestPersistingMethodsSerialiseOnTheWriteLock(t *testing.T) {
 
 func newPersistingStore(t *testing.T) *Store {
 	t.Helper()
-	return &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxTraffics: 500,
-		maxAlerts:   200,
-		persistPath: filepath.Join(t.TempDir(), "baselines.json"),
-		configPath:  filepath.Join(t.TempDir(), "config.json"),
-	}
+	return testStore(t)
 }
 
 // TestConcurrentSavesLandComplete checks the end state of a burst of concurrent
@@ -1226,18 +1075,7 @@ func newPersistingStore(t *testing.T) *Store {
 // regression that drops writes routinely rather than occasionally — and because
 // the assertion it makes is the one that actually matters to a user.
 func TestConcurrentSavesLandComplete(t *testing.T) {
-	tmpDir := t.TempDir()
-	persistPath := filepath.Join(tmpDir, "baselines.json")
-
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxTraffics: 500,
-		maxAlerts:   200,
-		persistPath: persistPath,
-	}
+	s := testStore(t)
 
 	const saves = 24
 	var wg sync.WaitGroup
@@ -1246,7 +1084,7 @@ func TestConcurrentSavesLandComplete(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, errs[i] = s.SaveBaseline(
+			_, errs[i] = s.SaveBaseline(s.ActiveProject(),
 				"GET",
 				fmt.Sprintf("/api/thing/%d", i),
 				fmt.Sprintf(`{"n": %d}`, i),
@@ -1261,7 +1099,7 @@ func TestConcurrentSavesLandComplete(t *testing.T) {
 		}
 	}
 
-	onDisk := readPersistedHistories(t, persistPath)
+	onDisk := readPersistedHistories(t, s.persistPath)
 
 	if len(onDisk) != saves {
 		var missing []string
@@ -1279,18 +1117,9 @@ func TestConcurrentSavesLandComplete(t *testing.T) {
 // value handed back to the caller is in the store's map, so returning it
 // directly hands out a handle on store state that no lock guards.
 func TestSaveBaselineReturnsACopy(t *testing.T) {
-	tmpDir := t.TempDir()
-	s := &Store{
-		traffics:    make([]types.CapturedTraffic, 0),
-		histories:   make(map[string]*types.EndpointHistory),
-		alerts:      make(map[string]*types.Alert),
-		alertOrder:  make([]string, 0),
-		maxTraffics: 500,
-		maxAlerts:   200,
-		persistPath: filepath.Join(tmpDir, "baselines.json"),
-	}
+	s := testStore(t)
 
-	got, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`)
+	got, err := s.SaveBaseline(s.ActiveProject(), "GET", "/api/users", `{"id": 1}`)
 	if err != nil {
 		t.Fatalf("SaveBaseline failed: %v", err)
 	}
@@ -1300,7 +1129,7 @@ func TestSaveBaselineReturnsACopy(t *testing.T) {
 		got.Schema.Type = "tampered"
 	}
 
-	stored, ok := s.GetBaseline("GET", "/api/users")
+	stored, ok := s.GetBaseline(s.ActiveProject(), "GET", "/api/users")
 	if !ok {
 		t.Fatal("baseline not in the store after saving it")
 	}
@@ -1337,18 +1166,18 @@ func TestAlertEvictionDropsTheOldest(t *testing.T) {
 	}
 
 	for i := 0; i < 6; i++ {
-		s.AddTraffic(alerting(fmt.Sprintf("tr_%d", i), fmt.Sprintf("/api/thing/%d", i)))
+		s.AddTraffic(s.ActiveProject(), alerting(fmt.Sprintf("tr_%d", i), fmt.Sprintf("/api/thing/%d", i)))
 	}
 
-	if len(s.alertOrder) != 3 {
-		t.Errorf("alertOrder holds %d entries, want it capped at 3", len(s.alertOrder))
+	if order := s.alertOrder[s.ActiveProject()]; len(order) != 3 {
+		t.Errorf("alertOrder holds %d entries, want it capped at 3", len(order))
 	}
 	if len(s.alerts) != 3 {
 		t.Errorf("alerts holds %d entries, want 3 — eviction must drop the map entry too, "+
 			"or the map grows while the order slice does not", len(s.alerts))
 	}
 
-	got := s.GetAlerts(50)
+	got := s.GetAlerts(s.ActiveProject(), 50)
 	if len(got) != 3 {
 		t.Fatalf("GetAlerts returned %d alerts, want 3", len(got))
 	}

@@ -408,7 +408,13 @@ func (p *Proxy) executeProxyCall(w http.ResponseWriter, r *http.Request, start t
 	respStr := respBodyBuf.String()
 	isJSON := isJSONContent(respHeaders, respStr)
 
+	// Resolved once, here, where the request begins. Everything downstream of
+	// this takes the project as a parameter, so a single request is recorded
+	// entirely under one project even if the active project changes while it is
+	// in flight — which it can, because switching is a dashboard action and
+	// requests take as long as the backend takes.
 	p.processAndStoreTraffic(
+		p.store.ActiveProject(),
 		r.Method,
 		r.URL.Path,
 		r.URL.String(),
@@ -479,7 +485,13 @@ func (p *Proxy) serveMockResponse(w http.ResponseWriter, r *http.Request, start 
 		respHeaders[k] = strings.Join(v, ", ")
 	}
 
+	// Resolved once, here, where the request begins. Everything downstream of
+	// this takes the project as a parameter, so a single request is recorded
+	// entirely under one project even if the active project changes while it is
+	// in flight — which it can, because switching is a dashboard action and
+	// requests take as long as the backend takes.
 	p.processAndStoreTraffic(
+		p.store.ActiveProject(),
 		r.Method,
 		r.URL.Path,
 		r.URL.String(),
@@ -502,10 +514,10 @@ func (p *Proxy) serveMockResponse(w http.ResponseWriter, r *http.Request, start 
 // against the caller, so it is filed as a warning instead: it still reaches the
 // traffic list and the alert log, where an endpoint that stopped answering 200
 // belongs, but it never broadcasts and is never described as a break.
-func (p *Proxy) assessFailedResponse(method, path string, statusCode int) (string, *types.ContractDiff) {
+func (p *Proxy) assessFailedResponse(projectID, method, path string, statusCode int) (string, *types.ContractDiff) {
 	// An error body is not a shape to promise. Auto-saving one here would make
 	// the failure itself the baseline, and every later success look like drift.
-	if _, exists := p.store.GetBaseline(method, path); !exists {
+	if _, exists := p.store.GetBaseline(projectID, method, path); !exists {
 		return "NO_BASELINE", nil
 	}
 
@@ -533,6 +545,7 @@ func (p *Proxy) assessFailedResponse(method, path string, statusCode int) (strin
 }
 
 func (p *Proxy) processAndStoreTraffic(
+	projectID string,
 	method, path, rawURL string,
 	statusCode int,
 	durationMs int64,
@@ -552,9 +565,9 @@ func (p *Proxy) processAndStoreTraffic(
 	// the real response as REMOVED_FIELD and raises a breaking alert naming all
 	// of them — noise that buries the one fact worth knowing.
 	if statusCode >= 400 {
-		contractStatus, contractDiff = p.assessFailedResponse(method, path, statusCode)
+		contractStatus, contractDiff = p.assessFailedResponse(projectID, method, path, statusCode)
 	} else if isJSON && strings.TrimSpace(respBody) != "" {
-		baseline, exists := p.store.GetBaseline(method, path)
+		baseline, exists := p.store.GetBaseline(projectID, method, path)
 		if !exists {
 			cfg := p.store.GetConfig()
 			if cfg.AutoSaveBaseline {
@@ -563,7 +576,7 @@ func (p *Proxy) processAndStoreTraffic(
 				// so it is evidence of what the API returns, not of what it
 				// promised. Confirming it in the dashboard is what turns it into
 				// a contract.
-				_, _ = p.store.SaveBaselineFrom(method, path, respBody, types.BaselineSourceAuto)
+				_, _ = p.store.SaveBaselineFrom(projectID, method, path, respBody, types.BaselineSourceAuto)
 				contractStatus = "BASELINE_SET"
 			}
 		} else {
@@ -593,7 +606,7 @@ func (p *Proxy) processAndStoreTraffic(
 		}
 	} else if statusCode == http.StatusNoContent {
 		// For 204 No Content, still check if we have a baseline to detect contract violation
-		_, exists := p.store.GetBaseline(method, path)
+		_, exists := p.store.GetBaseline(projectID, method, path)
 		if exists {
 			contractStatus = "BREAKING" // expected body but got none
 			contractDiff = &types.ContractDiff{
@@ -634,7 +647,7 @@ func (p *Proxy) processAndStoreTraffic(
 
 	capture.SanitizeTraffic(&traffic)
 
-	p.store.AddTraffic(traffic)
+	p.store.AddTraffic(projectID, traffic)
 	p.hub.Publish("traffic", traffic)
 
 	if contractDiff != nil && contractDiff.HasBreakingChanges {
@@ -678,7 +691,7 @@ func (p *Proxy) processAndStoreTraffic(
 		   written. So a response under the buffer size reaches the client only
 		   after this call finishes. Measured at the full 8s client timeout in
 		   TestBreakingChangeDoesNotWaitOnTheSidecar, with the sidecar held open. */
-		go p.explainAsync(traffic.ID, method, path, contractDiff, respBody)
+		go p.explainAsync(projectID, traffic.ID, method, path, contractDiff, respBody)
 	}
 }
 
@@ -689,7 +702,7 @@ func (p *Proxy) processAndStoreTraffic(
 // the handler returns immediately, so anything it still owns is both a lifetime
 // hazard and, in the case of a map it shares with a concurrent Marshal, a data
 // race. Every value this needs arrives as a parameter.
-func (p *Proxy) explainAsync(trafficID, method, path string, contractDiff *types.ContractDiff, respBody string) {
+func (p *Proxy) explainAsync(projectID, trafficID, method, path string, contractDiff *types.ContractDiff, respBody string) {
 	select {
 	case p.explainSlots <- struct{}{}:
 	default:
@@ -712,7 +725,7 @@ func (p *Proxy) explainAsync(trafficID, method, path string, contractDiff *types
 	   a migration over data already on disk; redacting at the boundary means
 	   the copy that leaves is clean no matter when the baseline was written. */
 	var baselineSample string
-	if baseline, ok := p.store.GetBaseline(method, path); ok && baseline != nil {
+	if baseline, ok := p.store.GetBaseline(projectID, method, path); ok && baseline != nil {
 		baselineSample = capture.SanitizeBody(baseline.SamplePayload)
 	}
 

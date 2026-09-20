@@ -58,7 +58,7 @@ func TestEndToEndProxyAndDiff(t *testing.T) {
 	}
 
 	// Verify baseline was created
-	baseline, exists := store.GetBaseline("GET", "/api/products")
+	baseline, exists := store.GetBaseline(store.ActiveProject(), "GET", "/api/products")
 	if !exists {
 		t.Fatalf("expected baseline contract to be created")
 	}

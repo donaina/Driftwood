@@ -218,7 +218,7 @@ func TestProxiedRequestIsRecordedAsTraffic(t *testing.T) {
 	h.do(t, http.MethodGet, "/v1/orders", nil)
 
 	var found bool
-	for _, tr := range h.store.GetTraffics(100) {
+	for _, tr := range h.store.GetTraffics(h.store.ActiveProject(), 100) {
 		if tr.Path == "/v1/orders" {
 			found = true
 		}
@@ -237,7 +237,7 @@ func TestProxiedRequestRecordsAnObservation(t *testing.T) {
 	// worth nothing if nothing joins it to the endpoint's history. Until it did,
 	// Versions grew only when a human saved a baseline, so the History view had
 	// no data by construction and the stability trend had no series to draw.
-	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	hist, ok := h.store.GetHistory(h.store.ActiveProject(), "GET", "/v1/orders")
 	if !ok {
 		t.Fatal("proxied request produced no history entry")
 	}
@@ -280,7 +280,7 @@ func TestLockBaselineRoutePinsAndReleases(t *testing.T) {
 		}
 	}
 
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 2 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 2 {
 		t.Fatalf("unpinned baseline version = %d, want 2", b.Version)
 	}
 
@@ -298,7 +298,7 @@ func TestLockBaselineRoutePinsAndReleases(t *testing.T) {
 	if hist.LockedVersion != 1 {
 		t.Errorf("locked_version in response = %d, want 1", hist.LockedVersion)
 	}
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 1 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 1 {
 		t.Errorf("baseline version after locking = %d, want 1", b.Version)
 	}
 
@@ -307,7 +307,7 @@ func TestLockBaselineRoutePinsAndReleases(t *testing.T) {
 	if released.StatusCode != http.StatusOK {
 		t.Fatalf("releasing: status = %d, want 200", released.StatusCode)
 	}
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 2 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 2 {
 		t.Errorf("baseline version after release = %d, want 2", b.Version)
 	}
 }
@@ -331,7 +331,7 @@ func TestLockBaselineRouteRejectsBadInput(t *testing.T) {
 	}
 
 	// A rejected lock must not have moved anything.
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 1 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 1 {
 		t.Errorf("baseline version = %d after rejected locks, want 1", b.Version)
 	}
 }
@@ -601,10 +601,10 @@ func TestConfirmBaselineRouteAcceptsACapturedVersion(t *testing.T) {
 
 	// Recorded the way the proxy records a first sighting, not the way the
 	// promote route does: auto, which is what makes it provisional.
-	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1,"name":"Alice"}`, types.BaselineSourceAuto); err != nil {
+	if _, err := h.store.SaveBaselineFrom(h.store.ActiveProject(), "GET", "/api/users", `{"id":1,"name":"Alice"}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("seeding a captured baseline: %v", err)
 	}
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); !b.IsProvisional() {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); !b.IsProvisional() {
 		t.Fatal("the seeded baseline is not provisional, so this test proves nothing")
 	}
 
@@ -630,7 +630,7 @@ func TestConfirmBaselineRouteAcceptsACapturedVersion(t *testing.T) {
 
 func TestConfirmBaselineRouteRejectsBadInput(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1}`, types.BaselineSourceAuto); err != nil {
+	if _, err := h.store.SaveBaselineFrom(h.store.ActiveProject(), "GET", "/api/users", `{"id":1}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("seeding a captured baseline: %v", err)
 	}
 
@@ -658,7 +658,7 @@ func TestAutoSavedBaselineIsProvisional(t *testing.T) {
 	h := newHarness(t)
 	h.do(t, http.MethodGet, "/v1/orders", nil)
 
-	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	hist, ok := h.store.GetHistory(h.store.ActiveProject(), "GET", "/v1/orders")
 	if !ok {
 		t.Fatal("proxied request produced no history entry")
 	}

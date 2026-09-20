@@ -168,7 +168,12 @@ type EndpointHistory struct {
 
 // CapturedTraffic holds full metadata for an intercepted HTTP transaction
 type CapturedTraffic struct {
-	ID              string            `json:"id"`
+	ID string `json:"id"`
+	// ProjectID is the project this request was sniffed under. It is set by the
+	// store when the request is recorded, from the project the caller named, so
+	// a record always says which context produced it rather than leaving a
+	// reader to infer it from which list it happens to be in.
+	ProjectID       string            `json:"project_id,omitempty"`
 	Timestamp       time.Time         `json:"timestamp"`
 	Method          string            `json:"method"`
 	Path            string            `json:"path"`

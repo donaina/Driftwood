@@ -297,7 +297,7 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 			explained.Data["traffic_id"], alert.Data["traffic_id"])
 	}
 
-	alerts := store.GetAlerts(10)
+	alerts := store.GetAlerts(store.ActiveProject(), 10)
 	if len(alerts) != 1 {
 		t.Fatalf("expected 1 stored alert, got %d", len(alerts))
 	}
@@ -469,7 +469,7 @@ func TestBreakingChangeDoesNotWaitOnTheSidecar(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		alerts := store.GetAlerts(10)
+		alerts := store.GetAlerts(store.ActiveProject(), 10)
 		if len(alerts) == 1 && alerts[0].AIExplanation != nil {
 			if got := alerts[0].AIExplanation["summary"]; got != "held open" {
 				t.Errorf("stored explanation summary = %v", got)
@@ -550,7 +550,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	// about which of the two sightings it wants.
 	failure := func(path string, code int) types.CapturedTraffic {
 		t.Helper()
-		for _, tr := range store.GetTraffics(100) {
+		for _, tr := range store.GetTraffics(store.ActiveProject(), 100) {
 			if tr.Path == path && tr.StatusCode == code {
 				return tr
 			}
@@ -583,7 +583,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	   failing is worth waking someone for. What must not happen is the
 	   field-by-field version that used to accompany it. */
 	breaking := 0
-	for _, a := range store.GetAlerts(50) {
+	for _, a := range store.GetAlerts(store.ActiveProject(), 50) {
 		if a.ContractStatus != "BREAKING" {
 			continue
 		}
@@ -613,7 +613,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 		t.Errorf("a 404 against a healthy contract reads as %q, want WARNING", rejected.ContractStatus)
 	}
 	filed := false
-	for _, a := range store.GetAlerts(50) {
+	for _, a := range store.GetAlerts(store.ActiveProject(), 50) {
 		if !strings.HasSuffix(a.Endpoint, "/breaks-to-404") {
 			continue
 		}
@@ -637,7 +637,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	/* And an error body must never be adopted as the contract, or the failure
 	   becomes the baseline and every later success reads as drift. */
 	request("/fails-first")
-	if _, exists := store.GetBaseline("GET", "/fails-first"); exists {
+	if _, exists := store.GetBaseline(store.ActiveProject(), "GET", "/fails-first"); exists {
 		t.Error("an error response was saved as the contract")
 	}
 }
@@ -767,7 +767,7 @@ func TestGzippedResponseIsForwardedCompressedAndAnalyzedBounded(t *testing.T) {
 		t.Errorf("the client received %d bytes, want the %d gzipped bytes the backend sent", len(got), len(gz))
 	}
 
-	traffics := store.GetTraffics(1)
+	traffics := store.GetTraffics(store.ActiveProject(), 1)
 	if len(traffics) != 1 {
 		t.Fatalf("recorded %d transactions, want 1", len(traffics))
 	}

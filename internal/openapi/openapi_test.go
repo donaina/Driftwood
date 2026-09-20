@@ -378,7 +378,7 @@ func TestImportToStorage(t *testing.T) {
 
 	// Mock store
 	store := &mockStore{baselines: make(map[string]string)}
-	err = s.ImportToStorage(store)
+	err = s.ImportToStorage("acme", store)
 	if err != nil {
 		t.Fatalf("ImportToStorage failed: %v", err)
 	}
@@ -391,6 +391,13 @@ func TestImportToStorage(t *testing.T) {
 	key := "GET:/users"
 	if _, ok := store.baselines[key]; !ok {
 		t.Errorf("missing baseline for %s", key)
+	}
+
+	// Under the project the caller named. An import that resolved the project
+	// for itself would file a client's API under whichever project happened to
+	// be on screen.
+	if got := store.projects[key]; got != "acme" {
+		t.Errorf("imported %s under project %q, want acme", key, got)
 	}
 
 	// An imported spec is a declared contract, so it must not land as
@@ -457,7 +464,7 @@ func TestImportToStorage_PreservesDeclaredRequiredAndFormat(t *testing.T) {
 		t.Fatalf("LoadFromBytes failed: %v", err)
 	}
 	store := &mockStore{baselines: make(map[string]string)}
-	if err := s.ImportToStorage(store); err != nil {
+	if err := s.ImportToStorage("acme", store); err != nil {
 		t.Fatalf("ImportToStorage failed: %v", err)
 	}
 
@@ -481,10 +488,18 @@ type mockStore struct {
 	baselines map[string]string
 	sources   map[string]string
 	schemas   map[string]*types.JSONSchemaNode
+	// projects records which project each save was addressed to, keyed the same
+	// way, so a test can assert an import landed under the project it named
+	// rather than under whatever the store would have picked by itself.
+	projects map[string]string
 }
 
-func (m *mockStore) SaveBaselineWithSchema(method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error) {
+func (m *mockStore) SaveBaselineWithSchema(projectID, method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error) {
 	m.baselines[method+":"+path] = samplePayload
+	if m.projects == nil {
+		m.projects = map[string]string{}
+	}
+	m.projects[method+":"+path] = projectID
 	if m.sources == nil {
 		m.sources = map[string]string{}
 	}

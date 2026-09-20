@@ -364,8 +364,17 @@ func resolveRef(ref string, comps Components) (*Schema, error) {
 	return sch, nil
 }
 
-func (s *OpenAPISpec) ImportToStorage(store interface {
-	SaveBaselineWithSchema(method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error)
+// ImportToStorage records an OpenAPI document's declared contracts under one
+// project.
+//
+// The project is a parameter rather than something the store resolves for
+// itself. Importing a client's spec is the act that decides which client those
+// contracts belong to, and a store that quietly answered "whichever project the
+// dashboard happens to be showing" would file a client's API under whichever
+// other client was on screen — the quiet misattribution this codebase is
+// otherwise strict about.
+func (s *OpenAPISpec) ImportToStorage(projectID string, store interface {
+	SaveBaselineWithSchema(projectID, method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error)
 }) error {
 	contracts, err := s.ExtractContracts()
 	if err != nil {
@@ -396,7 +405,7 @@ func (s *OpenAPISpec) ImportToStorage(store interface {
 		// vouched for — not by a person clicking, but by the document the API
 		// owner published. They must not read as provisional, or the dashboard
 		// would ask the user to confirm what they just told us.
-		_, err := store.SaveBaselineWithSchema(c.Method, c.Path, sample, schemaNode, types.BaselineSourceSpec)
+		_, err := store.SaveBaselineWithSchema(projectID, c.Method, c.Path, sample, schemaNode, types.BaselineSourceSpec)
 		if err != nil {
 			return fmt.Errorf("save baseline for %s %s: %w", c.Method, c.Path, err)
 		}
