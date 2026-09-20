@@ -227,7 +227,14 @@ func (s *Server) handleDeleteBaseline(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.store.DeleteBaseline(req.Method, req.Path)
+	// The clear is done in memory either way; a failed write means it will not
+	// survive a restart, and the contract will be back. Same reasoning as the
+	// config route above: an operation reported as done that was not persisted
+	// coming undone on the next restart is the failure this reports instead.
+	if err := s.store.DeleteBaseline(req.Method, req.Path); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	s.hub.Publish("baseline_deleted", req)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

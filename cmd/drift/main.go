@@ -63,7 +63,16 @@ func main() {
 	log.Println("==================================================")
 
 	// Initialize components
-	store := storage.NewStore(*target, *port)
+	//
+	// A store that could not be fully read still starts: the error says what
+	// happened to the saved contracts, and refusing to run over it would turn a
+	// recoverable file problem into an outage. Not saying anything at all is the
+	// behaviour this replaced, and it is the worse of the two — an install that
+	// silently comes up empty is indistinguishable from a new one.
+	store, err := storage.NewStore(*target, *port)
+	if err != nil {
+		log.Printf("[Driftwood] %v", err)
+	}
 	if err := store.ApplyRememberedConfig(given["target"], given["port"]); err != nil {
 		log.Printf("[Driftwood] %v — continuing with the command-line defaults", err)
 	}
@@ -222,8 +231,14 @@ func handleImport(args []string) {
 
 	log.Printf("[Driftwood] OpenAPI spec loaded: %s v%s", spec.Info.Title, spec.Info.Version)
 
-	// Initialize storage with dummy target (we just need it for baseline storage)
-	store := storage.NewStore("http://localhost:3000", "8787")
+	// Initialize storage with dummy target (we just need it for baseline storage).
+	// A store that could not be read is reported and then written to anyway: this
+	// command exists to put contracts in, and refusing to would leave the user
+	// with neither their old contracts nor the imported ones.
+	store, storeErr := storage.NewStore("http://localhost:3000", "8787")
+	if storeErr != nil {
+		log.Printf("[Driftwood] %v", storeErr)
+	}
 
 	// Import contracts
 	err = spec.ImportToStorage(store)

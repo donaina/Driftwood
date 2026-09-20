@@ -40,7 +40,10 @@ func isolateHome(t *testing.T) {
 
 func TestProxySSRFValidation(t *testing.T) {
 	isolateHome(t)
-	store := storage.NewStore("http://localhost:8787", "8787")
+	store, err := storage.NewStore("http://localhost:8787", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := &mock.MockController{}
 
@@ -92,7 +95,10 @@ func TestProxySSRFValidation(t *testing.T) {
 
 func TestProxyTargetURLRaceSafety(t *testing.T) {
 	isolateHome(t)
-	store := storage.NewStore("http://localhost:8787", "8787")
+	store, err := storage.NewStore("http://localhost:8787", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := &mock.MockController{}
 
@@ -117,7 +123,10 @@ func TestProxyTargetURLRaceSafety(t *testing.T) {
 
 func TestSanitizeTrafficWired(t *testing.T) {
 	isolateHome(t)
-	store := storage.NewStore("http://localhost:8787", "8787")
+	store, err := storage.NewStore("http://localhost:8787", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := &mock.MockController{}
 
@@ -202,7 +211,10 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	prx, err := NewProxyAllowPrivate(backend.URL, store, hub, &mock.MockController{})
 	if err != nil {
@@ -385,7 +397,10 @@ func TestBreakingChangeDoesNotWaitOnTheSidecar(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{})
 	if err != nil {
 		t.Fatal(err)
@@ -516,7 +531,10 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	prx, err := NewProxyAllowPrivate(backend.URL, store, hub, &mock.MockController{})
 	if err != nil {
@@ -646,7 +664,12 @@ func TestResponseLargerThanTheAnalysisCapArrivesWhole(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	prx, err := NewProxyAllowPrivate(backend.URL, storage.NewStore(backend.URL, "8787"),
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	prx, err := NewProxyAllowPrivate(backend.URL, store,
 		events.NewHub(), &mock.MockController{})
 	if err != nil {
 		t.Fatal(err)
@@ -716,7 +739,10 @@ func TestGzippedResponseIsForwardedCompressedAndAnalyzedBounded(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{})
 	if err != nil {
 		t.Fatal(err)

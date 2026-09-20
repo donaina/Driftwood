@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,6 +12,38 @@ import (
 	"github.com/donaina/driftwood/internal/schema"
 	"github.com/donaina/driftwood/pkg/types"
 )
+
+// storeVersion is the format version of the persisted document, written into
+// the file so the two formats can be told apart from their contents.
+//
+// v1 could not be identified at all: it was a bare map of endpoints, so the only
+// thing distinguishing "an empty store" from "a store I cannot parse" was the
+// absence of keys, and nothing distinguished either from a future format. That
+// is why the version is a key of its own rather than, say, inferred from whether
+// some field is present.
+const storeVersion = 2
+
+// defaultProjectID is the project every install has before projects are a
+// user-facing idea, and the one an existing install's endpoints are moved into
+// when its store is converted. The id is stable and dull on purpose: it ends up
+// in the file, and a migrated install should not look like somebody made a
+// project called "Migrated".
+const defaultProjectID = "default"
+
+const defaultProjectName = "Default"
+
+// persistedState is the whole of what is written to baselines.json.
+//
+// One document rather than two files, so the project list, the active project
+// and the endpoints underneath them cannot disagree with each other: two files
+// can be written in either order and a crash between them leaves a store that is
+// internally inconsistent, with no way to tell which half is current.
+type persistedState struct {
+	Version   int                                          `json:"version"`
+	Active    string                                       `json:"active_project"`
+	Projects  []types.Project                              `json:"projects"`
+	Histories map[string]map[string]*types.EndpointHistory `json:"histories"`
+}
 
 type Store struct {
 	mu          sync.RWMutex
@@ -23,6 +56,16 @@ type Store struct {
 	maxAlerts   int
 	persistPath string
 	configPath  string
+
+	/* The projects this install knows about, and which one is current.
+
+	   Held as a map plus an order slice rather than a slice alone because the
+	   document is written from it and a map iterates in a random order — a slice
+	   built by ranging a map would rewrite the project list differently on every
+	   save, so an unchanged store would show as a diff every time. */
+	projects     map[string]*types.Project
+	projectOrder []string
+	active       string
 
 	/* Serialises the rename-into-place writes, and must be held across the whole
 	   mutate-then-snapshot-then-write sequence rather than just the write.
@@ -53,11 +96,23 @@ type Store struct {
 	configured bool
 }
 
-func NewStore(targetURL, proxyPort string) *Store {
+// NewStore builds a store and loads whatever was saved under the home
+// directory.
+//
+// The error reports something the operator needs to know — a saved store that
+// could not be read, or one that was converted from an older format — and not a
+// failure to produce a store. The store returned alongside it is always usable,
+// and the caller is expected to log and carry on: refusing to start because the
+// contracts on disk could not be parsed would turn a recoverable problem into an
+// outage, and the endpoints are re-learned from traffic anyway. What must not
+// happen is the v1 behaviour, which was to discard this error with `_ =` and
+// start empty without mentioning it.
+func NewStore(targetURL, proxyPort string) (*Store, error) {
 	homeDir, _ := os.UserHomeDir()
 	persistDir := filepath.Join(homeDir, ".driftwood")
 	_ = os.MkdirAll(persistDir, 0700)
 
+	now := time.Now()
 	s := &Store{
 		traffics:    make([]types.CapturedTraffic, 0),
 		histories:   make(map[string]*types.EndpointHistory),
@@ -67,6 +122,15 @@ func NewStore(targetURL, proxyPort string) *Store {
 		maxAlerts:   200,
 		persistPath: filepath.Join(persistDir, "baselines.json"),
 		configPath:  filepath.Join(persistDir, "config.json"),
+		projects: map[string]*types.Project{
+			defaultProjectID: {
+				ID:        defaultProjectID,
+				Name:      defaultProjectName,
+				CreatedAt: now,
+			},
+		},
+		projectOrder: []string{defaultProjectID},
+		active:       defaultProjectID,
 		config: types.ProxyConfig{
 			TargetURL:        targetURL,
 			ProxyPort:        proxyPort,
@@ -75,8 +139,9 @@ func NewStore(targetURL, proxyPort string) *Store {
 		},
 	}
 
-	_ = s.loadHistoriesFromFile()
-	return s
+	// Nothing else can see the store yet, so the load assigns its fields directly
+	// rather than taking the lock a shared store would need.
+	return s, s.loadFromFile()
 }
 
 // historyKey is how an endpoint is identified everywhere in this package: one
@@ -119,6 +184,22 @@ func (s *Store) GetConfig() types.ProxyConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.config
+}
+
+// ActiveProject is the project a caller with no opinion should read and write.
+//
+// It exists so that "which project is this" has one answer in one place. The
+// alternative — each accessor deciding for itself — is how two views of the same
+// data end up disagreeing about which project is on screen.
+//
+// Everything currently lives under the active project, because there is only one
+// and nothing can select another. When the switcher arrives, callers that mean
+// "the one the user is looking at" keep calling this, and callers that mean a
+// specific project pass its id.
+func (s *Store) ActiveProject() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.active
 }
 
 // UpdateConfig applies a configuration change and writes it to disk, so the
@@ -602,19 +683,10 @@ func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, decla
 
 	h.Versions = append(h.Versions, cb)
 	h.UpdatedAt = now
-
-	// Marshal under lock
-	var data []byte
-	data, err = json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
 	s.mu.Unlock()
 
-	if err != nil {
-		return nil, fmt.Errorf("marshal failed: %w", err)
-	}
-
-	// Atomic write
-	if err := atomicWriteFile(s.persistPath, data, 0600); err != nil {
-		return nil, fmt.Errorf("atomic write failed: %w", err)
+	if err := s.persistLocked(); err != nil {
+		return nil, err
 	}
 
 	// A copy, not cb itself. cb is now in s.histories, so returning it hands the
@@ -634,24 +706,21 @@ func (s *Store) SetLockedVersion(method, path string, version int) error {
 	defer s.writeMx.Unlock()
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	key := historyKey(method, path)
 	h, exists := s.histories[key]
 	if !exists {
+		s.mu.Unlock()
 		return fmt.Errorf("endpoint not found")
 	}
 	if version < 0 || version > len(h.Versions) {
+		s.mu.Unlock()
 		return fmt.Errorf("invalid version %d (have %d versions)", version, len(h.Versions))
 	}
 	h.LockedVersion = version
 	h.UpdatedAt = time.Now()
+	s.mu.Unlock()
 
-	data, err := json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicWriteFile(s.persistPath, data, 0600)
+	return s.persistLocked()
 }
 
 // ConfirmBaseline turns a provisional version into one a human stands behind.
@@ -671,14 +740,14 @@ func (s *Store) ConfirmBaseline(method, path string, version int) error {
 	defer s.writeMx.Unlock()
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	key := historyKey(method, path)
 	h, exists := s.histories[key]
 	if !exists {
+		s.mu.Unlock()
 		return fmt.Errorf("endpoint not found")
 	}
 	if version <= 0 || version > len(h.Versions) {
+		s.mu.Unlock()
 		return fmt.Errorf("invalid version %d (have %d versions)", version, len(h.Versions))
 	}
 
@@ -686,16 +755,14 @@ func (s *Store) ConfirmBaseline(method, path string, version int) error {
 	if !cb.IsProvisional() {
 		// Already vouched for, or declared by a spec. Nothing to do, and an error
 		// would report a failure for a state the caller asked for and already has.
+		s.mu.Unlock()
 		return nil
 	}
 	cb.Source = types.BaselineSourceManual
 	h.UpdatedAt = time.Now()
+	s.mu.Unlock()
 
-	data, err := json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicWriteFile(s.persistPath, data, 0600)
+	return s.persistLocked()
 }
 
 // DeleteBaseline forgets an endpoint's accepted contract, not the endpoint.
@@ -707,7 +774,12 @@ func (s *Store) ConfirmBaseline(method, path string, version int) error {
 // The entry survives with no versions, so the endpoint reads as unbaselined
 // again (GetBaseline and GetAllBaselines both guard on len(Versions) == 0) while
 // its history stays visible.
-func (s *Store) DeleteBaseline(method, path string) {
+//
+// It reports a failed write. It used to discard one, with `_ = atomicWriteFile`,
+// so a delete that never reached disk looked exactly like one that did — and the
+// contract came back on the next restart with nothing on screen or in the log to
+// explain why.
+func (s *Store) DeleteBaseline(method, path string) error {
 	s.writeMx.Lock()
 	defer s.writeMx.Unlock()
 
@@ -718,14 +790,9 @@ func (s *Store) DeleteBaseline(method, path string) {
 		h.LockedVersion = 0
 		h.UpdatedAt = time.Now()
 	}
-
-	data, err := json.MarshalIndent(s.historiesForPersistLocked(), "", "  ")
 	s.mu.Unlock()
 
-	if err != nil {
-		return
-	}
-	_ = atomicWriteFile(s.persistPath, data, 0600)
+	return s.persistLocked()
 }
 
 func (s *Store) GetAlerts(limit int) []types.Alert {
@@ -777,6 +844,69 @@ func (s *Store) historiesForPersistLocked() map[string]*types.EndpointHistory {
 	return out
 }
 
+// stateForPersistLocked assembles the document to write. The caller must hold
+// s.mu.
+//
+// Projects are emitted in projectOrder rather than by ranging the map, so an
+// unchanged store writes byte-identical bytes: ranging a map would reorder the
+// list on every save and make every write look like a change.
+func (s *Store) stateForPersistLocked() *persistedState {
+	projects := make([]types.Project, 0, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		if p, ok := s.projects[id]; ok {
+			projects = append(projects, *p)
+		}
+	}
+
+	active := s.active
+	if _, ok := s.projects[active]; !ok {
+		if len(projects) > 0 {
+			active = projects[0].ID
+		} else {
+			// A store with no projects at all still writes a document that reads
+			// back as one. That is what a Store built by field literal is — the
+			// shape most of the tests construct — and the alternative is a file
+			// listing no project and holding its histories under the empty
+			// string, which loadFromFile would then have to repair into exactly
+			// this on the next read. Writing the repaired shape directly keeps
+			// the rule that what this function writes, loadFromFile reads back
+			// as the same store.
+			active = defaultProjectID
+			projects = append(projects, types.Project{
+				ID:        defaultProjectID,
+				Name:      defaultProjectName,
+				CreatedAt: time.Now(),
+			})
+		}
+	}
+
+	// Everything currently lives under the active project, because there is only
+	// one and nothing can select another. When projects become selectable this
+	// map gains a second entry and the rest of this function does not change.
+	return &persistedState{
+		Version:   storeVersion,
+		Active:    active,
+		Projects:  projects,
+		Histories: map[string]map[string]*types.EndpointHistory{active: s.historiesForPersistLocked()},
+	}
+}
+
+// persistLocked writes the current state. The caller must hold writeMx; it takes
+// mu itself for the snapshot, so a caller must not be holding mu already.
+func (s *Store) persistLocked() error {
+	s.mu.Lock()
+	data, err := json.MarshalIndent(s.stateForPersistLocked(), "", "  ")
+	s.mu.Unlock()
+
+	if err != nil {
+		return fmt.Errorf("marshal store: %w", err)
+	}
+	if err := atomicWriteFile(s.persistPath, data, 0600); err != nil {
+		return fmt.Errorf("write store: %w", err)
+	}
+	return nil
+}
+
 // atomicWriteFile writes path by creating a sibling temp file and renaming it
 // into place, so a reader never sees a half-written file.
 //
@@ -809,21 +939,185 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-func (s *Store) loadHistoriesFromFile() error {
+// loadFromFile reads the persisted store, converting an older document on the
+// way through. A missing file is a fresh install and not an error.
+//
+// It is the only place that reads this file, and it is deliberately the only
+// place that decides what format it is in — a second reader that guessed
+// differently would reintroduce exactly the problem the version key exists to
+// remove.
+func (s *Store) loadFromFile() error {
 	data, err := os.ReadFile(s.persistPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
 	if err != nil {
-		return err // file doesn't exist is OK
+		return fmt.Errorf("could not read %s: %w", s.persistPath, err)
 	}
 
+	state, converted, err := decodeStore(data)
+	if err != nil {
+		// Moved aside rather than deleted, and the rename's own failure is
+		// reported rather than discarded: a corrupt store that could not be moved
+		// is still sitting where the next write will overwrite it, and that is a
+		// different situation from one safely out of the way.
+		aside := s.persistPath + ".corrupt." + time.Now().Format("20060102-150405")
+		if renameErr := os.Rename(s.persistPath, aside); renameErr != nil {
+			return fmt.Errorf("%s is unreadable (%v) and could not be moved aside (%v), so it has been left in place and will be overwritten by the next save", s.persistPath, err, renameErr)
+		}
+		return fmt.Errorf("%s is unreadable and was moved to %s; starting with no saved contracts: %v", s.persistPath, aside, err)
+	}
+
+	s.projects = make(map[string]*types.Project, len(state.Projects))
+	s.projectOrder = make([]string, 0, len(state.Projects))
+	for i := range state.Projects {
+		p := state.Projects[i]
+		s.projects[p.ID] = &p
+		s.projectOrder = append(s.projectOrder, p.ID)
+	}
+	s.active = state.Active
+	if _, ok := s.projects[s.active]; !ok {
+		// A document naming an active project it does not list is internally
+		// inconsistent, and picking the first project is recoverable where
+		// refusing to start is not.
+		if len(s.projectOrder) > 0 {
+			s.active = s.projectOrder[0]
+		} else {
+			s.active = defaultProjectID
+			s.projects[defaultProjectID] = &types.Project{
+				ID:        defaultProjectID,
+				Name:      defaultProjectName,
+				CreatedAt: time.Now(),
+			}
+			s.projectOrder = []string{defaultProjectID}
+		}
+	}
+
+	if histories, ok := state.Histories[s.active]; ok {
+		s.histories = histories
+	}
+	if s.histories == nil {
+		s.histories = make(map[string]*types.EndpointHistory)
+	}
+
+	if converted {
+		return s.keepV1CopyThenRewrite(data)
+	}
+	return nil
+}
+
+// decodeStore reads either document format and always answers with a current
+// one. The bool reports whether the bytes were v1 and were converted.
+//
+// The two formats are told apart by the presence of the "version" key, not by
+// decoding into persistedState and checking whether Version came back zero.
+// Zero is a meaningful value here, so "decoded as zero" does not mean "was not
+// there": a store carrying an explicit version 0 would be read as v1 by that
+// shortcut, and the check would be answering a question about the parsed value
+// when the question is about which format the bytes are in.
+//
+// The shortcut is also wrong for the more common case of a damaged current
+// store, whose error it would report against the wrong format — "unreadable v1
+// store" for a file that is not v1 — but it is not the data-loss path it looks
+// like: decodeV1 unmarshals into a map of endpoint histories, so a v2 document
+// fails there too and lands in the corruption branch either way. The probe earns
+// its place by naming the format the bytes actually are, not by catching a
+// conversion whose absence is currently guaranteed by the field types.
+func decodeStore(data []byte) (*persistedState, bool, error) {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, false, fmt.Errorf("not a JSON object: %w", err)
+	}
+
+	if _, versioned := probe["version"]; !versioned {
+		state, err := decodeV1(data)
+		return state, true, err
+	}
+
+	var state persistedState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, false, fmt.Errorf("unreadable store document: %w", err)
+	}
+	if state.Version != storeVersion {
+		return nil, false, fmt.Errorf("store document is version %d and this build writes version %d", state.Version, storeVersion)
+	}
+	return &state, false, nil
+}
+
+// decodeV1 reads the bare map of endpoints that v1 wrote, and wraps it in a
+// current document holding one project.
+func decodeV1(data []byte) (*persistedState, error) {
 	var histories map[string]*types.EndpointHistory
 	if err := json.Unmarshal(data, &histories); err != nil {
-		// Backup corrupt file
-		_ = os.Rename(s.persistPath, s.persistPath+".corrupt."+time.Now().Format("20060102-150405"))
-		return err
+		return nil, fmt.Errorf("unreadable v1 store: %w", err)
+	}
+	if histories == nil {
+		histories = make(map[string]*types.EndpointHistory)
 	}
 
-	s.mu.Lock()
-	s.histories = histories
-	s.mu.Unlock()
+	return &persistedState{
+		Version: storeVersion,
+		Active:  defaultProjectID,
+		Projects: []types.Project{{
+			ID:        defaultProjectID,
+			Name:      defaultProjectName,
+			CreatedAt: time.Now(),
+		}},
+		Histories: map[string]map[string]*types.EndpointHistory{
+			defaultProjectID: histories,
+		},
+	}, nil
+}
+
+// keepV1CopyThenRewrite preserves the v1 document under a name of its own before
+// the current format replaces it.
+//
+// The copy is written first and the new document second, and the order is the
+// whole point. baselines.json holds the only copy of the user's contracts until
+// the new document is on disk, so the sequence has to be one where a failure at
+// any point leaves at least one complete copy: write the backup, verify it
+// parses, then overwrite the original. Doing it the other way round — write the
+// new document, then move the old one aside — does not merely risk the data, it
+// cannot work at all: the write has already replaced the file, so the "old" file
+// being moved aside is the new one, and the only copy of v1 is gone.
+//
+// Returns an error, having changed nothing, if the copy cannot be made. The next
+// start reads the untouched v1 file and tries again.
+//
+// A conversion that works is not an error: it is announced and the function
+// returns nil. Returning a notice through the error return would mean the only
+// way to say "this went fine" is to say "this failed", and the next person to
+// call this would reasonably treat it as one.
+func (s *Store) keepV1CopyThenRewrite(v1Data []byte) error {
+	backup := s.persistPath + ".v1"
+	if err := atomicWriteFile(backup, v1Data, 0600); err != nil {
+		return fmt.Errorf("could not keep a copy of the old store at %s, so %s has been left as it was and will be converted again next start: %w", backup, s.persistPath, err)
+	}
+
+	// Read it back and parse it, so "the copy was kept" is something this
+	// function knows rather than something it assumes.
+	check, err := os.ReadFile(backup)
+	if err != nil {
+		return fmt.Errorf("kept a copy of the old store at %s but could not read it back (%v), so %s has been left as it was", backup, err, s.persistPath)
+	}
+	if _, converted, err := decodeStore(check); err != nil || !converted {
+		return fmt.Errorf("the copy of the old store at %s did not read back as valid (%v), so %s has been left as it was", backup, err, s.persistPath)
+	}
+
+	// writeMx is taken here rather than left to the caller because persistLocked
+	// requires it: main.go's load path runs before anything else can see the
+	// store, so there is no contention to lose, but relying on that would make
+	// this function correct only for as long as that stays true.
+	s.writeMx.Lock()
+	err = s.persistLocked()
+	s.writeMx.Unlock()
+	if err != nil {
+		return fmt.Errorf("converted the store to version %d but could not write it (%v); the old store is at %s", storeVersion, err, backup)
+	}
+
+	// Said out loud because it is a one-time change to a file the user may have
+	// backed up, scripted against, or simply want to know about. The v1 version
+	// of this file was silent about everything it did to it.
+	log.Printf("[Driftwood] store converted to version %d; the previous file was kept at %s", storeVersion, backup)
 	return nil
 }

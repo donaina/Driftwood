@@ -62,7 +62,10 @@ func newHarnessWith(t *testing.T, siteHandler http.Handler) *harness {
 	}))
 	t.Cleanup(backend.Close)
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
 
@@ -723,5 +726,40 @@ func TestConfigRouteIgnoresAnEmptyBody(t *testing.T) {
 
 	if after := h.store.GetConfig(); after != before {
 		t.Errorf("an empty body changed the config:\n before %+v\n after  %+v", before, after)
+	}
+}
+
+// A delete that could not be written is reported, not answered with "ok".
+//
+// The store has to fail its write for this to mean anything, so the store's
+// directory is made unwritable. That is a real failure mode — a full disk, a
+// permissions change, a container with a read-only mount — and it is the one the
+// route previously could not see: the store discarded the write error, so a
+// delete that never reached disk returned the same 200 as one that did, and the
+// contract reappeared on the next restart with nothing to explain it.
+func TestDeleteBaselineReportsAFailedWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where a read-only directory is not enforced")
+	}
+
+	h := newHarness(t)
+	h.postJSON(t, "/_driftwood/api/baselines/delete",
+		`{"method":"GET","path":"/_driftwood/mock/users"}`)
+
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = filepath.Join(dir, ".driftwood")
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+	resp := h.postJSON(t, "/_driftwood/api/baselines/delete",
+		`{"method":"GET","path":"/_driftwood/mock/users"}`)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("a delete whose write failed answered %d, want %d",
+			resp.StatusCode, http.StatusInternalServerError)
 	}
 }

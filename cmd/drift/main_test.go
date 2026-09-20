@@ -15,7 +15,11 @@ func newTestStore(t *testing.T) *storage.Store {
 	// NewStore resolves its persistence paths from $HOME, so point it at a temp
 	// directory rather than the developer's real ~/.driftwood.
 	t.Setenv("HOME", t.TempDir())
-	return storage.NewStore("http://localhost:3000", "8787")
+	s, err := storage.NewStore("http://localhost:3000", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	return s
 }
 
 // The seed is the only contract Driftwood invents, and it may only invent one
@@ -76,7 +80,10 @@ func TestSeedingDoesNotTouchTheRealHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	store := storage.NewStore("http://localhost:3000", "8787")
+	store, err := storage.NewStore("http://localhost:3000", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	seedDemoBaselines(store)
 
 	// The store must have read the redirected HOME, or the redirect is fiction

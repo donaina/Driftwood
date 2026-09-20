@@ -53,7 +53,7 @@ func TestStore_RoundTrip(t *testing.T) {
 			InterceptJSON:    true,
 		},
 	}
-	if err := s2.loadHistoriesFromFile(); err != nil {
+	if err := s2.loadFromFile(); err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
 
@@ -88,7 +88,7 @@ func TestStore_CorruptFileRecovery(t *testing.T) {
 		alertOrder:  make([]string, 0),
 	}
 
-	err := s.loadHistoriesFromFile()
+	err := s.loadFromFile()
 	if err == nil {
 		t.Fatal("expected error for corrupt file")
 	}
@@ -117,14 +117,35 @@ func TestStore_AtomicWrite(t *testing.T) {
 		_, _ = s.SaveBaseline("GET", "/api/test", `{"v": `+string(rune(i+'0'))+`}`)
 	}
 
-	data, err := os.ReadFile(persistPath)
+	if histories := readPersistedHistories(t, persistPath); histories["GET:/api/test"] == nil {
+		t.Error("atomic write left no readable endpoint in the store document")
+	}
+}
+
+// readPersistedHistories returns the endpoints the persisted store holds for its
+// active project.
+//
+// Tests read the file through here rather than unmarshalling it themselves, so
+// the on-disk shape is known in one place. It has changed once — the document
+// gained a version key, a project list and a level of nesting around the
+// histories — and every assertion that reached into the raw bytes had to change
+// with it.
+func readPersistedHistories(t *testing.T, path string) map[string]*types.EndpointHistory {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("reading %s: %v", path, err)
 	}
-	var histories map[string]*types.EndpointHistory
-	if err := json.Unmarshal(data, &histories); err != nil {
-		t.Errorf("atomic write produced invalid JSON: %v", err)
+	var doc persistedState
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("%s is not a readable store document: %v", path, err)
 	}
+	h, ok := doc.Histories[doc.Active]
+	if !ok {
+		t.Fatalf("%s holds no histories for its active project %q", path, doc.Active)
+	}
+	return h
 }
 
 func TestStore_RingBufferTraffic(t *testing.T) {
@@ -335,7 +356,7 @@ func TestStore_VersionHistoryPreserved(t *testing.T) {
 		persistPath: persistPath,
 		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 	}
-	_ = s2.loadHistoriesFromFile()
+	_ = s2.loadFromFile()
 
 	hist2, _ := s2.GetHistory("GET", "/api/users")
 	if len(hist2.Versions) != 3 {
@@ -534,14 +555,7 @@ func TestStore_ObservationsAreNotPersisted(t *testing.T) {
 	// The file holds contracts. Traffic telemetry is per-process, the same way
 	// the traffic ring buffer is, so a restart starts from zero observations
 	// rather than from a snapshot of some previous run.
-	raw, err := os.ReadFile(s.persistPath)
-	if err != nil {
-		t.Fatalf("reading persist file: %v", err)
-	}
-	var onDisk map[string]*types.EndpointHistory
-	if err := json.Unmarshal(raw, &onDisk); err != nil {
-		t.Fatalf("unmarshalling persist file: %v", err)
-	}
+	onDisk := readPersistedHistories(t, s.persistPath)
 	entry := onDisk["GET:/api/users"]
 	if entry == nil {
 		t.Fatal("endpoint missing from persist file")
@@ -563,8 +577,8 @@ func TestStore_ObservationsAreNotPersisted(t *testing.T) {
 		maxAlerts:   200,
 		persistPath: s.persistPath,
 	}
-	if err := reloaded.loadHistoriesFromFile(); err != nil {
-		t.Fatalf("loadHistoriesFromFile: %v", err)
+	if err := reloaded.loadFromFile(); err != nil {
+		t.Fatalf("loadFromFile: %v", err)
 	}
 	h, ok := reloaded.GetHistory("GET", "/api/users")
 	if !ok {
@@ -709,8 +723,8 @@ func TestStore_SetLockedVersion_PinsAndSurvivesReload(t *testing.T) {
 		maxAlerts:   200,
 		persistPath: s.persistPath,
 	}
-	if err := reloaded.loadHistoriesFromFile(); err != nil {
-		t.Fatalf("loadHistoriesFromFile: %v", err)
+	if err := reloaded.loadFromFile(); err != nil {
+		t.Fatalf("loadFromFile: %v", err)
 	}
 	if b, _ := reloaded.GetBaseline("GET", "/api/users"); b.Version != 1 {
 		t.Errorf("after reload: baseline version = %d, want 1 (the pin did not persist)", b.Version)
@@ -973,8 +987,8 @@ func TestStore_ConfirmBaseline_SurvivesReload(t *testing.T) {
 	reloaded := newObsStore(t)
 	reloaded.persistPath = s.persistPath
 	reloaded.configPath = s.configPath
-	if err := reloaded.loadHistoriesFromFile(); err != nil {
-		t.Fatalf("loadHistoriesFromFile: %v", err)
+	if err := reloaded.loadFromFile(); err != nil {
+		t.Fatalf("loadFromFile: %v", err)
 	}
 
 	hist, ok := reloaded.GetHistory("GET", "/api/users")
@@ -1247,14 +1261,7 @@ func TestConcurrentSavesLandComplete(t *testing.T) {
 		}
 	}
 
-	data, err := os.ReadFile(persistPath)
-	if err != nil {
-		t.Fatalf("reading the persisted file: %v", err)
-	}
-	var onDisk map[string]*types.EndpointHistory
-	if err := json.Unmarshal(data, &onDisk); err != nil {
-		t.Fatalf("the persisted file is not valid JSON: %v", err)
-	}
+	onDisk := readPersistedHistories(t, persistPath)
 
 	if len(onDisk) != saves {
 		var missing []string

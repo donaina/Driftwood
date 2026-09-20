@@ -29,7 +29,10 @@ func TestEndToEndProxyAndDiff(t *testing.T) {
 	defer targetServer.Close()
 
 	// Initialize Driftwood components
-	store := storage.NewStore(targetServer.URL, "8787")
+	store, err := storage.NewStore(targetServer.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
 
