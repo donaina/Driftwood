@@ -335,6 +335,140 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 }
 
 /*
+A breaking change must not make the client wait on the sidecar.
+
+	explainAsync is named for what it is meant to do, is documented as returning
+	immediately, and the block that calls it reasons at length about what "the
+	sidecar takes up to 8s" would cost the caller. None of that held while the
+	call had no `go`: the handler could not return until the sidecar answered.
+
+	Measured through a real listener rather than a ResponseRecorder, because the
+	question is what a client sees and a recorder cannot show it. Reading the body
+	to EOF is deliberate — it is what cannot finish until the handler has, if the
+	response is still sitting in the server's write buffer.
+*/
+func TestBreakingChangeDoesNotWaitOnTheSidecar(t *testing.T) {
+	isolateHome(t)
+
+	// Buffered, so the handler never blocks announcing itself.
+	entered := make(chan struct{}, 4)
+	release := make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"summary":"held open"}`))
+	}))
+	/* LIFO, and the order is load-bearing: Close waits for the handler still
+	   sitting on <-release, so unblocking has to be registered after it and
+	   therefore run first. The other order hangs the suite on the failing path —
+	   the one moment the failure message is worth having. */
+	t.Cleanup(sidecar.Close)
+	t.Cleanup(unblock)
+
+	oldExplainURL := explainURL
+	explainURL = sidecar.URL
+	t.Cleanup(func() { explainURL = oldExplainURL })
+
+	// The first response becomes the baseline; the second breaks it.
+	var hits int64
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if atomic.AddInt64(&hits, 1) == 1 {
+			_, _ = w.Write([]byte(`{"count":1}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":"one"}`))
+	}))
+	defer backend.Close()
+
+	store := storage.NewStore(backend.URL, "8787")
+	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proxySrv := httptest.NewServer(prx.Handler())
+	defer proxySrv.Close()
+
+	// No t.Fatal below the goroutine boundary: it belongs to the test goroutine.
+	fetch := func() error {
+		resp, err := http.Get(proxySrv.URL + "/thing")
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		_, err = io.Copy(io.Discard, resp.Body)
+		return err
+	}
+
+	if err := fetch(); err != nil {
+		t.Fatalf("establishing the baseline: %v", err)
+	}
+
+	type result struct {
+		took time.Duration
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		start := time.Now()
+		err := fetch()
+		done <- result{time.Since(start), err}
+	}()
+
+	// Without this the test proves nothing: a proxy that never consulted the
+	// sidecar would satisfy the assertion below for entirely the wrong reason.
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the sidecar was never called, so there was nothing to wait on")
+	}
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("the breaking request failed: %v", r.err)
+		}
+		if r.took > 2*time.Second {
+			t.Errorf("the breaking request took %s with the sidecar held open: the client "+
+				"waited on a service this product is built to work without", r.took)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the breaking request had not returned 3s in, with the sidecar held open: " +
+			"explainAsync is being called synchronously")
+	}
+
+	/* Let the sidecar answer, then wait for the explanation to be filed.
+
+	   Two reasons, and the second is not obvious. It asserts the `go` made the
+	   call concurrent rather than absent — a dropped explanation passes every
+	   timing assertion above. And it puts the read of explainURL inside the
+	   goroutine before a lock the test also takes, which gives the race detector
+	   the edge it needs; the write in the cleanup above is otherwise unsynchronized
+	   against it. */
+	unblock()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		alerts := store.GetAlerts(10)
+		if len(alerts) == 1 && alerts[0].AIExplanation != nil {
+			if got := alerts[0].AIExplanation["summary"]; got != "held open" {
+				t.Errorf("stored explanation summary = %v", got)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the sidecar answered but nothing filed the explanation: %d alerts stored", len(alerts))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+/*
 A backend that fails is not a backend whose contract changed.
 
 	Diffing an error body against a baseline captured from a success reports
