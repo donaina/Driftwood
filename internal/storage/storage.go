@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -33,6 +34,28 @@ const storeVersion = 2
 const defaultProjectID = "default"
 
 const defaultProjectName = "Default"
+
+/*
+Sentinel errors for the project operations, so a caller can tell apart the
+
+	reasons one of them was refused.
+
+	The alternative was to match on the message text, which is the shape of bug
+	that makes a 404 depend on someone's wording — and every one of these reaches
+	an HTTP status code, where the difference between 400, 404 and 409 is the
+	whole of what the caller learns. Wrapped rather than returned bare so the
+	existing context in each message survives.
+*/
+var (
+	// ErrNoSuchProject means the id names no project in this store.
+	ErrNoSuchProject = errors.New("no such project")
+	// ErrProjectNeedsName means a name was empty or only whitespace.
+	ErrProjectNeedsName = errors.New("a project needs a name")
+	// ErrLastProject means deleting was refused because it would leave none.
+	ErrLastProject = errors.New("this is the only project, and Driftwood always has one")
+	// ErrTooManyProjects means the install is at maxProjects.
+	ErrTooManyProjects = errors.New("too many projects")
+)
 
 // persistedState is the whole of what is written to baselines.json.
 //
@@ -326,6 +349,23 @@ func (s *Store) ProjectExists(id string) bool {
 }
 
 // ListProjects returns every project in creation order, and which one is active.
+// GetProject returns one project by id.
+//
+// It exists because writing a project's target does not update a copy the caller
+// already holds: CreateProject returns a value, SetProjectTarget mutates the
+// store's own, and a handler that returned the first would report a project it
+// had just configured as having no backend.
+func (s *Store) GetProject(id string) (types.Project, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	p, ok := s.projects[id]
+	if !ok {
+		return types.Project{}, false
+	}
+	return *p, true
+}
+
 func (s *Store) ListProjects() ([]types.Project, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -349,14 +389,14 @@ func (s *Store) ListProjects() ([]types.Project, string) {
 func (s *Store) CreateProject(name string) (*types.Project, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return nil, fmt.Errorf("a project needs a name")
+		return nil, ErrProjectNeedsName
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if len(s.projects) >= maxProjects {
-		return nil, fmt.Errorf("this install is at its limit of %d projects", maxProjects)
+		return nil, fmt.Errorf("%w: this install is at its limit of %d", ErrTooManyProjects, maxProjects)
 	}
 
 	p := &types.Project{
@@ -427,7 +467,7 @@ func slugify(name string) string {
 func (s *Store) RenameProject(id, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return fmt.Errorf("a project needs a name")
+		return ErrProjectNeedsName
 	}
 
 	s.writeMx.Lock()
@@ -437,7 +477,7 @@ func (s *Store) RenameProject(id, name string) error {
 	p, ok := s.projects[id]
 	if !ok {
 		s.mu.Unlock()
-		return fmt.Errorf("no project %q", id)
+		return fmt.Errorf("%w: %q", ErrNoSuchProject, id)
 	}
 	p.Name = name
 	s.mu.Unlock()
@@ -461,7 +501,7 @@ func (s *Store) SetProjectTarget(id, targetURL string, allowPrivate bool) error 
 	p, ok := s.projects[id]
 	if !ok {
 		s.mu.Unlock()
-		return fmt.Errorf("no project %q", id)
+		return fmt.Errorf("%w: %q", ErrNoSuchProject, id)
 	}
 	p.TargetURL = targetURL
 	p.TargetAllowPrivate = allowPrivate
@@ -533,7 +573,7 @@ func (s *Store) SetActiveProject(id string) error {
 	s.mu.Lock()
 	if _, ok := s.projects[id]; !ok {
 		s.mu.Unlock()
-		return fmt.Errorf("no project %q", id)
+		return fmt.Errorf("%w: %q", ErrNoSuchProject, id)
 	}
 	s.active = id
 	s.ensureProjectLocked(id)
@@ -557,11 +597,11 @@ func (s *Store) DeleteProject(id string) error {
 	s.mu.Lock()
 	if _, ok := s.projects[id]; !ok {
 		s.mu.Unlock()
-		return fmt.Errorf("no project %q", id)
+		return fmt.Errorf("%w: %q", ErrNoSuchProject, id)
 	}
 	if len(s.projects) <= 1 {
 		s.mu.Unlock()
-		return fmt.Errorf("this is the only project, and Driftwood always has one")
+		return ErrLastProject
 	}
 
 	// The alerts first. They are keyed by traffic ID rather than by project, so

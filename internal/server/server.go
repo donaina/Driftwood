@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/pkg/types"
 	"github.com/donaina/driftwood/site"
 	"github.com/donaina/driftwood/web"
 )
@@ -114,7 +116,12 @@ func (s *Server) Router() http.HandlerFunc {
 
 		switch path {
 		case proxy.ControlPrefix + "/events":
-			s.hub.SSEHandler(w, r)
+			projectID, err := s.projectFor(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			s.hub.SSEHandler(w, r, projectID)
 		case proxy.ControlPrefix + "/api/traffic":
 			s.handleTraffic(w, r)
 		case proxy.ControlPrefix + "/api/traffic/clear":
@@ -139,6 +146,16 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleExportTypeScript(w, r)
 		case proxy.ControlPrefix + "/api/mock/mode":
 			s.handleMockMode(w, r)
+		case proxy.ControlPrefix + "/api/projects":
+			s.handleProjects(w, r)
+		case proxy.ControlPrefix + "/api/projects/create":
+			s.handleCreateProject(w, r)
+		case proxy.ControlPrefix + "/api/projects/update":
+			s.handleUpdateProject(w, r)
+		case proxy.ControlPrefix + "/api/projects/delete":
+			s.handleDeleteProject(w, r)
+		case proxy.ControlPrefix + "/api/projects/active":
+			s.handleSetActiveProject(w, r)
 		default:
 			// An unmatched control-API path is a 404 in JSON, not the dashboard.
 			// Returning HTML to a client that mistyped an endpoint hides the
@@ -170,8 +187,51 @@ func setControlCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Driftwood-Target")
 }
 
+// errNoSuchProject is projectFor's refusal, and aliases the store's own sentinel
+// so a handler has one thing to test rather than two names for the same
+// condition — a request naming a project that does not exist and a body naming
+// one are the same mistake and deserve the same answer.
+var errNoSuchProject = storage.ErrNoSuchProject
+
+/*
+projectFor resolves which project a request is about.
+
+	An explicit ?project= wins, so a caller can read one client's baselines while
+	another is active — which is what an export or a script needs. Otherwise the
+	active project answers, so the ordinary case needs no parameter and the
+	dashboard's views follow its switcher.
+
+	A named project that does not exist is an error rather than a fallback to the
+	active one. Falling back would answer a question about project B with project
+	A's data under no indication that it had done so — the quiet misattribution
+	this codebase is strict about. It would also mean a typo in a script silently
+	read the wrong client's contracts.
+
+	This is applied uniformly to reads and to writes. It was tempting to honour the
+	parameter on reads only, since reads are the ones a caller might legitimately
+	want cross-project — but then a caller that named a project it was not looking
+	at would read that project and write the active one, which is the same
+	mismatch arrived at from the other side. One rule, and the two cannot
+	disagree.
+*/
+func (s *Server) projectFor(r *http.Request) (string, error) {
+	id := r.URL.Query().Get("project")
+	if id == "" {
+		return s.store.ActiveProject(), nil
+	}
+	if !s.store.ProjectExists(id) {
+		return "", fmt.Errorf("%w: %q", errNoSuchProject, id)
+	}
+	return id, nil
+}
+
 func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
-	traffics := s.store.GetTraffics(s.store.ActiveProject(), 100)
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	traffics := s.store.GetTraffics(projectID, 100)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(traffics)
 }
@@ -181,13 +241,24 @@ func (s *Server) handleClearTraffic(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	s.store.ClearTraffic(s.store.ActiveProject())
-	s.hub.Publish("traffic_cleared", nil)
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	s.store.ClearTraffic(projectID)
+	s.hub.Publish(projectID, "traffic_cleared", nil)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleBaselines(w http.ResponseWriter, r *http.Request) {
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
 	if r.Method == http.MethodPost {
 		var req struct {
 			Method  string `json:"method"`
@@ -199,18 +270,18 @@ func (s *Server) handleBaselines(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		cb, err := s.store.SaveBaseline(s.store.ActiveProject(), req.Method, req.Path, req.Payload)
+		cb, err := s.store.SaveBaseline(projectID, req.Method, req.Path, req.Payload)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		s.hub.Publish("baseline_updated", cb)
+		s.hub.Publish(projectID, "baseline_updated", cb)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(cb)
 		return
 	}
 
-	baselines := s.store.GetAllBaselines(s.store.ActiveProject())
+	baselines := s.store.GetAllBaselines(projectID)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(baselines)
 }
@@ -218,6 +289,11 @@ func (s *Server) handleBaselines(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteBaseline(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	var req struct {
@@ -232,11 +308,11 @@ func (s *Server) handleDeleteBaseline(w http.ResponseWriter, r *http.Request) {
 	// survive a restart, and the contract will be back. Same reasoning as the
 	// config route above: an operation reported as done that was not persisted
 	// coming undone on the next restart is the failure this reports instead.
-	if err := s.store.DeleteBaseline(s.store.ActiveProject(), req.Method, req.Path); err != nil {
+	if err := s.store.DeleteBaseline(projectID, req.Method, req.Path); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.hub.Publish("baseline_deleted", req)
+	s.hub.Publish(projectID, "baseline_deleted", req)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
@@ -259,6 +335,11 @@ func (s *Server) handleLockBaseline(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
 	var req struct {
 		Method  string `json:"method"`
 		Path    string `json:"path"`
@@ -269,17 +350,17 @@ func (s *Server) handleLockBaseline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.SetLockedVersion(s.store.ActiveProject(), req.Method, req.Path, req.Version); err != nil {
+	if err := s.store.SetLockedVersion(projectID, req.Method, req.Path, req.Version); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	hist, ok := s.store.GetHistory(s.store.ActiveProject(), req.Method, req.Path)
+	hist, ok := s.store.GetHistory(projectID, req.Method, req.Path)
 	if !ok {
 		http.Error(w, "endpoint not found", http.StatusNotFound)
 		return
 	}
-	s.hub.Publish("baseline_locked", map[string]interface{}{
+	s.hub.Publish(projectID, "baseline_locked", map[string]interface{}{
 		"method":  req.Method,
 		"path":    req.Path,
 		"version": req.Version,
@@ -301,6 +382,11 @@ func (s *Server) handleConfirmBaseline(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
 	var req struct {
 		Method  string `json:"method"`
 		Path    string `json:"path"`
@@ -311,17 +397,17 @@ func (s *Server) handleConfirmBaseline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.ConfirmBaseline(s.store.ActiveProject(), req.Method, req.Path, req.Version); err != nil {
+	if err := s.store.ConfirmBaseline(projectID, req.Method, req.Path, req.Version); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	hist, ok := s.store.GetHistory(s.store.ActiveProject(), req.Method, req.Path)
+	hist, ok := s.store.GetHistory(projectID, req.Method, req.Path)
 	if !ok {
 		http.Error(w, "endpoint not found", http.StatusNotFound)
 		return
 	}
-	s.hub.Publish("baseline_confirmed", map[string]interface{}{
+	s.hub.Publish(projectID, "baseline_confirmed", map[string]interface{}{
 		"method":  req.Method,
 		"path":    req.Path,
 		"version": req.Version,
@@ -421,7 +507,15 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		s.hub.Publish("config_updated", cfg)
+		/* Install-level, so every subscriber hears it.
+
+		   The config is both: proxy_port and the booleans belong to the install,
+		   while target_url is the active project's. Publishing it to the active
+		   project's subscribers alone would leave another project's open dashboard
+		   holding stale booleans, and it is the booleans — auto_save_baseline,
+		   intercept_json, dev_mock_mode — that change what the proxy does to every
+		   project's traffic. */
+		s.hub.Publish("", "config_updated", cfg)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -442,19 +536,34 @@ func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
-	alerts := s.store.GetAlerts(s.store.ActiveProject(), 50)
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	alerts := s.store.GetAlerts(projectID, 50)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(alerts)
 }
 
 func (s *Server) handleHistories(w http.ResponseWriter, r *http.Request) {
-	histories := s.store.GetAllHistories(s.store.ActiveProject())
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	histories := s.store.GetAllHistories(projectID)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(histories)
 }
 
 func (s *Server) handleExportTypeScript(w http.ResponseWriter, r *http.Request) {
-	baselines := s.store.GetAllBaselines(s.store.ActiveProject())
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	baselines := s.store.GetAllBaselines(projectID)
 	var sb strings.Builder
 
 	sb.WriteString("// ⚡ Generated by Driftwood TypeScript Exporter\n")
@@ -536,6 +645,218 @@ func cleanInterfaceName(path string) string {
 	return res.String()
 }
 
+// projectList is the shape every project route answers with: which project is
+// active, and the projects themselves in their stored order.
+//
+// One shape for all of them rather than each returning only what it changed, so
+// the dashboard can replace its whole view of the project list from any response
+// instead of patching its own copy and hoping the two agree.
+type projectList struct {
+	Active   string          `json:"active"`
+	Projects []types.Project `json:"projects"`
+}
+
+func (s *Server) projectList() projectList {
+	projects, active := s.store.ListProjects()
+	return projectList{Active: active, Projects: projects}
+}
+
+// announceProjects tells every subscriber the project list changed.
+//
+// Install-level, so it reaches dashboards watching any project: a project
+// appearing, disappearing or being renamed is news to all of them, and a client
+// watching a project another operator just deleted needs to hear about it rather
+// than sit on a stream that will never carry another event.
+func (s *Server) announceProjects() {
+	s.hub.Publish("", "projects_updated", s.projectList())
+}
+
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.projectList())
+}
+
+// handleCreateProject adds a project, optionally with its target already set.
+//
+// The target is validated before the project is made. Creating first and undoing
+// on failure would leave a window in which a project exists holding a target
+// nothing checked, and a rollback path that has to be correct in the one place a
+// mistake means a client pointing at nothing.
+func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name      string `json:"name"`
+		TargetURL string `json:"target_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// The same loopback rule as retargeting an existing project: a private
+	// backend can only be named from this machine. Checking it here rather than
+	// in the store keeps the decision where the request's origin is knowable.
+	allowPrivate := isLoopbackRequest(r)
+	if req.TargetURL != "" {
+		if err := s.proxy.ValidateTarget(req.TargetURL, allowPrivate); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	project, err := s.store.CreateProject(req.Name)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, storage.ErrTooManyProjects) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	if req.TargetURL != "" {
+		if err := s.proxy.SetProjectTarget(project.ID, req.TargetURL, allowPrivate); err != nil {
+			// The project exists and will keep its unset target, which is a state
+			// it is allowed to be in and which answers 502 rather than borrowing
+			// another project's backend. Reported rather than hidden.
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Re-read rather than returning the struct CreateProject produced: the target
+	// was written into the store's copy, so the local one still says the project
+	// has no backend. Returning it would tell a dashboard that a project it just
+	// configured points at nothing.
+	if current, ok := s.store.GetProject(project.ID); ok {
+		project = &current
+	}
+
+	s.announceProjects()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(project)
+}
+
+// handleUpdateProject renames a project, retargets it, or both.
+//
+// Retargeting goes through the proxy so the SSRF rule applies and the routing
+// snapshot is rebuilt — a target written straight into the store would be one the
+// proxy does not know about until something else happened to change routing.
+func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		// A pointer so that an omitted target and one sent as "" are
+		// distinguishable. They are not the same request: omitting it means "leave
+		// the target alone", and an empty string is a target, just not one that
+		// parses.
+		TargetURL *string `json:"target_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !s.store.ProjectExists(req.ID) {
+		http.Error(w, fmt.Sprintf("%v: %q", storage.ErrNoSuchProject, req.ID), http.StatusNotFound)
+		return
+	}
+
+	if req.Name != "" {
+		if err := s.store.RenameProject(req.ID, req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if req.TargetURL != nil {
+		allowPrivate := isLoopbackRequest(r)
+		err := s.proxy.SetProjectTarget(req.ID, *req.TargetURL, allowPrivate)
+		switch {
+		case err == nil:
+		case errors.Is(err, proxy.ErrInvalidTarget):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	s.announceProjects()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.projectList())
+}
+
+func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.DeleteProject(req.ID); err != nil {
+		status := http.StatusBadRequest
+		switch {
+		case errors.Is(err, storage.ErrNoSuchProject):
+			status = http.StatusNotFound
+		case errors.Is(err, storage.ErrLastProject):
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	s.announceProjects()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.projectList())
+}
+
+// handleSetActiveProject switches which project the proxy serves.
+//
+// The proxy is not told directly. The store records the change and bumps its
+// routing generation, and the next request that finds its snapshot out of date
+// rebuilds it — so a switch cannot be half-applied by a handler that forgot to
+// mention it to one of the two.
+func (s *Server) handleSetActiveProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.SetActiveProject(req.ID); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, storage.ErrNoSuchProject) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	s.announceProjects()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.projectList())
+}
+
 func (s *Server) handleMockMode(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var req struct {
@@ -546,7 +867,9 @@ func (s *Server) handleMockMode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.mockCtrl.SetMode(mock.MockMode(req.Mode))
-		s.hub.Publish("mock_mode_changed", map[string]string{"mode": req.Mode})
+		// Install-level: the mock simulator stands in for every target at once,
+		// so a mode change is not any one project's news.
+		s.hub.Publish("", "mock_mode_changed", map[string]string{"mode": req.Mode})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

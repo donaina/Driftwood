@@ -32,6 +32,10 @@ type harness struct {
 	router *httptest.Server
 	hits   *int64
 	store  *storage.Store
+	// hub is the live hub the server publishes to, so a test can subscribe to the
+	// real stream and assert what a browser would receive rather than what the
+	// server intended to send.
+	hub *events.Hub
 }
 
 // newHarness builds a server with no marketing site, which is the default and
@@ -77,7 +81,7 @@ func newHarnessWith(t *testing.T, siteHandler http.Handler) *harness {
 	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl, siteHandler).Router())
 	t.Cleanup(front.Close)
 
-	return &harness{router: front, hits: &hits, store: store}
+	return &harness{router: front, hits: &hits, store: store, hub: hub}
 }
 
 func (h *harness) do(t *testing.T, method, path string, hdr map[string]string) *http.Response {

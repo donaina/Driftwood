@@ -342,6 +342,21 @@ func (p *Proxy) knownProject(projectID string) bool {
 	return p.store.ProjectExists(projectID)
 }
 
+// ValidateTarget reports whether a target would be accepted, without recording it.
+//
+// It exists so creating a project can check its target before the project is
+// made. The alternative was to create first and delete on failure, which leaves
+// a window where a project exists holding a target nobody validated — and a
+// rollback path that has to be right, in the one place a mistake means a client
+// pointing at nothing. It is the same check SetProjectTarget makes: one
+// implementation, reached two ways.
+func (p *Proxy) ValidateTarget(target string, allowPrivate bool) error {
+	if _, err := parseAndValidateTarget(target, allowPrivate); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidTarget, err)
+	}
+	return nil
+}
+
 // RefreshRouting rebuilds the proxy's view of where requests go from the store.
 //
 // Everything that changes a project's target, or which project is active, has
@@ -808,7 +823,7 @@ func (p *Proxy) processAndStoreTraffic(
 	capture.SanitizeTraffic(&traffic)
 
 	p.store.AddTraffic(projectID, traffic)
-	p.hub.Publish("traffic", traffic)
+	p.hub.Publish(projectID, "traffic", traffic)
 
 	if contractDiff != nil && contractDiff.HasBreakingChanges {
 		alertData := map[string]interface{}{
@@ -834,7 +849,7 @@ func (p *Proxy) processAndStoreTraffic(
 		   The explanation now travels the other way: the goroutine files it
 		   against the stored alert through UpdateAlertAIExplanation, the seam
 		   that method was written for, and then announces that it landed. */
-		p.hub.Publish("alert", alertData)
+		p.hub.Publish(projectID, "alert", alertData)
 
 		/* The `go` is the whole of "the explanation follows it".
 
@@ -936,7 +951,7 @@ func (p *Proxy) explainAsync(projectID, trafficID, method, path string, contract
 	   A distinct event type rather than a second "alert": re-publishing the
 	   alert would fire the browser's breaking-change toast a second time for a
 	   change it has already announced. */
-	p.hub.Publish("alert_explained", map[string]interface{}{"traffic_id": trafficID})
+	p.hub.Publish(projectID, "alert_explained", map[string]interface{}{"traffic_id": trafficID})
 }
 
 func sanitizeHeaders(headers map[string]string) map[string]string {

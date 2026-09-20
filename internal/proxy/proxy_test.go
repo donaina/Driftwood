@@ -231,7 +231,12 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 	}
 	received := make(chan broadcast, 32)
 
-	sse := httptest.NewServer(http.HandlerFunc(hub.SSEHandler))
+	// Subscribed with no scope, so this watches every project — the alerts below
+	// belong to the active one, and an empty scope receives install-level events
+	// too. See events.scopeMatches.
+	sse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hub.SSEHandler(w, r, "")
+	}))
 	defer sse.Close()
 
 	stream, err := http.Get(sse.URL)
