@@ -143,6 +143,27 @@ func NewProxyAllowPrivate(target string, store *storage.Store, hub *events.Hub, 
 	return newProxyWithTarget(target, store, hub, mockCtrl, true)
 }
 
+// NewProxyWithoutTarget builds a proxy for an install whose active project has
+// nowhere to dial.
+//
+// A project with no target is a state the dashboard creates rather than an
+// error — CreateProject documents it as legitimate, and RefreshRouting already
+// leaves such a project out of the routing snapshot, so every request to it
+// answers 502 "no target configured". Startup was the one place that treated
+// the state as fatal, and refusing to start took every *other* project down
+// with the one that had no backend: a client with no backend of its own could
+// stop the operator monitoring the clients that had one.
+//
+// Nothing is written to the store here. There is no target to write, and the
+// store is where a target comes from rather than where one is invented, so the
+// active project stays targetless until somebody sets one — which is what makes
+// this constructor honest, and what keeps it from quietly promoting the flag's
+// target onto a project the operator left empty on purpose.
+func NewProxyWithoutTarget(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
+	p := newProxy(store, hub, mockCtrl)
+	return p, p.RefreshRouting()
+}
+
 // newProxyWithTarget records the operator's target as the active project's and
 // takes the first routing snapshot from the store.
 //

@@ -530,9 +530,27 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 // on a configuration endpoint is a field some client will eventually try to set.
 // (handleConfig no longer stores a request body wholesale — see configPatch — so
 // the older reason for splitting this out no longer applies, but this one does.)
+// handleSetupState tells the dashboard whether to open the setup wizard, whose
+// first question is "where is your API running?".
+//
+// So what it reports is whether that question is answered for the project now
+// in force, not whether anyone has ever saved a setting. IsConfigured alone
+// answers the second question, and it says yes to the install that was pointed
+// at a backend once — which is exactly the install that can go on to create a
+// second project with no backend, and had no way to be asked about it. That
+// gap is what let a targetless active project reach startup with nothing
+// prompting for a target; the wizard was the one surface that asks, and it was
+// switched off by a flag that stopped meaning the right thing the moment a
+// second project existed.
+//
+// The wizard is dismissible, so an operator who arrives here mid-life with a
+// project they are not ready to point anywhere can close it and carry on.
 func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
+	url, _, ok := s.store.ProjectTarget(s.store.ActiveProject())
+	configured := s.store.IsConfigured() && ok && strings.TrimSpace(url) != ""
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]bool{"configured": s.store.IsConfigured()})
+	_ = json.NewEncoder(w).Encode(map[string]bool{"configured": configured})
 }
 
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {

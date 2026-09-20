@@ -94,7 +94,7 @@ func main() {
 	// Private targets are allowed here because the operator named this one: the
 	// API being sniffed is usually on localhost. A target that arrives over HTTP
 	// instead is checked — see Proxy.SetTarget.
-	prx, err := proxy.NewProxyAllowPrivate(cfg.TargetURL, store, hub, mockCtrl)
+	prx, err := buildProxy(cfg.TargetURL, store, hub, mockCtrl)
 	if err != nil {
 		log.Fatalf("Failed to initialize proxy: %v", err)
 	}
@@ -115,7 +115,14 @@ func main() {
 	if ip := net.ParseIP(*host); ip != nil && ip.IsLoopback() {
 		log.Printf("[Driftwood] Bound to loopback only. Pass --host 0.0.0.0 to serve the network; the control plane has no authentication of its own.")
 	}
-	log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", cfg.TargetURL)
+	if strings.TrimSpace(cfg.TargetURL) == "" {
+		// Named rather than left as "forwarding traffic to ", which reads like a
+		// broken target instead of an absent one, and said alongside where to fix
+		// it because the dashboard is the only place that can.
+		log.Printf("[Driftwood] The active project has no target, so nothing is being forwarded. Set one in Proxy Settings; every request answers 502 until then.")
+	} else {
+		log.Printf("[Driftwood] Intercepting & forwarding traffic to %s", cfg.TargetURL)
+	}
 	if siteOn {
 		// Said out loud because it changes where "/" goes, which is otherwise
 		// indistinguishable from a broken proxy.
@@ -189,6 +196,27 @@ func main() {
 // Only the spellings people actually write are accepted, and anything else —
 // including a typo, and including "false" — is off. An environment variable that
 // turns a feature on has to fail in the direction that changes nothing.
+// buildProxy assembles the proxy for the active project's target, and is
+// separated from main because the bug it fixes lived in a log.Fatalf — which no
+// test can get past, so the branch that crashed production was the branch
+// nothing could cover.
+//
+// An empty target is not an error. It means the active project has no backend,
+// which the dashboard creates on purpose: CreateProject accepts an empty
+// target_url and documents the resulting project as allowed to be in that
+// state, and the request path answers it with a 502. Treating it as fatal here
+// was the outlier, and it made one client's missing backend into an outage for
+// every other client on the install.
+func buildProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*proxy.Proxy, error) {
+	if strings.TrimSpace(target) == "" {
+		return proxy.NewProxyWithoutTarget(store, hub, mockCtrl)
+	}
+	// Private targets are allowed here because the operator named this one: the
+	// API being sniffed is usually on localhost. A target that arrives over HTTP
+	// instead is checked — see SetProjectTarget.
+	return proxy.NewProxyAllowPrivate(target, store, hub, mockCtrl)
+}
+
 func envTruthy(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
 	case "1", "true", "yes", "on":
