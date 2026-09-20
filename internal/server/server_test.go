@@ -32,6 +32,10 @@ type harness struct {
 	router *httptest.Server
 	hits   *int64
 	store  *storage.Store
+	// hub is the live hub the server publishes to, so a test can subscribe to the
+	// real stream and assert what a browser would receive rather than what the
+	// server intended to send.
+	hub *events.Hub
 }
 
 // newHarness builds a server with no marketing site, which is the default and
@@ -62,7 +66,10 @@ func newHarnessWith(t *testing.T, siteHandler http.Handler) *harness {
 	}))
 	t.Cleanup(backend.Close)
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
 
@@ -74,7 +81,7 @@ func newHarnessWith(t *testing.T, siteHandler http.Handler) *harness {
 	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl, siteHandler).Router())
 	t.Cleanup(front.Close)
 
-	return &harness{router: front, hits: &hits, store: store}
+	return &harness{router: front, hits: &hits, store: store, hub: hub}
 }
 
 func (h *harness) do(t *testing.T, method, path string, hdr map[string]string) *http.Response {
@@ -215,7 +222,7 @@ func TestProxiedRequestIsRecordedAsTraffic(t *testing.T) {
 	h.do(t, http.MethodGet, "/v1/orders", nil)
 
 	var found bool
-	for _, tr := range h.store.GetTraffics(100) {
+	for _, tr := range h.store.GetTraffics(h.store.ActiveProject(), 100) {
 		if tr.Path == "/v1/orders" {
 			found = true
 		}
@@ -234,7 +241,7 @@ func TestProxiedRequestRecordsAnObservation(t *testing.T) {
 	// worth nothing if nothing joins it to the endpoint's history. Until it did,
 	// Versions grew only when a human saved a baseline, so the History view had
 	// no data by construction and the stability trend had no series to draw.
-	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	hist, ok := h.store.GetHistory(h.store.ActiveProject(), "GET", "/v1/orders")
 	if !ok {
 		t.Fatal("proxied request produced no history entry")
 	}
@@ -277,7 +284,7 @@ func TestLockBaselineRoutePinsAndReleases(t *testing.T) {
 		}
 	}
 
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 2 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 2 {
 		t.Fatalf("unpinned baseline version = %d, want 2", b.Version)
 	}
 
@@ -295,7 +302,7 @@ func TestLockBaselineRoutePinsAndReleases(t *testing.T) {
 	if hist.LockedVersion != 1 {
 		t.Errorf("locked_version in response = %d, want 1", hist.LockedVersion)
 	}
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 1 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 1 {
 		t.Errorf("baseline version after locking = %d, want 1", b.Version)
 	}
 
@@ -304,7 +311,7 @@ func TestLockBaselineRoutePinsAndReleases(t *testing.T) {
 	if released.StatusCode != http.StatusOK {
 		t.Fatalf("releasing: status = %d, want 200", released.StatusCode)
 	}
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 2 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 2 {
 		t.Errorf("baseline version after release = %d, want 2", b.Version)
 	}
 }
@@ -328,7 +335,7 @@ func TestLockBaselineRouteRejectsBadInput(t *testing.T) {
 	}
 
 	// A rejected lock must not have moved anything.
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); b.Version != 1 {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); b.Version != 1 {
 		t.Errorf("baseline version = %d after rejected locks, want 1", b.Version)
 	}
 }
@@ -371,6 +378,53 @@ func TestConfigRouteReportsWhenItCannotPersist(t *testing.T) {
 	// persisted anything looked exactly like one that did.
 	if resp := h.postJSON(t, "/_driftwood/api/config", `{"target_url":"http://localhost:4242"}`); resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status = %d with an unwritable config directory, want 500", resp.StatusCode)
+	}
+}
+
+func TestConfigRouteRetargetsTheActiveProjectOnly(t *testing.T) {
+	h := newHarness(t)
+
+	first := h.store.ActiveProject()
+	firstTarget, _, _ := h.store.ProjectTarget(first)
+
+	second, err := h.store.CreateProject("Client B")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if err := h.store.SetActiveProject(second.ID); err != nil {
+		t.Fatalf("SetActiveProject: %v", err)
+	}
+
+	h.postJSON(t, "/_driftwood/api/config", `{"target_url":"http://localhost:4242"}`)
+
+	// The point of per-project targets: the retarget lands on the project the
+	// operator is looking at, and the other client's backend is untouched. A
+	// single shared target would have moved both.
+	gotSecond, _, _ := h.store.ProjectTarget(second.ID)
+	if gotSecond != "http://localhost:4242" {
+		t.Errorf("active project %s targets %q, want the posted value", second.ID, gotSecond)
+	}
+	if gotFirst, _, _ := h.store.ProjectTarget(first); gotFirst != firstTarget {
+		t.Errorf("project %s targets %q after retargeting %s, want it unchanged at %q — a retarget "+
+			"reached a project the operator was not looking at", first, gotFirst, second.ID, firstTarget)
+	}
+}
+
+func TestConfigRouteRefusesAnInvalidTargetAsABadRequest(t *testing.T) {
+	h := newHarness(t)
+	active := h.store.ActiveProject()
+	before, _, _ := h.store.ProjectTarget(active)
+
+	// The SSRF refusal and the persistence failure both come back from
+	// SetProjectTarget as errors, and they are not the same kind of event: one is
+	// the caller's mistake and one is the server's. Answering 500 for a refused
+	// target would tell an operator their disk is broken when their URL is.
+	resp := h.postJSON(t, "/_driftwood/api/config", `{"target_url":"file:///etc/passwd"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d for a refused target, want 400", resp.StatusCode)
+	}
+	if got, _, _ := h.store.ProjectTarget(active); got != before {
+		t.Errorf("a refused target left the project holding %q, want %q", got, before)
 	}
 }
 
@@ -598,10 +652,10 @@ func TestConfirmBaselineRouteAcceptsACapturedVersion(t *testing.T) {
 
 	// Recorded the way the proxy records a first sighting, not the way the
 	// promote route does: auto, which is what makes it provisional.
-	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1,"name":"Alice"}`, types.BaselineSourceAuto); err != nil {
+	if _, err := h.store.SaveBaselineFrom(h.store.ActiveProject(), "GET", "/api/users", `{"id":1,"name":"Alice"}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("seeding a captured baseline: %v", err)
 	}
-	if b, _ := h.store.GetBaseline("GET", "/api/users"); !b.IsProvisional() {
+	if b, _ := h.store.GetBaseline(h.store.ActiveProject(), "GET", "/api/users"); !b.IsProvisional() {
 		t.Fatal("the seeded baseline is not provisional, so this test proves nothing")
 	}
 
@@ -627,7 +681,7 @@ func TestConfirmBaselineRouteAcceptsACapturedVersion(t *testing.T) {
 
 func TestConfirmBaselineRouteRejectsBadInput(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.store.SaveBaselineFrom("GET", "/api/users", `{"id":1}`, types.BaselineSourceAuto); err != nil {
+	if _, err := h.store.SaveBaselineFrom(h.store.ActiveProject(), "GET", "/api/users", `{"id":1}`, types.BaselineSourceAuto); err != nil {
 		t.Fatalf("seeding a captured baseline: %v", err)
 	}
 
@@ -655,7 +709,7 @@ func TestAutoSavedBaselineIsProvisional(t *testing.T) {
 	h := newHarness(t)
 	h.do(t, http.MethodGet, "/v1/orders", nil)
 
-	hist, ok := h.store.GetHistory("GET", "/v1/orders")
+	hist, ok := h.store.GetHistory(h.store.ActiveProject(), "GET", "/v1/orders")
 	if !ok {
 		t.Fatal("proxied request produced no history entry")
 	}
@@ -665,5 +719,98 @@ func TestAutoSavedBaselineIsProvisional(t *testing.T) {
 	if !hist.Versions[0].IsProvisional() {
 		t.Errorf("auto-captured baseline source = %q, want it to read as provisional",
 			hist.Versions[0].Source)
+	}
+}
+
+// TestConfigRouteDoesNotResetFieldsTheRequestOmits is the regression test for
+// handleConfig decoding a request body into a zero-value ProxyConfig.
+//
+// Every field the body left out arrived as its zero and was persisted, so a
+// partial update was really a replace. The dashboard's own save button posts
+// target_url, auto_save_baseline, proxy_port and intercept_json and says nothing
+// about dev_mock_mode — so saving your proxy settings switched off the fallback
+// that serves a mock response when the target is unreachable. The route's
+// previous answer to this was a client-side read-back in the setup wizard, which
+// is a workaround for a server that overwrites what it was not told.
+func TestConfigRouteDoesNotResetFieldsTheRequestOmits(t *testing.T) {
+	h := newHarness(t)
+
+	// Turn the mock fallback on, which is a field only a full body can name.
+	h.postJSON(t, "/_driftwood/api/config",
+		`{"target_url":"http://localhost:4242","dev_mock_mode":true}`)
+	if !h.store.GetConfig().DevMockMode {
+		t.Fatal("dev_mock_mode did not stick, so this test cannot observe the bug")
+	}
+
+	// Now send exactly what the settings panel sends.
+	h.postJSON(t, "/_driftwood/api/config",
+		`{"target_url":"http://localhost:4242","auto_save_baseline":false,"proxy_port":"8787","intercept_json":true}`)
+
+	cfg := h.store.GetConfig()
+	if !cfg.DevMockMode {
+		t.Error("dev_mock_mode was reset by a request that never mentioned it")
+	}
+	if cfg.AutoSaveBaseline {
+		t.Error("auto_save_baseline = true, want the posted false")
+	}
+	if cfg.TargetURL != "http://localhost:4242" {
+		t.Errorf("target = %q, want it unchanged", cfg.TargetURL)
+	}
+}
+
+// A body of `{}` names no fields, so it must change nothing.
+//
+// This is a guard rather than a regression test: it passes against the old
+// wholesale decode too, because that path reached SetTarget with an empty target
+// and was refused before it could persist. The wipe was blocked by the target
+// validation, not by anything that intended to block it — so the property is now
+// guaranteed by the overlay instead, and this pins it there. Relaxing SetTarget's
+// empty-string check must not resurrect the wipe.
+func TestConfigRouteIgnoresAnEmptyBody(t *testing.T) {
+	h := newHarness(t)
+
+	h.postJSON(t, "/_driftwood/api/config",
+		`{"target_url":"http://localhost:4242","auto_save_baseline":false,"dev_mock_mode":true}`)
+	before := h.store.GetConfig()
+
+	h.postJSON(t, "/_driftwood/api/config", `{}`)
+
+	if after := h.store.GetConfig(); after != before {
+		t.Errorf("an empty body changed the config:\n before %+v\n after  %+v", before, after)
+	}
+}
+
+// A delete that could not be written is reported, not answered with "ok".
+//
+// The store has to fail its write for this to mean anything, so the store's
+// directory is made unwritable. That is a real failure mode — a full disk, a
+// permissions change, a container with a read-only mount — and it is the one the
+// route previously could not see: the store discarded the write error, so a
+// delete that never reached disk returned the same 200 as one that did, and the
+// contract reappeared on the next restart with nothing to explain it.
+func TestDeleteBaselineReportsAFailedWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where a read-only directory is not enforced")
+	}
+
+	h := newHarness(t)
+	h.postJSON(t, "/_driftwood/api/baselines/delete",
+		`{"method":"GET","path":"/_driftwood/mock/users"}`)
+
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = filepath.Join(dir, ".driftwood")
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+	resp := h.postJSON(t, "/_driftwood/api/baselines/delete",
+		`{"method":"GET","path":"/_driftwood/mock/users"}`)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("a delete whose write failed answered %d, want %d",
+			resp.StatusCode, http.StatusInternalServerError)
 	}
 }

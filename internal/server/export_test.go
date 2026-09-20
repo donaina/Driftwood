@@ -50,7 +50,7 @@ func TestExportTypeScript_DeclaresOnlyValidIdentifiers(t *testing.T) {
 		"/v1/2fa/verify",
 	}
 	for _, p := range paths {
-		if _, err := h.store.SaveBaseline("GET", p, `{"id": 1, "username": "alex"}`); err != nil {
+		if _, err := h.store.SaveBaseline(h.store.ActiveProject(), "GET", p, `{"id": 1, "username": "alex"}`); err != nil {
 			t.Fatalf("SaveBaseline(GET %s): %v", p, err)
 		}
 	}
@@ -76,10 +76,10 @@ func TestExportTypeScript_DeclaresEachNameOnce(t *testing.T) {
 
 	// A path parameter and a literal segment with the same spelling normalize to
 	// one name, and these two disagree about the shape.
-	if _, err := h.store.SaveBaseline("GET", "/api/users/{id}", `{"id": 1, "kind": "one"}`); err != nil {
+	if _, err := h.store.SaveBaseline(h.store.ActiveProject(), "GET", "/api/users/{id}", `{"id": 1, "kind": "one"}`); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
-	if _, err := h.store.SaveBaseline("GET", "/api/users/id", `{"name": "alex", "active": true}`); err != nil {
+	if _, err := h.store.SaveBaseline(h.store.ActiveProject(), "GET", "/api/users/id", `{"name": "alex", "active": true}`); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
 
@@ -101,10 +101,10 @@ func TestExportTypeScript_DeclaresEachNameOnce(t *testing.T) {
 func TestExportTypeScript_NestedNamesAreScopedToTheirEndpoint(t *testing.T) {
 	h := newHarness(t)
 
-	if _, err := h.store.SaveBaseline("GET", "/api/users", `{"user": {"id": 1, "name": "alex"}}`); err != nil {
+	if _, err := h.store.SaveBaseline(h.store.ActiveProject(), "GET", "/api/users", `{"user": {"id": 1, "name": "alex"}}`); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
-	if _, err := h.store.SaveBaseline("GET", "/api/orders", `{"user": {"reference": "abc", "total": 3}}`); err != nil {
+	if _, err := h.store.SaveBaseline(h.store.ActiveProject(), "GET", "/api/orders", `{"user": {"reference": "abc", "total": 3}}`); err != nil {
 		t.Fatalf("SaveBaseline: %v", err)
 	}
 
@@ -149,7 +149,7 @@ func TestExportTypeScript_IsDeterministic(t *testing.T) {
 
 	paths := []string{"/api/alpha", "/api/bravo", "/api/charlie", "/api/delta", "/api/echo"}
 	for _, p := range paths {
-		if _, err := h.store.SaveBaseline("GET", p, `{"id": 1}`); err != nil {
+		if _, err := h.store.SaveBaseline(h.store.ActiveProject(), "GET", p, `{"id": 1}`); err != nil {
 			t.Fatalf("SaveBaseline(GET %s): %v", p, err)
 		}
 	}

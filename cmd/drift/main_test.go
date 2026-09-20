@@ -15,7 +15,11 @@ func newTestStore(t *testing.T) *storage.Store {
 	// NewStore resolves its persistence paths from $HOME, so point it at a temp
 	// directory rather than the developer's real ~/.driftwood.
 	t.Setenv("HOME", t.TempDir())
-	return storage.NewStore("http://localhost:3000", "8787")
+	s, err := storage.NewStore("http://localhost:3000", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	return s
 }
 
 // The seed is the only contract Driftwood invents, and it may only invent one
@@ -26,11 +30,11 @@ func TestSeedDemoBaselines_OnlySeedsItsOwnMock(t *testing.T) {
 	store := newTestStore(t)
 	seedDemoBaselines(store)
 
-	all := store.GetAllBaselines()
+	all := store.GetAllBaselines(store.ActiveProject())
 	if len(all) != 1 {
 		t.Fatalf("seeded %d baselines, want exactly 1", len(all))
 	}
-	seeded, ok := store.GetBaseline("GET", demoBaselinePath)
+	seeded, ok := store.GetBaseline(store.ActiveProject(), "GET", demoBaselinePath)
 	if !ok {
 		t.Fatalf("the mock endpoint %s was not seeded", demoBaselinePath)
 	}
@@ -38,25 +42,100 @@ func TestSeedDemoBaselines_OnlySeedsItsOwnMock(t *testing.T) {
 		t.Errorf("seeded %s %s, which is outside the control namespace — Driftwood does not serve it",
 			seeded.Method, seeded.Path)
 	}
-	if _, exists := store.GetBaseline("GET", "/api/users"); exists {
+	if _, exists := store.GetBaseline(store.ActiveProject(), "GET", "/api/users"); exists {
 		t.Error("a baseline was seeded for /api/users, a path on the user's own API")
 	}
 }
 
 func TestSeedDemoBaselines_DoesNotOverwriteAnExistingContract(t *testing.T) {
 	store := newTestStore(t)
-	if _, err := store.SaveBaseline("GET", demoBaselinePath, `{"id": 1, "mine": true}`); err != nil {
+	if _, err := store.SaveBaseline(store.ActiveProject(), "GET", demoBaselinePath, `{"id": 1, "mine": true}`); err != nil {
 		t.Fatalf("seeding a baseline to protect: %v", err)
 	}
 
 	seedDemoBaselines(store)
 
-	got, _ := store.GetBaseline("GET", demoBaselinePath)
+	got, _ := store.GetBaseline(store.ActiveProject(), "GET", demoBaselinePath)
 	if !strings.Contains(got.SamplePayload, "mine") {
 		t.Errorf("the existing contract was overwritten by the demo seed: %s", got.SamplePayload)
 	}
 	if got.Version != 1 {
 		t.Errorf("version = %d after seeding, want 1 (seeding must not add a version)", got.Version)
+	}
+}
+
+// Without -project an import must land exactly where it landed before projects
+// existed. This is the case that keeps the flag additive.
+func TestResolveImportProjectDefaultsToActive(t *testing.T) {
+	store := newTestStore(t)
+	first := store.ActiveProject()
+
+	got, err := resolveImportProject(store, "")
+	if err != nil {
+		t.Fatalf("resolveImportProject(\"\"): %v", err)
+	}
+	if got != first {
+		t.Errorf("an unflagged import resolved to %q, want the active project %q", got, first)
+	}
+
+	// And it follows the active project rather than being pinned to the
+	// default, which is the difference between "the active project" and "the
+	// project that happened to be active when this code was written".
+	second, err := store.CreateProject("Second")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if err := store.SetActiveProject(second.ID); err != nil {
+		t.Fatalf("SetActiveProject: %v", err)
+	}
+
+	got, err = resolveImportProject(store, "")
+	if err != nil {
+		t.Fatalf("resolveImportProject(\"\"): %v", err)
+	}
+	if got != second.ID {
+		t.Errorf("an unflagged import resolved to %q after switching, want %q", got, second.ID)
+	}
+}
+
+func TestResolveImportProjectHonoursAnExplicitProject(t *testing.T) {
+	store := newTestStore(t)
+	other, err := store.CreateProject("Acme")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	got, err := resolveImportProject(store, other.ID)
+	if err != nil {
+		t.Fatalf("resolveImportProject(%q): %v", other.ID, err)
+	}
+	if got != other.ID {
+		t.Errorf("resolved to %q, want %q", got, other.ID)
+	}
+}
+
+// A named project that does not exist is refused. Creating it instead would
+// file a client's contracts under a project the user never made and nothing is
+// pointed at, and the import would report success.
+func TestResolveImportProjectRefusesAnUnknownProject(t *testing.T) {
+	store := newTestStore(t)
+	before, _ := store.ListProjects()
+
+	got, err := resolveImportProject(store, "acme")
+	if err == nil {
+		t.Fatalf("resolved %q to %q, want an error", "acme", got)
+	}
+
+	// The error has to name what does exist, or the user's only recourse is to
+	// guess at the ids.
+	active := store.ActiveProject()
+	if !strings.Contains(err.Error(), active) {
+		t.Errorf("the error does not name the project that does exist (%q): %v", active, err)
+	}
+
+	after, _ := store.ListProjects()
+	if len(after) != len(before) {
+		t.Errorf("a refused import changed the project list: %d -> %d", len(before), len(after))
 	}
 }
 
@@ -76,7 +155,10 @@ func TestSeedingDoesNotTouchTheRealHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	store := storage.NewStore("http://localhost:3000", "8787")
+	store, err := storage.NewStore("http://localhost:3000", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	seedDemoBaselines(store)
 
 	// The store must have read the redirected HOME, or the redirect is fiction

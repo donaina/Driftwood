@@ -168,7 +168,12 @@ type EndpointHistory struct {
 
 // CapturedTraffic holds full metadata for an intercepted HTTP transaction
 type CapturedTraffic struct {
-	ID              string            `json:"id"`
+	ID string `json:"id"`
+	// ProjectID is the project this request was sniffed under. It is set by the
+	// store when the request is recorded, from the project the caller named, so
+	// a record always says which context produced it rather than leaving a
+	// reader to infer it from which list it happens to be in.
+	ProjectID       string            `json:"project_id,omitempty"`
 	Timestamp       time.Time         `json:"timestamp"`
 	Method          string            `json:"method"`
 	Path            string            `json:"path"`
@@ -191,6 +196,25 @@ type ProxyConfig struct {
 	AutoSaveBaseline bool   `json:"auto_save_baseline"`
 	InterceptJSON    bool   `json:"intercept_json"`
 	DevMockMode      bool   `json:"dev_mock_mode"` // enable mock fallback for dev
+}
+
+// Project is one namespaced context: a name, a backend to sniff, and the
+// endpoints recorded under it.
+//
+// TargetAllowPrivate persists the SSRF decision alongside the target it applies
+// to, rather than re-deriving it on every start. That is sound because a private
+// target can only be set from loopback in the first place: the field records an
+// authorisation the operator already gave, it does not grant a new one. Without
+// it, a restart would have to either re-block a target the operator configured
+// deliberately — breaking every local-development install — or accept private
+// targets unconditionally, which is the bug that put the blocklist in a
+// constructor nobody called.
+type Project struct {
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	TargetURL          string    `json:"target_url"`
+	TargetAllowPrivate bool      `json:"target_allow_private"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // EventMessage represents real-time updates broadcast to WebSocket/SSE clients

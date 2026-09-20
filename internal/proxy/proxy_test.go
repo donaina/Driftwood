@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,7 +39,10 @@ func isolateHome(t *testing.T) {
 
 func TestProxySSRFValidation(t *testing.T) {
 	isolateHome(t)
-	store := storage.NewStore("http://localhost:8787", "8787")
+	store, err := storage.NewStore("http://localhost:8787", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := &mock.MockController{}
 
@@ -49,7 +51,7 @@ func TestProxySSRFValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid http URL should be accepted: %v", err)
 	}
-	if prx.SetTarget("https://api.example.com", false) != nil {
+	if prx.SetProjectTarget(store.ActiveProject(), "https://api.example.com", false) != nil {
 		t.Errorf("valid https URL should be accepted")
 	}
 
@@ -78,21 +80,24 @@ func TestProxySSRFValidation(t *testing.T) {
 	}
 
 	for _, u := range invalidURLs {
-		err = prx.SetTarget(u, false)
+		err = prx.SetProjectTarget(store.ActiveProject(), u, false)
 		if err == nil {
 			t.Errorf("SSRF URL should be rejected: %s", u)
 		}
 	}
 
 	// Test: valid URL after invalid
-	if err := prx.SetTarget("https://api.github.com", false); err != nil {
+	if err := prx.SetProjectTarget(store.ActiveProject(), "https://api.github.com", false); err != nil {
 		t.Errorf("valid URL after invalid should work: %v", err)
 	}
 }
 
 func TestProxyTargetURLRaceSafety(t *testing.T) {
 	isolateHome(t)
-	store := storage.NewStore("http://localhost:8787", "8787")
+	store, err := storage.NewStore("http://localhost:8787", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := &mock.MockController{}
 
@@ -101,11 +106,11 @@ func TestProxyTargetURLRaceSafety(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Concurrent SetTarget and Handler access should not panic
+	// Concurrent retargets and Handler access should not panic
 	done := make(chan bool)
 	for i := 0; i < 100; i++ {
 		go func() {
-			prx.SetTarget("https://api.example.com", false)
+			prx.SetProjectTarget(store.ActiveProject(), "https://api.example.com", false)
 			_ = prx.Handler()
 			done <- true
 		}()
@@ -117,7 +122,10 @@ func TestProxyTargetURLRaceSafety(t *testing.T) {
 
 func TestSanitizeTrafficWired(t *testing.T) {
 	isolateHome(t)
-	store := storage.NewStore("http://localhost:8787", "8787")
+	store, err := storage.NewStore("http://localhost:8787", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	mockCtrl := &mock.MockController{}
 
@@ -136,9 +144,12 @@ func TestSanitizeTrafficWired(t *testing.T) {
 	}))
 	defer targetServer.Close()
 
-	// Point proxy to test server
-	targetURL, _ := url.Parse(targetServer.URL)
-	prx.GetTargetURLForTest().Store(targetURL)
+	// Point the proxy at the test server through the same call the API uses, so
+	// this test reaches the backend by the route production has rather than by
+	// one kept open for tests.
+	if err := prx.SetProjectTarget(store.ActiveProject(), targetServer.URL, true); err != nil {
+		t.Fatalf("SetProjectTarget: %v", err)
+	}
 
 	// Make request through proxy
 	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
@@ -202,7 +213,10 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	prx, err := NewProxyAllowPrivate(backend.URL, store, hub, &mock.MockController{})
 	if err != nil {
@@ -217,7 +231,12 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 	}
 	received := make(chan broadcast, 32)
 
-	sse := httptest.NewServer(http.HandlerFunc(hub.SSEHandler))
+	// Subscribed with no scope, so this watches every project — the alerts below
+	// belong to the active one, and an empty scope receives install-level events
+	// too. See events.scopeMatches.
+	sse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hub.SSEHandler(w, r, "")
+	}))
 	defer sse.Close()
 
 	stream, err := http.Get(sse.URL)
@@ -285,7 +304,7 @@ func TestBreakingAlertCarriesItsExplanation(t *testing.T) {
 			explained.Data["traffic_id"], alert.Data["traffic_id"])
 	}
 
-	alerts := store.GetAlerts(10)
+	alerts := store.GetAlerts(store.ActiveProject(), 10)
 	if len(alerts) != 1 {
 		t.Fatalf("expected 1 stored alert, got %d", len(alerts))
 	}
@@ -385,7 +404,10 @@ func TestBreakingChangeDoesNotWaitOnTheSidecar(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{})
 	if err != nil {
 		t.Fatal(err)
@@ -454,7 +476,7 @@ func TestBreakingChangeDoesNotWaitOnTheSidecar(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		alerts := store.GetAlerts(10)
+		alerts := store.GetAlerts(store.ActiveProject(), 10)
 		if len(alerts) == 1 && alerts[0].AIExplanation != nil {
 			if got := alerts[0].AIExplanation["summary"]; got != "held open" {
 				t.Errorf("stored explanation summary = %v", got)
@@ -516,7 +538,10 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	hub := events.NewHub()
 	prx, err := NewProxyAllowPrivate(backend.URL, store, hub, &mock.MockController{})
 	if err != nil {
@@ -532,7 +557,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	// about which of the two sightings it wants.
 	failure := func(path string, code int) types.CapturedTraffic {
 		t.Helper()
-		for _, tr := range store.GetTraffics(100) {
+		for _, tr := range store.GetTraffics(store.ActiveProject(), 100) {
 			if tr.Path == path && tr.StatusCode == code {
 				return tr
 			}
@@ -565,7 +590,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	   failing is worth waking someone for. What must not happen is the
 	   field-by-field version that used to accompany it. */
 	breaking := 0
-	for _, a := range store.GetAlerts(50) {
+	for _, a := range store.GetAlerts(store.ActiveProject(), 50) {
 		if a.ContractStatus != "BREAKING" {
 			continue
 		}
@@ -595,7 +620,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 		t.Errorf("a 404 against a healthy contract reads as %q, want WARNING", rejected.ContractStatus)
 	}
 	filed := false
-	for _, a := range store.GetAlerts(50) {
+	for _, a := range store.GetAlerts(store.ActiveProject(), 50) {
 		if !strings.HasSuffix(a.Endpoint, "/breaks-to-404") {
 			continue
 		}
@@ -619,7 +644,7 @@ func TestFailedResponseIsNotDiffedAgainstTheContract(t *testing.T) {
 	/* And an error body must never be adopted as the contract, or the failure
 	   becomes the baseline and every later success reads as drift. */
 	request("/fails-first")
-	if _, exists := store.GetBaseline("GET", "/fails-first"); exists {
+	if _, exists := store.GetBaseline(store.ActiveProject(), "GET", "/fails-first"); exists {
 		t.Error("an error response was saved as the contract")
 	}
 }
@@ -646,7 +671,12 @@ func TestResponseLargerThanTheAnalysisCapArrivesWhole(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	prx, err := NewProxyAllowPrivate(backend.URL, storage.NewStore(backend.URL, "8787"),
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	prx, err := NewProxyAllowPrivate(backend.URL, store,
 		events.NewHub(), &mock.MockController{})
 	if err != nil {
 		t.Fatal(err)
@@ -716,7 +746,10 @@ func TestGzippedResponseIsForwardedCompressedAndAnalyzedBounded(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	store := storage.NewStore(backend.URL, "8787")
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
 	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{})
 	if err != nil {
 		t.Fatal(err)
@@ -741,7 +774,7 @@ func TestGzippedResponseIsForwardedCompressedAndAnalyzedBounded(t *testing.T) {
 		t.Errorf("the client received %d bytes, want the %d gzipped bytes the backend sent", len(got), len(gz))
 	}
 
-	traffics := store.GetTraffics(1)
+	traffics := store.GetTraffics(store.ActiveProject(), 1)
 	if len(traffics) != 1 {
 		t.Fatalf("recorded %d transactions, want 1", len(traffics))
 	}

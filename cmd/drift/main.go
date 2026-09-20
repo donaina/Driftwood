@@ -63,7 +63,16 @@ func main() {
 	log.Println("==================================================")
 
 	// Initialize components
-	store := storage.NewStore(*target, *port)
+	//
+	// A store that could not be fully read still starts: the error says what
+	// happened to the saved contracts, and refusing to run over it would turn a
+	// recoverable file problem into an outage. Not saying anything at all is the
+	// behaviour this replaced, and it is the worse of the two — an install that
+	// silently comes up empty is indistinguishable from a new one.
+	store, err := storage.NewStore(*target, *port)
+	if err != nil {
+		log.Printf("[Driftwood] %v", err)
+	}
 	if err := store.ApplyRememberedConfig(given["target"], given["port"]); err != nil {
 		log.Printf("[Driftwood] %v — continuing with the command-line defaults", err)
 	}
@@ -188,20 +197,61 @@ func envTruthy(name string) bool {
 	return false
 }
 
+// resolveImportProject decides which project an import files its contracts
+// under.
+//
+// Without -project it is the active project, which is what makes an unflagged
+// import behave exactly as it did when there was only one. With -project it is
+// the named one, and a name that does not exist is an error rather than a new
+// project: an import is the act of filing a client's declared contracts, and
+// silently creating the project a typo named would file them somewhere nothing
+// is looking. The error lists what does exist, because a refusal a user cannot
+// act on is only slightly better than the wrong answer.
+//
+// This is separated from handleImport so it can be tested at all —
+// handleImport reports by log.Fatalf, which exits.
+func resolveImportProject(store *storage.Store, requested string) (string, error) {
+	if requested == "" {
+		return store.ActiveProject(), nil
+	}
+	if !store.ProjectExists(requested) {
+		projects, _ := store.ListProjects()
+		known := make([]string, 0, len(projects))
+		for _, p := range projects {
+			// The id is what the flag takes, so it leads. The name is how a
+			// person knows the project, so it follows when it says more.
+			if p.Name != "" && p.Name != p.ID {
+				known = append(known, fmt.Sprintf("%s (%s)", p.ID, p.Name))
+				continue
+			}
+			known = append(known, p.ID)
+		}
+		if len(known) == 0 {
+			return "", fmt.Errorf("no such project: %q, and this install has no projects", requested)
+		}
+		return "", fmt.Errorf("no such project: %q; known projects: %s",
+			requested, strings.Join(known, ", "))
+	}
+	return requested, nil
+}
+
 func handleImport(args []string) {
 	importFlag := flag.NewFlagSet("import", flag.ExitOnError)
 	specPath := importFlag.String("spec", "", "Path or URL to OpenAPI spec (required)")
+	projectFlag := importFlag.String("project", "", "Project id to file the contracts under (default: the active project)")
 	help := importFlag.Bool("help", false, "Show help")
 	importFlag.Parse(args)
 
 	if *help || *specPath == "" {
-		fmt.Println("Usage: drift import -spec <file|url>")
-		fmt.Println("  -spec    Path or URL to OpenAPI 3.x specification (required)")
-		fmt.Println("  -help    Show this help")
+		fmt.Println("Usage: drift import -spec <file|url> [-project <id>]")
+		fmt.Println("  -spec     Path or URL to OpenAPI 3.x specification (required)")
+		fmt.Println("  -project  Project id to file the contracts under")
+		fmt.Println("            (default: whichever project is active)")
+		fmt.Println("  -help     Show this help")
 		fmt.Println()
 		fmt.Println("Examples:")
 		fmt.Println("  drift import -spec ./openapi.json")
-		fmt.Println("  drift import -spec https://api.example.com/openapi.json")
+		fmt.Println("  drift import -spec https://api.example.com/openapi.json -project acme")
 		os.Exit(1)
 	}
 
@@ -222,11 +272,23 @@ func handleImport(args []string) {
 
 	log.Printf("[Driftwood] OpenAPI spec loaded: %s v%s", spec.Info.Title, spec.Info.Version)
 
-	// Initialize storage with dummy target (we just need it for baseline storage)
-	store := storage.NewStore("http://localhost:3000", "8787")
+	// Initialize storage with dummy target (we just need it for baseline storage).
+	// A store that could not be read is reported and then written to anyway: this
+	// command exists to put contracts in, and refusing to would leave the user
+	// with neither their old contracts nor the imported ones.
+	store, storeErr := storage.NewStore("http://localhost:3000", "8787")
+	if storeErr != nil {
+		log.Printf("[Driftwood] %v", storeErr)
+	}
 
-	// Import contracts
-	err = spec.ImportToStorage(store)
+	// Import contracts.
+	projectID, err := resolveImportProject(store, *projectFlag)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	log.Printf("[Driftwood] Filing contracts under project %q", projectID)
+
+	err = spec.ImportToStorage(projectID, store)
 	if err != nil {
 		log.Fatalf("Failed to import contracts: %v", err)
 	}
@@ -258,8 +320,9 @@ const demoBaselinePayload = `{"id": 99812, "username": "alex_dev", "email": "ale
 //
 // Only seeds when no baseline exists, so a locked one is never overwritten.
 func seedDemoBaselines(store *storage.Store) {
-	if _, exists := store.GetBaseline("GET", demoBaselinePath); exists {
+	projectID := store.ActiveProject()
+	if _, exists := store.GetBaseline(projectID, "GET", demoBaselinePath); exists {
 		return
 	}
-	_, _ = store.SaveBaseline("GET", demoBaselinePath, demoBaselinePayload)
+	_, _ = store.SaveBaseline(projectID, "GET", demoBaselinePath, demoBaselinePayload)
 }
