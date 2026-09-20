@@ -662,7 +662,23 @@ func (p *Proxy) processAndStoreTraffic(
 		   against the stored alert through UpdateAlertAIExplanation, the seam
 		   that method was written for, and then announces that it landed. */
 		p.hub.Publish("alert", alertData)
-		p.explainAsync(traffic.ID, method, path, contractDiff, respBody)
+
+		/* The `go` is the whole of "the explanation follows it".
+
+		   Without it this call is synchronous, and every property the block above
+		   claims stops being true. The alert still goes out — it is published on
+		   the line above — but the handler then sits on a sidecar round trip before
+		   it can return, and the caller pays for that on the one path where this
+		   product is supposed to be invisible.
+
+		   That the response was already written by the time we get here does not
+		   save it, which is the part worth knowing: the proxy writes through a
+		   responseRecorder to the client, but net/http holds a small body in its
+		   write buffer and flushes it when the handler returns, not when it is
+		   written. So a response under the buffer size reaches the client only
+		   after this call finishes. Measured at the full 8s client timeout in
+		   TestBreakingChangeDoesNotWaitOnTheSidecar, with the sidecar held open. */
+		go p.explainAsync(traffic.ID, method, path, contractDiff, respBody)
 	}
 }
 
