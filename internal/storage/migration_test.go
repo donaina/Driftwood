@@ -104,6 +104,120 @@ func TestFreshInstallWritesAStoreDocumentWithOneProject(t *testing.T) {
 	}
 }
 
+// The migration has to carry the target as well as the contracts, and this test
+// exists because the one above it did not check that and the omission reached
+// production.
+//
+// v1 recorded endpoints and nothing about where they came from: there was no
+// field for a target, because the target lived in config.json and in the
+// process's own flags. v2 moved the target onto the project — which is the only
+// place it now lives, and GetConfig overlays it onto the running config. So a
+// converted document whose project has no target leaves the whole install with
+// none, and the proxy refuses to start: "target URL cannot be empty".
+//
+// That is not a hypothetical. On 2026-09-20 the first real v1 store was
+// migrated on the deploy box and driftwood crash-looped every ten seconds, with
+// both endpoints migrated perfectly and nowhere to dial.
+//
+// The target is a loopback address on purpose, so the allow-private half is
+// exercised too. RefreshRouting re-validates every project with the
+// AllowPrivate stored beside it, so a converted project that lost that flag is
+// dropped from the routing snapshot without an error — a project that appears
+// in the dashboard, holds its baselines, and can never be dialled.
+func TestV1StoreMigratesWithTheTargetItWasGiven(t *testing.T) {
+	dir := driftwoodHome(t)
+	path := filepath.Join(dir, "baselines.json")
+
+	now := time.Now().Truncate(time.Second)
+	writeV1(t, path, map[string]*types.EndpointHistory{
+		"GET:/api/users": v1History("GET", "/api/users", `{"id": 1}`, now),
+	})
+
+	// The address the deploy box actually passes, and a private one.
+	const target = "http://127.0.0.1:8080"
+
+	store, err := NewStore(target, "8787")
+	if err != nil {
+		t.Fatalf("migrating a v1 store reported an error: %v", err)
+	}
+
+	// What the proxy is built from: startup reads this, not the flag.
+	if got := store.GetConfig().TargetURL; got != target {
+		t.Errorf("config target after migration = %q, want %q", got, target)
+	}
+
+	url, allowPrivate, ok := store.ProjectTarget(defaultProjectID)
+	if !ok {
+		t.Fatal("the migrated project is missing")
+	}
+	if url != target {
+		t.Errorf("migrated project target = %q, want %q", url, target)
+	}
+	if !allowPrivate {
+		t.Error("the migrated project did not keep the allow-private decision, so the proxy would drop it from routing")
+	}
+
+	// And the contract still arrived, so this did not buy the target with the
+	// data the migration exists to preserve.
+	if _, ok := store.GetBaseline(defaultProjectID, "GET", "/api/users"); !ok {
+		t.Error("the endpoint did not survive the migration")
+	}
+
+	// On disk as well, because the next start has no flag to fall back on: it
+	// reads this document, and an empty target there fails the same way.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the converted store: %v", err)
+	}
+	var doc persistedState
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("the converted store is unreadable: %v", err)
+	}
+	if len(doc.Projects) != 1 {
+		t.Fatalf("document lists %d projects, want 1", len(doc.Projects))
+	}
+	if doc.Projects[0].TargetURL != target {
+		t.Errorf("persisted target = %q, want %q", doc.Projects[0].TargetURL, target)
+	}
+	if !doc.Projects[0].TargetAllowPrivate {
+		t.Error("persisted allow-private is false, so a restart would drop the project from routing")
+	}
+}
+
+// The fallback belongs to the conversion and must not reach a current document:
+// a v2 project's target is the document's to state, including when it states
+// none, because a project with no target yet is a real state the dashboard
+// creates. The test above this one pins that from the other side — its fixture
+// project has no target and the constructor is given one.
+func TestV1TargetFallbackDoesNotOverrideACurrentDocument(t *testing.T) {
+	dir := driftwoodHome(t)
+	path := filepath.Join(dir, "baselines.json")
+
+	doc := persistedState{
+		Version:  storeVersion,
+		Active:   "acme",
+		Projects: []types.Project{{ID: "acme", Name: "Acme", CreatedAt: time.Now()}},
+		Histories: map[string]map[string]*types.EndpointHistory{
+			"acme": {},
+		},
+	}
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatalf("building the v2 fixture: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatalf("writing the v2 fixture: %v", err)
+	}
+
+	store, err := NewStore("http://127.0.0.1:8080", "8787")
+	if err != nil {
+		t.Fatalf("reading a current store reported an error: %v", err)
+	}
+	if got, _, _ := store.ProjectTarget("acme"); got != "" {
+		t.Errorf("a current document's empty target was overwritten with %q", got)
+	}
+}
+
 func TestV1StoreMigratesWithoutLosingAContract(t *testing.T) {
 	dir := driftwoodHome(t)
 	path := filepath.Join(dir, "baselines.json")
