@@ -208,6 +208,11 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+    /* A button's label is its name, so it never breaks across lines. Without
+       this a flex item shrinks and wraps its text instead of overflowing, which
+       is why a header short of width showed three-line buttons rather than a
+       scrollbar — the wrap absorbed the shortage and hid it. */
+    white-space: nowrap;
     transition: background-color 0.15s ease, border-color 0.15s ease,
                 color 0.15s ease, transform 0.1s ease;
   }
@@ -970,6 +975,17 @@
     .nav-section:last-child {
       display: none;
     }
+
+    /* The header loses its widest words at the same rung the nav does, which
+       is what this breakpoint already is. "Breaking Contract Changes" is 212px
+       and the header is genuinely short of width between 768px and 890px — 105px
+       at 768px — so this is the relief, not a tidying. The pill keeps its icon
+       and its count, which is what §4's badge is dual-coded for; the words were
+       the part that could not fit. Matches how #status-text and .brand-title
+       already behave further down. */
+    .alert-counter-label {
+      display: none;
+    }
   }
 
   /* Icon rail. Labels are visually hidden rather than display:none so they
@@ -1098,12 +1114,7 @@
       flex-wrap: nowrap;
     }
 
-    .alert-counter-label {
-      display: none;
-    }
-
     .btn {
-      white-space: nowrap;
       padding: 0.5rem 0.7rem;
     }
 
