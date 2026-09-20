@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,7 +51,7 @@ func TestProxySSRFValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid http URL should be accepted: %v", err)
 	}
-	if prx.SetTarget("https://api.example.com", false) != nil {
+	if prx.SetProjectTarget(store.ActiveProject(), "https://api.example.com", false) != nil {
 		t.Errorf("valid https URL should be accepted")
 	}
 
@@ -81,14 +80,14 @@ func TestProxySSRFValidation(t *testing.T) {
 	}
 
 	for _, u := range invalidURLs {
-		err = prx.SetTarget(u, false)
+		err = prx.SetProjectTarget(store.ActiveProject(), u, false)
 		if err == nil {
 			t.Errorf("SSRF URL should be rejected: %s", u)
 		}
 	}
 
 	// Test: valid URL after invalid
-	if err := prx.SetTarget("https://api.github.com", false); err != nil {
+	if err := prx.SetProjectTarget(store.ActiveProject(), "https://api.github.com", false); err != nil {
 		t.Errorf("valid URL after invalid should work: %v", err)
 	}
 }
@@ -107,11 +106,11 @@ func TestProxyTargetURLRaceSafety(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Concurrent SetTarget and Handler access should not panic
+	// Concurrent retargets and Handler access should not panic
 	done := make(chan bool)
 	for i := 0; i < 100; i++ {
 		go func() {
-			prx.SetTarget("https://api.example.com", false)
+			prx.SetProjectTarget(store.ActiveProject(), "https://api.example.com", false)
 			_ = prx.Handler()
 			done <- true
 		}()
@@ -145,9 +144,12 @@ func TestSanitizeTrafficWired(t *testing.T) {
 	}))
 	defer targetServer.Close()
 
-	// Point proxy to test server
-	targetURL, _ := url.Parse(targetServer.URL)
-	prx.GetTargetURLForTest().Store(targetURL)
+	// Point the proxy at the test server through the same call the API uses, so
+	// this test reaches the backend by the route production has rather than by
+	// one kept open for tests.
+	if err := prx.SetProjectTarget(store.ActiveProject(), targetServer.URL, true); err != nil {
+		t.Fatalf("SetProjectTarget: %v", err)
+	}
 
 	// Make request through proxy
 	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)

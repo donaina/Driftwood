@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"sort"
@@ -369,16 +370,40 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Retargeted first, and before anything is read back or persisted, so a
+		// target the proxy refuses is never written down. Checking afterwards left
+		// the config panel describing an endpoint that was not the one in use.
+		//
+		// This route configures the *active project's* target, which for the
+		// single-project install this has always been is exactly what it did
+		// before. Per-project targets are set from the project routes instead.
+		if patch.TargetURL != nil {
+			if err := s.proxy.SetProjectTarget(
+				s.store.ActiveProject(), *patch.TargetURL, isLoopbackRequest(r),
+			); err != nil {
+				// A refused target is the client's problem; a target that was
+				// accepted but not written down is ours. Reporting the second as
+				// the first tells the operator to fix a URL that was fine.
+				status := http.StatusInternalServerError
+				if errors.Is(err, proxy.ErrInvalidTarget) {
+					status = http.StatusBadRequest
+				}
+				http.Error(w, err.Error(), status)
+				return
+			}
+		}
+
 		// Start from what is running and overlay only what was named. The port is
 		// never taken from the request at all: the listening socket is already
 		// bound, so it is fixed for the life of the process. The dashboard has no
 		// port field either — it sends a hardcoded 8787, which would otherwise be
 		// persisted and adopted on the next start by anyone who had launched on a
 		// different port.
+		//
+		// Read after the retarget rather than before, so the target carried into
+		// UpdateConfig is the one the proxy accepted rather than the one the
+		// request asked for.
 		cfg := s.store.GetConfig()
-		if patch.TargetURL != nil {
-			cfg.TargetURL = *patch.TargetURL
-		}
 		if patch.AutoSaveBaseline != nil {
 			cfg.AutoSaveBaseline = *patch.AutoSaveBaseline
 		}
@@ -387,14 +412,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		if patch.DevMockMode != nil {
 			cfg.DevMockMode = *patch.DevMockMode
-		}
-
-		// Retargeted before it is persisted, so a target the proxy refuses is
-		// never written down. Checking afterwards left the config panel
-		// describing an endpoint that was not the one in use.
-		if err := s.proxy.SetTarget(cfg.TargetURL, isLoopbackRequest(r)); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
 		}
 
 		if err := s.store.UpdateConfig(cfg); err != nil {

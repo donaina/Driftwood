@@ -377,6 +377,53 @@ func TestConfigRouteReportsWhenItCannotPersist(t *testing.T) {
 	}
 }
 
+func TestConfigRouteRetargetsTheActiveProjectOnly(t *testing.T) {
+	h := newHarness(t)
+
+	first := h.store.ActiveProject()
+	firstTarget, _, _ := h.store.ProjectTarget(first)
+
+	second, err := h.store.CreateProject("Client B")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if err := h.store.SetActiveProject(second.ID); err != nil {
+		t.Fatalf("SetActiveProject: %v", err)
+	}
+
+	h.postJSON(t, "/_driftwood/api/config", `{"target_url":"http://localhost:4242"}`)
+
+	// The point of per-project targets: the retarget lands on the project the
+	// operator is looking at, and the other client's backend is untouched. A
+	// single shared target would have moved both.
+	gotSecond, _, _ := h.store.ProjectTarget(second.ID)
+	if gotSecond != "http://localhost:4242" {
+		t.Errorf("active project %s targets %q, want the posted value", second.ID, gotSecond)
+	}
+	if gotFirst, _, _ := h.store.ProjectTarget(first); gotFirst != firstTarget {
+		t.Errorf("project %s targets %q after retargeting %s, want it unchanged at %q — a retarget "+
+			"reached a project the operator was not looking at", first, gotFirst, second.ID, firstTarget)
+	}
+}
+
+func TestConfigRouteRefusesAnInvalidTargetAsABadRequest(t *testing.T) {
+	h := newHarness(t)
+	active := h.store.ActiveProject()
+	before, _, _ := h.store.ProjectTarget(active)
+
+	// The SSRF refusal and the persistence failure both come back from
+	// SetProjectTarget as errors, and they are not the same kind of event: one is
+	// the caller's mistake and one is the server's. Answering 500 for a refused
+	// target would tell an operator their disk is broken when their URL is.
+	resp := h.postJSON(t, "/_driftwood/api/config", `{"target_url":"file:///etc/passwd"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d for a refused target, want 400", resp.StatusCode)
+	}
+	if got, _, _ := h.store.ProjectTarget(active); got != before {
+		t.Errorf("a refused target left the project holding %q, want %q", got, before)
+	}
+}
+
 func TestControlAPIIsNotProxied(t *testing.T) {
 	h := newHarness(t)
 	before := h.hitCount()

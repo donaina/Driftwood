@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/donaina/driftwood/internal/schema"
@@ -119,6 +120,37 @@ type Store struct {
 	   GET /favicon.ico was enough to make an untouched install look configured.
 	   Neither is the operator saying anything. This is. */
 	configured bool
+
+	/* routingGen counts every change to where requests go: which project is
+	   active, which projects exist, and what any of them targets.
+
+	   It exists so the proxy cannot route by a stale snapshot. The proxy holds a
+	   copy for the request path to read without a lock, and a copy that has to be
+	   told when to refresh is a copy that will eventually not be told — the
+	   symptom being requests delivered to the previous client's backend after a
+	   switch, which is precisely the misattribution this codebase goes out of its
+	   way to avoid. Comparing this counter is a second atomic load on the request
+	   path and makes the stale case unrepresentable rather than unlikely.
+
+	   Bumped explicitly by the methods that change routing, not by every persist:
+	   a baseline save persists, and doing it there would rebuild the snapshot once
+	   per proxied request. */
+	routingGen atomic.Uint64
+}
+
+// markRoutingChangedLocked records that where requests go has changed. The
+// caller must hold s.mu, so the bump and the change it describes are ordered
+// together — a proxy that reads the new generation is guaranteed to see the
+// change that produced it.
+func (s *Store) markRoutingChangedLocked() {
+	s.routingGen.Add(1)
+}
+
+// RoutingGeneration reports how many times routing has changed. The proxy
+// compares it against the generation its snapshot was built from; see the field
+// comment for why this is a counter rather than a notification.
+func (s *Store) RoutingGeneration() uint64 {
+	return s.routingGen.Load()
 }
 
 // NewStore builds a store and loads whatever was saved under the home
@@ -146,9 +178,21 @@ func NewStore(targetURL, proxyPort string) (*Store, error) {
 		configPath:  filepath.Join(persistDir, "config.json"),
 		projects: map[string]*types.Project{
 			defaultProjectID: {
-				ID:        defaultProjectID,
-				Name:      defaultProjectName,
-				CreatedAt: now,
+				ID:   defaultProjectID,
+				Name: defaultProjectName,
+				// The flag's target is the first project's target. It is seeded here
+				// and then persisted, so this is the one time the value comes from
+				// the command line rather than from the document.
+				//
+				// AllowPrivate is set here without a loopback check, and that is the
+				// existing rule rather than a new exception: the constructor's target
+				// came from the operator typing a flag, and an operator naming
+				// http://localhost:3000 is naming the thing they want sniffed. The
+				// check applies to targets that arrive over the wire, which is what
+				// SetProjectTarget's allowPrivate argument records.
+				TargetURL:          targetURL,
+				TargetAllowPrivate: true,
+				CreatedAt:          now,
 			},
 		},
 		projectOrder: []string{defaultProjectID},
@@ -203,10 +247,24 @@ func (s *Store) IsConfigured() bool {
 	return s.configured
 }
 
+// GetConfig returns the running configuration, with the target read from the
+// active project.
+//
+// The project is the one place a target is stored. The config used to hold one
+// too, which made two answers to "what are we sniffing" — and the moment a
+// project could be switched, the config's copy would have been the one every
+// reader saw while the proxy dialled the other. Overlaying on the way out means
+// the dashboard, the setup wizard and the proxy all see the same value without
+// any of them having to know projects exist.
 func (s *Store) GetConfig() types.ProxyConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.config
+
+	cfg := s.config
+	if p, ok := s.projects[s.active]; ok {
+		cfg.TargetURL = p.TargetURL
+	}
+	return cfg
 }
 
 // ActiveProject is the project a caller with no opinion should read and write.
@@ -309,6 +367,7 @@ func (s *Store) CreateProject(name string) (*types.Project, error) {
 	s.projects[p.ID] = p
 	s.projectOrder = append(s.projectOrder, p.ID)
 	s.ensureProjectLocked(p.ID)
+	s.markRoutingChangedLocked()
 
 	out := *p
 	return &out, nil
@@ -386,6 +445,81 @@ func (s *Store) RenameProject(id, name string) error {
 	return s.persistLocked()
 }
 
+// SetProjectTarget records the backend a project is sniffing.
+//
+// allowPrivate is stored rather than recomputed, and it is the caller's job to
+// have established it honestly — this method does not check where the request
+// came from, because the store has no idea what a request is. The proxy is what
+// decides, at the point the target arrives, and this is the record of that
+// decision. Splitting it that way keeps the SSRF rule in one place instead of
+// two that could disagree.
+func (s *Store) SetProjectTarget(id, targetURL string, allowPrivate bool) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	s.mu.Lock()
+	p, ok := s.projects[id]
+	if !ok {
+		s.mu.Unlock()
+		return fmt.Errorf("no project %q", id)
+	}
+	p.TargetURL = targetURL
+	p.TargetAllowPrivate = allowPrivate
+	s.markRoutingChangedLocked()
+	s.mu.Unlock()
+
+	return s.persistLocked()
+}
+
+// ProjectTarget returns a project's backend and whether it was authorised to be
+// a private one. The bool is false for a project that does not exist, which is
+// the same answer as a project with no target: both mean "nothing to dial".
+func (s *Store) ProjectTarget(id string) (string, bool, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	p, ok := s.projects[id]
+	if !ok {
+		return "", false, false
+	}
+	return p.TargetURL, p.TargetAllowPrivate, true
+}
+
+// Routing returns what the proxy needs to resolve a request: which project is
+// active, and every project's target.
+//
+// One call under one lock rather than a series of accessors, because the proxy
+// snapshots this into a single atomic value and a snapshot assembled from
+// separate calls could catch the store mid-switch — an active project from
+// before a change paired with targets from after it.
+// Routing returns where requests should currently go, together with the
+// generation those answers were read at.
+//
+// The generation comes back from inside the read lock rather than from a
+// separate call to RoutingGeneration, and that is the whole point of returning
+// it here. Read apart, a mutation can land between the two: the caller takes its
+// content before the change and its generation after it, stamps a stale snapshot
+// as current, and the staleness this counter exists to detect is exactly what it
+// would hide. Read together, a stamped generation describes the content it is
+// stamped on, and any later mutation is guaranteed to bump past it.
+func (s *Store) Routing() (string, map[string]TargetDecision, uint64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	targets := make(map[string]TargetDecision, len(s.projects))
+	for id, p := range s.projects {
+		targets[id] = TargetDecision{URL: p.TargetURL, AllowPrivate: p.TargetAllowPrivate}
+	}
+	return s.active, targets, s.routingGen.Load()
+}
+
+// TargetDecision is a project's backend together with the authorisation that was
+// recorded when it was set.
+type TargetDecision struct {
+	URL          string
+	AllowPrivate bool
+}
+
 // SetActiveProject points the install at one of its projects.
 //
 // Persisted, because the active project is a decision the operator made rather
@@ -403,6 +537,7 @@ func (s *Store) SetActiveProject(id string) error {
 	}
 	s.active = id
 	s.ensureProjectLocked(id)
+	s.markRoutingChangedLocked()
 	s.mu.Unlock()
 
 	return s.persistLocked()
@@ -454,6 +589,7 @@ func (s *Store) DeleteProject(id string) error {
 	if s.active == id {
 		s.active = s.projectOrder[0]
 	}
+	s.markRoutingChangedLocked()
 	s.mu.Unlock()
 
 	return s.persistLocked()
@@ -465,11 +601,24 @@ func (s *Store) DeleteProject(id string) error {
 // It used to mutate memory and nothing else, which meant the target URL and the
 // auto-save checkbox silently reverted to their command-line values every time
 // the process restarted — a settings panel whose settings were not settings.
+//
+// A target in cfg is written to the active project, and config.json keeps it as
+// well. That is deliberate rather than the duplication it looks like: the two
+// files answer different questions. config.json is what this install was last
+// told to do, which is what ApplyRememberedConfig reads on the next start; the
+// project's copy is what is in force, and is what a switch changes. They agree
+// for a single-project install, which is the only install there has ever been,
+// and a second project diverging from the remembered default is the point of
+// having one.
 func (s *Store) UpdateConfig(cfg types.ProxyConfig) error {
 	s.writeMx.Lock()
 	defer s.writeMx.Unlock()
 
 	s.mu.Lock()
+	if p, ok := s.projects[s.active]; ok {
+		p.TargetURL = cfg.TargetURL
+	}
+	s.markRoutingChangedLocked()
 	s.config = cfg
 	s.configured = true
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -481,7 +630,11 @@ func (s *Store) UpdateConfig(cfg types.ProxyConfig) error {
 	if err := atomicWriteFile(s.configPath, data, 0600); err != nil {
 		return fmt.Errorf("persist config: %w", err)
 	}
-	return nil
+	// The project's target lives in the store document, not in config.json, so
+	// the write above does not carry it. Without this the retarget would survive
+	// a restart only by way of the remembered config, and would be lost by a
+	// launch that passed --target.
+	return s.persistLocked()
 }
 
 // ApplyRememberedConfig overlays the configuration saved from the dashboard onto
@@ -516,6 +669,15 @@ func (s *Store) ApplyRememberedConfig(targetFromFlag, portFromFlag bool) error {
 	defer s.mu.Unlock()
 	if !targetFromFlag && saved.TargetURL != "" {
 		s.config.TargetURL = saved.TargetURL
+		// And onto the project, which is where the proxy reads it from. Writing
+		// only the config would leave the remembered target visible to every
+		// reader of GetConfig while the request path kept dialling the flag's —
+		// the same class of disagreement GetConfig's overlay exists to prevent,
+		// arriving from the other direction.
+		if p, ok := s.projects[s.active]; ok {
+			p.TargetURL = saved.TargetURL
+			s.markRoutingChangedLocked()
+		}
 	}
 	if !portFromFlag && saved.ProxyPort != "" {
 		s.config.ProxyPort = saved.ProxyPort
@@ -1278,6 +1440,7 @@ func (s *Store) loadFromFile() error {
 		s.projectOrder = append(s.projectOrder, p.ID)
 	}
 	s.active = state.Active
+	s.markRoutingChangedLocked()
 	if _, ok := s.projects[s.active]; !ok {
 		// A document naming an active project it does not list is internally
 		// inconsistent, and picking the first project is recoverable where

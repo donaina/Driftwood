@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -80,16 +81,42 @@ const (
 // mechanism of its own, so the address is fixed at the default build.
 var explainURL = "http://localhost:8788/explain"
 
+// routing is where requests go, in one value so a request resolves its
+// destination with a single atomic load and no lock.
+//
+// It is a snapshot of the store rather than a second source of truth: the store
+// owns the projects, and RefreshRouting copies what it finds. One value holding
+// both the active project and the targets keeps the two from disagreeing — the
+// alternative was an active-project atomic beside a targets atomic, and a
+// request that read them either side of a switch would have dialled one
+// client's backend under another client's name.
+type routing struct {
+	active  string
+	targets map[string]targetEntry
+	// gen is the store generation this snapshot was read at. getTargetURL
+	// compares it against the store's current one, so a snapshot that missed a
+	// change is corrected on the next request rather than persisting until
+	// somebody remembers to call RefreshRouting. See storage.routingGen.
+	gen uint64
+}
+
+// targetEntry is where one project's requests go. The SSRF decision that
+// produced it is not carried here: it is what authorised the target, not part of
+// addressing it, and the store already holds it as the project's
+// TargetAllowPrivate. It was duplicated here for a while and read by nothing,
+// which is worse than absent — a security field sitting in the request path
+// reads like a check happening there.
+type targetEntry struct {
+	url *url.URL
+}
+
 type Proxy struct {
-	targetURL atomic.Pointer[url.URL]
-	store     *storage.Store
-	hub       *events.Hub
-	mockCtrl  *mock.MockController
-	transport *http.Transport
-	server    *http.Server
-	// allowPrivate governs the target given at construction. It is deliberately
-	// not consulted by SetTarget, whose target arrives over HTTP — see there.
-	allowPrivate  bool
+	routing       atomic.Pointer[routing]
+	store         *storage.Store
+	hub           *events.Hub
+	mockCtrl      *mock.MockController
+	transport     *http.Transport
+	server        *http.Server
 	droppedAlerts int64 // counter for dropped breaking alerts
 
 	// explainSlots is the concurrency budget for sidecar calls. A buffered
@@ -99,14 +126,7 @@ type Proxy struct {
 }
 
 func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
-	parsed, err := parseAndValidateTarget(target, false)
-	if err != nil {
-		return nil, fmt.Errorf("invalid target URL: %w", err)
-	}
-
-	p := newProxy(store, hub, mockCtrl, false)
-	p.targetURL.Store(parsed)
-	return p, nil
+	return newProxyWithTarget(target, store, hub, mockCtrl, false)
 }
 
 // NewProxyAllowPrivate builds a proxy that accepts a private target.
@@ -115,18 +135,32 @@ func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mo
 // --target flag, or a test's own httptest server — because an operator naming
 // http://localhost:3000 is naming the thing they want sniffed, and that is the
 // product's primary use. It is the wrong constructor for a target that arrived
-// over the network; use SetTarget for those.
+// over the network; use SetProjectTarget for those.
 //
 // It was called NewProxyForTest and called from main, which is how the SSRF
 // blocklist came to be disabled in every shipped binary.
 func NewProxyAllowPrivate(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
-	parsed, err := parseAndValidateTarget(target, true)
+	return newProxyWithTarget(target, store, hub, mockCtrl, true)
+}
+
+// newProxyWithTarget records the operator's target as the active project's and
+// takes the first routing snapshot from the store.
+//
+// The target is written into the store rather than kept beside it. A proxy
+// holding its own copy of the target would be a second answer to a question the
+// store already answers, and the two would diverge the first time a project was
+// switched — the request path would still be dialling the target the process
+// started with while every view showed the new project's.
+func newProxyWithTarget(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, allowPrivate bool) (*Proxy, error) {
+	parsed, err := parseAndValidateTarget(target, allowPrivate)
 	if err != nil {
 		return nil, fmt.Errorf("invalid target URL: %w", err)
 	}
 
-	p := newProxy(store, hub, mockCtrl, true)
-	p.targetURL.Store(parsed)
+	p := newProxy(store, hub, mockCtrl)
+	if err := p.storeTarget(store.ActiveProject(), parsed, allowPrivate); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -136,13 +170,12 @@ func NewProxyAllowPrivate(target string, store *storage.Store, hub *events.Hub, 
 // explainSlots, and a send on a nil channel takes the default branch forever, so
 // every explanation was silently dropped in exactly the tests meant to catch
 // that.
-func newProxy(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, allowPrivate bool) *Proxy {
+func newProxy(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) *Proxy {
 	return &Proxy{
 		store:        store,
 		hub:          hub,
 		mockCtrl:     mockCtrl,
 		transport:    newTransport(),
-		allowPrivate: allowPrivate,
 		explainSlots: make(chan struct{}, explainBudget),
 	}
 }
@@ -254,28 +287,155 @@ func parseIPLiteral(host string) net.IP {
 	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
 }
 
-// SetTarget points the proxy at a new backend.
+// ErrInvalidTarget reports that a target was refused on its merits: a scheme
+// that is not http or https, or a host the SSRF rules will not dial.
+//
+// It is a sentinel because the caller has to tell this apart from a failure to
+// *record* a target that was accepted. Both are errors and neither is a 200, but
+// they are different answers to the client — 400 for "you asked for something I
+// will not do", 500 for "I agreed and could not write it down" — and a handler
+// that cannot distinguish them reports the second as the first. That is not
+// hypothetical: this feature's first version surfaced an unwritable data
+// directory as "invalid target URL", and the existing test for that route is
+// what said so.
+var ErrInvalidTarget = errors.New("invalid target")
+
+// SetProjectTarget points one project at a new backend.
 //
 // The target is validated rather than trusted, and allowPrivate is the
 // caller's assertion that the request which carried it came from the operator.
 // Driftwood has no authentication of its own and runs inside networks worth
 // reaching, so a retarget from off-box must not be able to aim it at
 // link-local metadata or the LAN behind it.
-func (p *Proxy) SetTarget(target string, allowPrivate bool) error {
+//
+// The validation happens here, before the store is touched, because this is the
+// only place that knows where the request came from. The store records the
+// outcome; it does not re-derive it.
+//
+// An error that is ErrInvalidTarget means the target was refused. Any other
+// error means it was accepted and could not be saved.
+func (p *Proxy) SetProjectTarget(projectID, target string, allowPrivate bool) error {
+	if !p.knownProject(projectID) {
+		return fmt.Errorf("no project %q", projectID)
+	}
 	parsed, err := parseAndValidateTarget(target, allowPrivate)
 	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidTarget, err)
+	}
+	return p.storeTarget(projectID, parsed, allowPrivate)
+}
+
+// storeTarget records a validated target against a project and republishes the
+// routing snapshot.
+//
+// Kept apart from SetProjectTarget so the constructors can take this path
+// without the project-existence check: they run before any project could have
+// been made, against a store that has just seeded its first one.
+func (p *Proxy) storeTarget(projectID string, parsed *url.URL, allowPrivate bool) error {
+	if err := p.store.SetProjectTarget(projectID, parsed.String(), allowPrivate); err != nil {
 		return err
 	}
-	p.targetURL.Store(parsed)
+	return p.RefreshRouting()
+}
+
+func (p *Proxy) knownProject(projectID string) bool {
+	return p.store.ProjectExists(projectID)
+}
+
+// RefreshRouting rebuilds the proxy's view of where requests go from the store.
+//
+// Everything that changes a project's target, or which project is active, has
+// to end here — the store is the source of truth and this is the copy the
+// request path reads. It is one function rather than a setter per field so that
+// a new mutation has one obvious place to hook into, and so the snapshot cannot
+// be assembled from a store that moved underneath it: a target map read after a
+// switch but an active id read before it would dial one client's backend under
+// another client's name.
+//
+// A project whose stored target does not parse is left out of the snapshot
+// rather than failing the whole refresh. The document is a file on disk that a
+// person can edit, so this is reachable; dropping the one unusable project keeps
+// the other clients working, and that project's requests get the same answer as
+// a project with no target, which is honest about there being nowhere to go.
+func (p *Proxy) RefreshRouting() error {
+	active, targets, gen := p.store.Routing()
+
+	next := &routing{active: active, gen: gen, targets: make(map[string]targetEntry, len(targets))}
+	for id, decision := range targets {
+		if decision.URL == "" {
+			continue
+		}
+		parsed, err := parseAndValidateTarget(decision.URL, decision.AllowPrivate)
+		if err != nil {
+			continue
+		}
+		next.targets[id] = targetEntry{url: parsed}
+	}
+	p.setRouting(next)
 	return nil
 }
 
-func (p *Proxy) getTargetURL() *url.URL {
-	return p.targetURL.Load()
+func (p *Proxy) setRouting(r *routing) {
+	p.routing.Store(r)
 }
 
-func (p *Proxy) GetTargetURLForTest() *atomic.Pointer[url.URL] {
-	return &p.targetURL
+// getTargetURL is the request path's routing cost: one atomic load, and a
+// second one to check it is current.
+//
+// It reads the active project and the target from the same value, so a switch
+// landing mid-request cannot pair a new project with an old backend.
+func (p *Proxy) getTargetURL() *url.URL {
+	r := p.loadRouting()
+	if r == nil {
+		return nil
+	}
+	entry, ok := r.targets[r.active]
+	if !ok {
+		return nil
+	}
+	return entry.url
+}
+
+// loadRouting returns a snapshot known to be current, rebuilding it if the store
+// has moved on.
+//
+// The snapshot is a copy the request path reads without a lock, and a copy only
+// stays correct if something keeps it in step. Every mutation that changes
+// routing does call RefreshRouting — but that is a rule a future mutation has to
+// remember, and the cost of forgetting is not a stale dashboard, it is a
+// request delivered to the previous client's backend. Comparing generations
+// turns that from a thing to remember into a thing that cannot happen: the
+// store bumps a counter on every routing change, this checks it, and a snapshot
+// that missed one is discarded before it is used.
+//
+// The extra load is on the request path and costs an atomic read. The rebuild
+// happens at most once per change, not once per request: the first request after
+// a change refreshes, and the rest find the generation matching.
+//
+// If rebuilding fails the previous snapshot is returned rather than nothing.
+// RefreshRouting does not currently fail, and a stale answer to the previous
+// backend is still a better one than refusing to proxy at all — but that is a
+// judgement worth revisiting if it ever grows a real failure mode.
+func (p *Proxy) loadRouting() *routing {
+	r := p.routing.Load()
+	if r != nil && r.gen == p.store.RoutingGeneration() {
+		return r
+	}
+	if err := p.RefreshRouting(); err != nil {
+		return r
+	}
+	return p.routing.Load()
+}
+
+// GetTargetURLForTest reports where the active project's requests are going.
+//
+// It replaced a hook that handed tests the atomic itself so they could store an
+// unvalidated URL into it. That was a second way into the routing table which
+// skipped every check on the way — and a test that reaches a backend by a route
+// production does not have is not testing production. Tests retarget through
+// SetProjectTarget now, which is the same call the API makes.
+func (p *Proxy) GetTargetURLForTest() *url.URL {
+	return p.getTargetURL()
 }
 
 func (p *Proxy) Handler() http.HandlerFunc {

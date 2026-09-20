@@ -198,18 +198,23 @@ type ProxyConfig struct {
 	DevMockMode      bool   `json:"dev_mock_mode"` // enable mock fallback for dev
 }
 
-// Project is one namespaced context: a name, and the endpoints recorded under
-// it. An install has exactly one until projects become a user-facing idea.
+// Project is one namespaced context: a name, a backend to sniff, and the
+// endpoints recorded under it.
 //
-// It deliberately carries no target of its own yet. Every project has one
-// eventually, but nothing routes by project at this point, and a field that is
-// written and never read is a field that will be believed — the config's
-// target_url is still the one in force. The target moves here when the proxy can
-// act on it.
+// TargetAllowPrivate persists the SSRF decision alongside the target it applies
+// to, rather than re-deriving it on every start. That is sound because a private
+// target can only be set from loopback in the first place: the field records an
+// authorisation the operator already gave, it does not grant a new one. Without
+// it, a restart would have to either re-block a target the operator configured
+// deliberately — breaking every local-development install — or accept private
+// targets unconditionally, which is the bug that put the blocklist in a
+// constructor nobody called.
 type Project struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	TargetURL          string    `json:"target_url"`
+	TargetAllowPrivate bool      `json:"target_allow_private"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // EventMessage represents real-time updates broadcast to WebSocket/SSE clients
