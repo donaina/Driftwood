@@ -64,6 +64,81 @@ func TestSeedDemoBaselines_DoesNotOverwriteAnExistingContract(t *testing.T) {
 	}
 }
 
+// Without -project an import must land exactly where it landed before projects
+// existed. This is the case that keeps the flag additive.
+func TestResolveImportProjectDefaultsToActive(t *testing.T) {
+	store := newTestStore(t)
+	first := store.ActiveProject()
+
+	got, err := resolveImportProject(store, "")
+	if err != nil {
+		t.Fatalf("resolveImportProject(\"\"): %v", err)
+	}
+	if got != first {
+		t.Errorf("an unflagged import resolved to %q, want the active project %q", got, first)
+	}
+
+	// And it follows the active project rather than being pinned to the
+	// default, which is the difference between "the active project" and "the
+	// project that happened to be active when this code was written".
+	second, err := store.CreateProject("Second")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if err := store.SetActiveProject(second.ID); err != nil {
+		t.Fatalf("SetActiveProject: %v", err)
+	}
+
+	got, err = resolveImportProject(store, "")
+	if err != nil {
+		t.Fatalf("resolveImportProject(\"\"): %v", err)
+	}
+	if got != second.ID {
+		t.Errorf("an unflagged import resolved to %q after switching, want %q", got, second.ID)
+	}
+}
+
+func TestResolveImportProjectHonoursAnExplicitProject(t *testing.T) {
+	store := newTestStore(t)
+	other, err := store.CreateProject("Acme")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	got, err := resolveImportProject(store, other.ID)
+	if err != nil {
+		t.Fatalf("resolveImportProject(%q): %v", other.ID, err)
+	}
+	if got != other.ID {
+		t.Errorf("resolved to %q, want %q", got, other.ID)
+	}
+}
+
+// A named project that does not exist is refused. Creating it instead would
+// file a client's contracts under a project the user never made and nothing is
+// pointed at, and the import would report success.
+func TestResolveImportProjectRefusesAnUnknownProject(t *testing.T) {
+	store := newTestStore(t)
+	before, _ := store.ListProjects()
+
+	got, err := resolveImportProject(store, "acme")
+	if err == nil {
+		t.Fatalf("resolved %q to %q, want an error", "acme", got)
+	}
+
+	// The error has to name what does exist, or the user's only recourse is to
+	// guess at the ids.
+	active := store.ActiveProject()
+	if !strings.Contains(err.Error(), active) {
+		t.Errorf("the error does not name the project that does exist (%q): %v", active, err)
+	}
+
+	after, _ := store.ListProjects()
+	if len(after) != len(before) {
+		t.Errorf("a refused import changed the project list: %d -> %d", len(before), len(after))
+	}
+}
+
 // A guard on the harness rather than on the product: if the store ever resolves
 // its persistence directory from something other than $HOME — os/user.Current(),
 // say, which ignores the variable — every test in this file would start writing

@@ -197,20 +197,61 @@ func envTruthy(name string) bool {
 	return false
 }
 
+// resolveImportProject decides which project an import files its contracts
+// under.
+//
+// Without -project it is the active project, which is what makes an unflagged
+// import behave exactly as it did when there was only one. With -project it is
+// the named one, and a name that does not exist is an error rather than a new
+// project: an import is the act of filing a client's declared contracts, and
+// silently creating the project a typo named would file them somewhere nothing
+// is looking. The error lists what does exist, because a refusal a user cannot
+// act on is only slightly better than the wrong answer.
+//
+// This is separated from handleImport so it can be tested at all —
+// handleImport reports by log.Fatalf, which exits.
+func resolveImportProject(store *storage.Store, requested string) (string, error) {
+	if requested == "" {
+		return store.ActiveProject(), nil
+	}
+	if !store.ProjectExists(requested) {
+		projects, _ := store.ListProjects()
+		known := make([]string, 0, len(projects))
+		for _, p := range projects {
+			// The id is what the flag takes, so it leads. The name is how a
+			// person knows the project, so it follows when it says more.
+			if p.Name != "" && p.Name != p.ID {
+				known = append(known, fmt.Sprintf("%s (%s)", p.ID, p.Name))
+				continue
+			}
+			known = append(known, p.ID)
+		}
+		if len(known) == 0 {
+			return "", fmt.Errorf("no such project: %q, and this install has no projects", requested)
+		}
+		return "", fmt.Errorf("no such project: %q; known projects: %s",
+			requested, strings.Join(known, ", "))
+	}
+	return requested, nil
+}
+
 func handleImport(args []string) {
 	importFlag := flag.NewFlagSet("import", flag.ExitOnError)
 	specPath := importFlag.String("spec", "", "Path or URL to OpenAPI spec (required)")
+	projectFlag := importFlag.String("project", "", "Project id to file the contracts under (default: the active project)")
 	help := importFlag.Bool("help", false, "Show help")
 	importFlag.Parse(args)
 
 	if *help || *specPath == "" {
-		fmt.Println("Usage: drift import -spec <file|url>")
-		fmt.Println("  -spec    Path or URL to OpenAPI 3.x specification (required)")
-		fmt.Println("  -help    Show this help")
+		fmt.Println("Usage: drift import -spec <file|url> [-project <id>]")
+		fmt.Println("  -spec     Path or URL to OpenAPI 3.x specification (required)")
+		fmt.Println("  -project  Project id to file the contracts under")
+		fmt.Println("            (default: whichever project is active)")
+		fmt.Println("  -help     Show this help")
 		fmt.Println()
 		fmt.Println("Examples:")
 		fmt.Println("  drift import -spec ./openapi.json")
-		fmt.Println("  drift import -spec https://api.example.com/openapi.json")
+		fmt.Println("  drift import -spec https://api.example.com/openapi.json -project acme")
 		os.Exit(1)
 	}
 
@@ -241,12 +282,13 @@ func handleImport(args []string) {
 	}
 
 	// Import contracts.
-	//
-	// The active project, for now: with one project there is nothing else it
-	// could be. `-project` is what makes this a choice, and it arrives with the
-	// rest of the project routes rather than as a flag that can only name one
-	// thing.
-	err = spec.ImportToStorage(store.ActiveProject(), store)
+	projectID, err := resolveImportProject(store, *projectFlag)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	log.Printf("[Driftwood] Filing contracts under project %q", projectID)
+
+	err = spec.ImportToStorage(projectID, store)
 	if err != nil {
 		log.Fatalf("Failed to import contracts: %v", err)
 	}
