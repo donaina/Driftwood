@@ -23,8 +23,22 @@ type Store struct {
 	maxAlerts   int
 	persistPath string
 	configPath  string
-	persistDir  string
-	writeMx     sync.Mutex // separate lock for file writes
+
+	/* Serialises the rename-into-place writes, and must be held across the whole
+	   mutate-then-snapshot-then-write sequence rather than just the write.
+
+	   Held around the write alone it does nothing useful: two saves can each take
+	   their snapshot under mu, then write in the opposite order, and the file ends
+	   up holding the older snapshot. The file stays well-formed and a whole
+	   baseline disappears, which is the failure mode worth naming — it does not
+	   look like corruption, so nothing downstream reports it.
+
+	   Lock order is writeMx before mu. Every persisting method acquires them in
+	   that order; none acquires mu first and then waits for writeMx, so the two
+	   cannot deadlock. Holding mu across the mutation is still what makes the
+	   snapshot consistent; writeMx is what makes the file's history match the
+	   order the mutations happened in. */
+	writeMx sync.Mutex
 
 	/* Whether anyone has ever told this install what to sniff: a saved config,
 	   or --target/--port on the command line.
@@ -53,7 +67,6 @@ func NewStore(targetURL, proxyPort string) *Store {
 		maxAlerts:   200,
 		persistPath: filepath.Join(persistDir, "baselines.json"),
 		configPath:  filepath.Join(persistDir, "config.json"),
-		persistDir:  persistDir,
 		config: types.ProxyConfig{
 			TargetURL:        targetURL,
 			ProxyPort:        proxyPort,
@@ -64,6 +77,27 @@ func NewStore(targetURL, proxyPort string) *Store {
 
 	_ = s.loadHistoriesFromFile()
 	return s
+}
+
+// historyKey is how an endpoint is identified everywhere in this package: one
+// map key per METHOD:PATH, built here and nowhere else.
+//
+// It was inlined at seven call sites, which is seven chances for the read path
+// and the write path to disagree about how an endpoint is spelled. A key that
+// one function writes as "GET:/users" and another looks up as "GET /users" is
+// not a compile error and not a runtime error either — it is an endpoint that
+// silently never matches its own baseline, which reads as drift that is not
+// there, or as a contract that vanished.
+//
+// The Method is used exactly as given, so the key is case-sensitive and nothing
+// upstream normalises it: net/http hands over r.Method as the client spelled it,
+// and `curl -X get` therefore files its history under a second key. Real clients
+// send the method upper-case, so this is rare rather than theoretical. It is
+// left as-is because a key upper-cased at lookup time would not match a
+// lower-case key already sitting in a user's baselines.json — normalising means
+// normalising on load too, which belongs with the keying rewrite and not here.
+func historyKey(method, path string) string {
+	return method + ":" + path
 }
 
 // SetConfigured records that the operator has named a target or a port, which
@@ -94,6 +128,9 @@ func (s *Store) GetConfig() types.ProxyConfig {
 // auto-save checkbox silently reverted to their command-line values every time
 // the process restarted — a settings panel whose settings were not settings.
 func (s *Store) UpdateConfig(cfg types.ProxyConfig) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
 	s.mu.Lock()
 	s.config = cfg
 	s.configured = true
@@ -253,9 +290,14 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 		s.alerts[key] = alert
 		s.alertOrder = append(s.alertOrder, key)
 		if len(s.alertOrder) > s.maxAlerts {
-			oldKey := s.alertOrder[0]
-			delete(s.alerts, oldKey)
-			s.alertOrder = s.alertOrder[1:]
+			delete(s.alerts, s.alertOrder[0])
+			// Copy the tail rather than reslicing forward, for the reason spelled
+			// out in recordObservationLocked: `s.alertOrder[1:]` keeps the whole
+			// backing array alive, so the evicted traffic ID stays reachable and
+			// the array never grows back down. This allocates once per alert past
+			// the cap, and alerts are only raised for a breaking change or a
+			// warning, so that is a rare allocation rather than a per-request one.
+			s.alertOrder = append([]string(nil), s.alertOrder[1:]...)
 		}
 	}
 
@@ -272,7 +314,7 @@ func (s *Store) AddTraffic(t types.CapturedTraffic) {
 // per-endpoint trend had no series to draw, and the lock had nothing to pin
 // because it pins an entry in a list that never grew on its own.
 func (s *Store) recordObservationLocked(t types.CapturedTraffic) {
-	key := fmt.Sprintf("%s:%s", t.Method, t.Path)
+	key := historyKey(t.Method, t.Path)
 	at := t.Timestamp
 	if at.IsZero() {
 		at = time.Now()
@@ -345,7 +387,7 @@ func (s *Store) GetBaseline(method, path string) (*types.ContractBaseline, bool)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	key := fmt.Sprintf("%s:%s", method, path)
+	key := historyKey(method, path)
 	h, exists := s.histories[key]
 	if !exists || len(h.Versions) == 0 {
 		return nil, false
@@ -369,7 +411,7 @@ func (s *Store) GetHistory(method, path string) (*types.EndpointHistory, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	key := fmt.Sprintf("%s:%s", method, path)
+	key := historyKey(method, path)
 	h, exists := s.histories[key]
 	if !exists {
 		return nil, false
@@ -483,6 +525,10 @@ func (s *Store) SaveBaselineFrom(method, path, samplePayload, source string) (*t
 // list the document published was unreadable everywhere downstream. Passing the
 // parsed schema through is what makes the import mean what the document said.
 func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, declared *types.JSONSchemaNode, source string) (*types.ContractBaseline, error) {
+	// Held across the mutation and the write together: see the note on writeMx.
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
 	s.mu.Lock()
 
 	// The payload is validated even when a schema is supplied: it is stored
@@ -497,7 +543,7 @@ func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, decla
 		inferredSchema = declared
 	}
 
-	key := fmt.Sprintf("%s:%s", method, path)
+	key := historyKey(method, path)
 	h, exists := s.histories[key]
 	now := time.Now()
 
@@ -570,15 +616,27 @@ func (s *Store) SaveBaselineWithSchema(method, path, samplePayload string, decla
 	if err := atomicWriteFile(s.persistPath, data, 0600); err != nil {
 		return nil, fmt.Errorf("atomic write failed: %w", err)
 	}
-	return cb, nil
+
+	// A copy, not cb itself. cb is now in s.histories, so returning it hands the
+	// caller a live handle on store state that the store's lock does not guard:
+	// whoever holds it can rewrite a field from outside any critical section, and
+	// a concurrent reader sees the change with no happens-before edge. Every
+	// getter in this file copies for exactly that reason; this function, which
+	// both mutates and returns, was the one that did not.
+	out := *cb
+	out.Schema = deepCopySchema(cb.Schema)
+	return &out, nil
 }
 
 // SetLockedVersion pins an endpoint to a specific version
 func (s *Store) SetLockedVersion(method, path string, version int) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := fmt.Sprintf("%s:%s", method, path)
+	key := historyKey(method, path)
 	h, exists := s.histories[key]
 	if !exists {
 		return fmt.Errorf("endpoint not found")
@@ -609,10 +667,13 @@ func (s *Store) SetLockedVersion(method, path string, version int) error {
 // confirming a version the caller did not name is how a guess gets blessed by
 // someone who was looking somewhere else.
 func (s *Store) ConfirmBaseline(method, path string, version int) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := fmt.Sprintf("%s:%s", method, path)
+	key := historyKey(method, path)
 	h, exists := s.histories[key]
 	if !exists {
 		return fmt.Errorf("endpoint not found")
@@ -647,8 +708,11 @@ func (s *Store) ConfirmBaseline(method, path string, version int) error {
 // again (GetBaseline and GetAllBaselines both guard on len(Versions) == 0) while
 // its history stays visible.
 func (s *Store) DeleteBaseline(method, path string) {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
 	s.mu.Lock()
-	key := fmt.Sprintf("%s:%s", method, path)
+	key := historyKey(method, path)
 	if h, exists := s.histories[key]; exists {
 		h.Versions = make([]*types.ContractBaseline, 0)
 		h.LockedVersion = 0
@@ -713,9 +777,17 @@ func (s *Store) historiesForPersistLocked() map[string]*types.EndpointHistory {
 	return out
 }
 
+// atomicWriteFile writes path by creating a sibling temp file and renaming it
+// into place, so a reader never sees a half-written file.
+//
+// The temp name is derived from the destination. It used to be the constant
+// ".baselines.*.tmp" for every caller, which was invisible while baselines.json
+// was the only file written through here and wrong the moment config.json was:
+// a leftover temp file named for the wrong file is a confusing thing to find in
+// ~/.driftwood, and the pattern is the only clue to which write was interrupted.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	tmpFile, err := os.CreateTemp(dir, ".baselines.*.tmp")
+	tmpFile, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
 	}

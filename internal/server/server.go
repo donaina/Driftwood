@@ -13,7 +13,6 @@ import (
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/storage"
-	"github.com/donaina/driftwood/pkg/types"
 	"github.com/donaina/driftwood/site"
 	"github.com/donaina/driftwood/web"
 )
@@ -340,26 +339,52 @@ func isLoopbackRequest(r *http.Request) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// configPatch carries only the fields a request actually named, so that a field
+// it left out can be told apart from a field it set to its zero value.
+//
+// Decoding straight into a types.ProxyConfig cannot make that distinction, and
+// the difference is not academic: the dashboard's own save button posts
+// target_url, auto_save_baseline, proxy_port and intercept_json, and says nothing
+// about dev_mock_mode — so saving your proxy settings turned the mock mode off.
+// A pointer per field is what makes "absent" representable.
+type configPatch struct {
+	TargetURL        *string `json:"target_url"`
+	AutoSaveBaseline *bool   `json:"auto_save_baseline"`
+	InterceptJSON    *bool   `json:"intercept_json"`
+	DevMockMode      *bool   `json:"dev_mock_mode"`
+}
+
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		var cfg types.ProxyConfig
-		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		var patch configPatch
+		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// The listening port is fixed for the life of the process — the socket is
-		// already bound — so it is kept from the running config rather than taken
-		// from the request. The dashboard has no port field either; it sends a
-		// hardcoded 8787, which would otherwise be persisted and then adopted on
-		// the next start by anyone who had launched on a different port.
-		cfg.ProxyPort = s.store.GetConfig().ProxyPort
+		// Start from what is running and overlay only what was named. The port is
+		// never taken from the request at all: the listening socket is already
+		// bound, so it is fixed for the life of the process. The dashboard has no
+		// port field either — it sends a hardcoded 8787, which would otherwise be
+		// persisted and adopted on the next start by anyone who had launched on a
+		// different port.
+		cfg := s.store.GetConfig()
+		if patch.TargetURL != nil {
+			cfg.TargetURL = *patch.TargetURL
+		}
+		if patch.AutoSaveBaseline != nil {
+			cfg.AutoSaveBaseline = *patch.AutoSaveBaseline
+		}
+		if patch.InterceptJSON != nil {
+			cfg.InterceptJSON = *patch.InterceptJSON
+		}
+		if patch.DevMockMode != nil {
+			cfg.DevMockMode = *patch.DevMockMode
+		}
 
 		// Retargeted before it is persisted, so a target the proxy refuses is
 		// never written down. Checking afterwards left the config panel
-		// describing an endpoint that was not the one in use, and discarding the
-		// error entirely meant a body of `{}` decoded to a zero config and
-		// silently wiped the saved settings.
+		// describing an endpoint that was not the one in use.
 		if err := s.proxy.SetTarget(cfg.TargetURL, isLoopbackRequest(r)); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -382,10 +407,11 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 // handleSetupState answers whether this install has ever been configured, which
 // is the dashboard's cue to offer first-run setup.
 //
-// A route of its own rather than a field on /api/config: handleConfig decodes
-// the request body into a zero-value ProxyConfig and stores it wholesale, so
-// anything added to that struct is a field some client can silently reset by
-// omitting it. This is a read-only fact about the install, not a setting.
+// A route of its own rather than a field on /api/config because it is a
+// read-only fact about the install, not a setting: nothing posts it, and a field
+// on a configuration endpoint is a field some client will eventually try to set.
+// (handleConfig no longer stores a request body wholesale — see configPatch — so
+// the older reason for splitting this out no longer applies, but this one does.)
 func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"configured": s.store.IsConfigured()})

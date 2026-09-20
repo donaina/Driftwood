@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -165,6 +167,12 @@ func TestStore_RingBufferAlerts(t *testing.T) {
 		histories:   make(map[string]*types.EndpointHistory),
 		alerts:      make(map[string]*types.Alert),
 		maxTraffics: 500,
+		// Set explicitly. It was left at its zero value, which made this test
+		// assert nothing: with maxAlerts 0 every alert evicted itself, so
+		// GetAlerts returned an empty slice and "len <= 200" held trivially. A
+		// bound that is never approached cannot be tested by asserting it is not
+		// exceeded.
+		maxAlerts:   200,
 		persistPath: persistPath,
 		config:      types.ProxyConfig{TargetURL: "http://localhost:3000"},
 		alertOrder:  make([]string, 0),
@@ -187,9 +195,10 @@ func TestStore_RingBufferAlerts(t *testing.T) {
 		})
 	}
 
-	alerts := s.GetAlerts(300)
-	if len(alerts) > 200 {
-		t.Errorf("alerts len = %d, want <= 200 (ring buffer limit)", len(alerts))
+	// Exactly the cap, not merely "at most": 250 alerts went in, so anything less
+	// than 200 means the ring is dropping more than it should.
+	if alerts := s.GetAlerts(300); len(alerts) != 200 {
+		t.Errorf("alerts len = %d, want exactly 200 (the ring buffer limit)", len(alerts))
 	}
 }
 
@@ -1098,5 +1107,257 @@ func TestStore_EndpointCapEvictsOnlyWhatItMayForget(t *testing.T) {
 	}
 	if got := len(s.GetAllHistories()); got > maxEndpoints {
 		t.Errorf("histories = %d, want the map held at its cap of %d", got, maxEndpoints)
+	}
+}
+
+// TestPersistingMethodsSerialiseOnTheWriteLock is the regression test for the
+// unserialised persist: it asserts the mechanism, because the symptom cannot be
+// forced.
+//
+// The bug was that each save took its snapshot under mu and then wrote after
+// releasing it, so two saves could snapshot in one order and write in the other
+// and the file kept whichever landed last, losing a whole endpoint with no parse
+// error and no log line. Reproducing that needs a goroutine descheduled in the
+// narrow window between the snapshot and the write, which no amount of
+// concurrency in a test can guarantee — see the note on
+// TestConcurrentSavesLandComplete, which checks the end state but cannot make
+// the losing interleaving happen.
+//
+// What can be tested deterministically is the fix itself: holding writeMx must
+// block every method that persists. On the old code each of these returned
+// immediately. Note this covers the lock, not the ordering — an implementation
+// that took writeMx and then dropped it before writing would pass here and still
+// lose writes.
+func TestPersistingMethodsSerialiseOnTheWriteLock(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(*Store) error
+	}{
+		{"SaveBaseline", func(s *Store) error {
+			_, err := s.SaveBaseline("GET", "/api/x", `{"a": 1}`)
+			return err
+		}},
+		{"SetLockedVersion", func(s *Store) error {
+			return s.SetLockedVersion("GET", "/api/x", 1)
+		}},
+		{"ConfirmBaseline", func(s *Store) error {
+			return s.ConfirmBaseline("GET", "/api/x", 1)
+		}},
+		{"DeleteBaseline", func(s *Store) error {
+			s.DeleteBaseline("GET", "/api/x")
+			return nil
+		}},
+		{"UpdateConfig", func(s *Store) error {
+			cfg := s.GetConfig()
+			return s.UpdateConfig(cfg)
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newPersistingStore(t)
+
+			// Seed the endpoint, so the calls that address a version have one.
+			if _, err := s.SaveBaseline("GET", "/api/x", `{"a": 1}`); err != nil {
+				t.Fatalf("seeding the endpoint: %v", err)
+			}
+
+			s.writeMx.Lock()
+			done := make(chan error, 1)
+			go func() { done <- tc.call(s) }()
+
+			select {
+			case err := <-done:
+				s.writeMx.Unlock()
+				t.Fatalf("%s completed while the write lock was held (err = %v): "+
+					"it persists without serialising against another writer", tc.name, err)
+			case <-time.After(200 * time.Millisecond):
+				// Blocked, which is the point.
+			}
+			s.writeMx.Unlock()
+
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("%s failed once the write lock was released: %v", tc.name, err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatalf("%s never finished after the write lock was released", tc.name)
+			}
+		})
+	}
+}
+
+func newPersistingStore(t *testing.T) *Store {
+	t.Helper()
+	return &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxTraffics: 500,
+		maxAlerts:   200,
+		persistPath: filepath.Join(t.TempDir(), "baselines.json"),
+		configPath:  filepath.Join(t.TempDir(), "config.json"),
+	}
+}
+
+// TestConcurrentSavesLandComplete checks the end state of a burst of concurrent
+// saves: the file is what survives a restart, so it is what has to be whole.
+//
+// This is a guard, not a reproduction. It passes against the unserialised code
+// as well, because losing a write needs the writing goroutine to be descheduled
+// between its snapshot and its write, and nothing here can force that. It is
+// kept because it will catch a *wider* version of the same mistake — a
+// regression that drops writes routinely rather than occasionally — and because
+// the assertion it makes is the one that actually matters to a user.
+func TestConcurrentSavesLandComplete(t *testing.T) {
+	tmpDir := t.TempDir()
+	persistPath := filepath.Join(tmpDir, "baselines.json")
+
+	s := &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxTraffics: 500,
+		maxAlerts:   200,
+		persistPath: persistPath,
+	}
+
+	const saves = 24
+	var wg sync.WaitGroup
+	errs := make([]error, saves)
+	for i := 0; i < saves; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = s.SaveBaseline(
+				"GET",
+				fmt.Sprintf("/api/thing/%d", i),
+				fmt.Sprintf(`{"n": %d}`, i),
+			)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("save %d failed: %v", i, err)
+		}
+	}
+
+	data, err := os.ReadFile(persistPath)
+	if err != nil {
+		t.Fatalf("reading the persisted file: %v", err)
+	}
+	var onDisk map[string]*types.EndpointHistory
+	if err := json.Unmarshal(data, &onDisk); err != nil {
+		t.Fatalf("the persisted file is not valid JSON: %v", err)
+	}
+
+	if len(onDisk) != saves {
+		var missing []string
+		for i := 0; i < saves; i++ {
+			if _, ok := onDisk[fmt.Sprintf("GET:/api/thing/%d", i)]; !ok {
+				missing = append(missing, fmt.Sprintf("/api/thing/%d", i))
+			}
+		}
+		t.Errorf("the persisted file holds %d endpoints, want %d; lost: %v",
+			len(onDisk), saves, missing)
+	}
+}
+
+// TestSaveBaselineReturnsACopy guards the other half of the same problem: the
+// value handed back to the caller is in the store's map, so returning it
+// directly hands out a handle on store state that no lock guards.
+func TestSaveBaselineReturnsACopy(t *testing.T) {
+	tmpDir := t.TempDir()
+	s := &Store{
+		traffics:    make([]types.CapturedTraffic, 0),
+		histories:   make(map[string]*types.EndpointHistory),
+		alerts:      make(map[string]*types.Alert),
+		alertOrder:  make([]string, 0),
+		maxTraffics: 500,
+		maxAlerts:   200,
+		persistPath: filepath.Join(tmpDir, "baselines.json"),
+	}
+
+	got, err := s.SaveBaseline("GET", "/api/users", `{"id": 1}`)
+	if err != nil {
+		t.Fatalf("SaveBaseline failed: %v", err)
+	}
+
+	got.SamplePayload = "tampered"
+	if got.Schema != nil {
+		got.Schema.Type = "tampered"
+	}
+
+	stored, ok := s.GetBaseline("GET", "/api/users")
+	if !ok {
+		t.Fatal("baseline not in the store after saving it")
+	}
+	if stored.SamplePayload == "tampered" {
+		t.Error("mutating the returned baseline changed the store's copy")
+	}
+	if stored.Schema != nil && stored.Schema.Type == "tampered" {
+		t.Error("mutating the returned baseline's schema changed the store's copy")
+	}
+}
+
+// TestAlertEvictionDropsTheOldest pins the ring behaviour that AddTraffic's
+// eviction branch implements, which was rewritten to stop reslicing forward.
+//
+// The reslice was an allocation bug rather than a behavioural one, so the
+// observable behaviour is what is asserted here: the cap holds, the oldest
+// alerts go, and the newest survive. GetAlerts walks alertOrder backwards, so
+// the most recent alert is the first element of its result.
+func TestAlertEvictionDropsTheOldest(t *testing.T) {
+	s := newObsStore(t)
+	s.maxAlerts = 3
+
+	alerting := func(id, path string) types.CapturedTraffic {
+		return types.CapturedTraffic{
+			ID:             id,
+			Method:         "GET",
+			Path:           path,
+			StatusCode:     200,
+			ContractStatus: "BREAKING",
+			Diff: &types.ContractDiff{
+				HasBreakingChanges: true,
+			},
+		}
+	}
+
+	for i := 0; i < 6; i++ {
+		s.AddTraffic(alerting(fmt.Sprintf("tr_%d", i), fmt.Sprintf("/api/thing/%d", i)))
+	}
+
+	if len(s.alertOrder) != 3 {
+		t.Errorf("alertOrder holds %d entries, want it capped at 3", len(s.alertOrder))
+	}
+	if len(s.alerts) != 3 {
+		t.Errorf("alerts holds %d entries, want 3 — eviction must drop the map entry too, "+
+			"or the map grows while the order slice does not", len(s.alerts))
+	}
+
+	got := s.GetAlerts(50)
+	if len(got) != 3 {
+		t.Fatalf("GetAlerts returned %d alerts, want 3", len(got))
+	}
+	// Newest first: /api/thing/5, 4, 3. The first three are evicted.
+	want := []string{"/api/thing/5", "/api/thing/4", "/api/thing/3"}
+	for i, path := range want {
+		if !strings.Contains(got[i].Endpoint, path) {
+			t.Errorf("alert %d is %q, want the endpoint containing %q",
+				i, got[i].Endpoint, path)
+		}
+	}
+	for _, a := range got {
+		if strings.Contains(a.Endpoint, "/api/thing/0") ||
+			strings.Contains(a.Endpoint, "/api/thing/1") ||
+			strings.Contains(a.Endpoint, "/api/thing/2") {
+			t.Errorf("evicted endpoint %q is still being returned", a.Endpoint)
+		}
 	}
 }

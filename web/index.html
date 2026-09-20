@@ -1627,31 +1627,32 @@
 
     async function completeSetup() {
       try {
-        /* Reads the config back and posts the whole object, rather than posting
-           only the fields this wizard knows about. handleConfig decodes into a
-           zero-value ProxyConfig and stores it wholesale — it preserves
-           ProxyPort and nothing else — so every field a partial body omits is
-           silently reset. The one that bites here is dev_mock_mode: it is what
-           makes an unreachable target fall back to the mock simulator, so
-           posting without it would switch the simulator off as the final step
-           of the setup flow that leads straight into it. */
+        /* The read-back here supplies the fallback target and nothing else.
+           It used to be load-bearing for a second reason: handleConfig decoded
+           the body into a zero-value ProxyConfig and stored it wholesale, so
+           posting only the fields this wizard knows about silently reset every
+           other one — including dev_mock_mode, which is what makes an
+           unreachable target fall back to the mock simulator, switched off as
+           the last step of the flow that leads into it. handleConfig now
+           overlays the fields a request actually names, so the body below is
+           just this wizard's own decisions and needs no read-back to protect
+           them. */
         let current = {};
         try {
           const res = await fetch('/_driftwood/api/config');
           current = (await res.json()) || {};
-        } catch (e) { /* nothing saved yet: the defaults below stand in */ }
+        } catch (e) { /* nothing saved yet: the default below stands in */ }
 
         const target = detectedTargetUrl || current.target_url || 'http://localhost:3000';
-        const next = Object.assign({}, current, {
-          target_url: target,
-          auto_save_baseline: true,
-          intercept_json: true
-        });
 
         const saved = await fetch('/_driftwood/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(next)
+          body: JSON.stringify({
+            target_url: target,
+            auto_save_baseline: true,
+            intercept_json: true
+          })
         });
         // A rejected target comes back 400 with the reason; reporting it as a
         // success would leave the wizard claiming to monitor an endpoint the
