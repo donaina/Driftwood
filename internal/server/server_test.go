@@ -112,11 +112,21 @@ func (h *harness) hitCount() int64 { return atomic.LoadInt64(h.hits) }
 // is never proxied, so this cannot exercise the backend by accident.
 func (h *harness) postJSON(t *testing.T, path string, body string) *http.Response {
 	t.Helper()
+	return h.postJSONWithHeaders(t, path, body, nil)
+}
+
+// postJSONWithHeaders is postJSON plus request headers, which is how a test
+// states what a reverse proxy would have added on the way in.
+func (h *harness) postJSONWithHeaders(t *testing.T, path, body string, hdr map[string]string) *http.Response {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, h.router.URL+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("NewRequest(POST %s): %v", path, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST %s: %v", path, err)
@@ -425,6 +435,83 @@ func TestConfigRouteRefusesAnInvalidTargetAsABadRequest(t *testing.T) {
 	}
 	if got, _, _ := h.store.ProjectTarget(active); got != before {
 		t.Errorf("a refused target left the project holding %q, want %q", got, before)
+	}
+}
+
+// A reverse proxy opens its own connection to Driftwood from 127.0.0.1 whatever
+// the real client's address was, so before this every request arriving through
+// Caddy was classified loopback and the private-target refusal above never
+// fired: the guard was intact and unreachable at the same time, and an
+// anonymous caller could point Driftwood at any address on the box's own
+// network. This is the SSRF the guard exists to stop, reached through the
+// deployment that guard is meant to survive.
+func TestProxyForwardedRequestIsNotTreatedAsLocal(t *testing.T) {
+	h := newHarness(t)
+	active := h.store.ActiveProject()
+	before, _, _ := h.store.ProjectTarget(active)
+
+	private := `{"target_url":"http://127.0.0.1:5432"}`
+
+	// Every header a proxy might set has to withdraw the trust, not just the one
+	// that happens to be in front today. Caddy sets two of these by default and
+	// Cloudflare adds its own, so a fix that knew only X-Forwarded-For would be
+	// one config change away from silent again.
+	for _, hdr := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"} {
+		resp := h.postJSONWithHeaders(t, "/_driftwood/api/config", private, map[string]string{hdr: "203.0.113.7"})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d for a private target arriving through a proxy, want 400", hdr, resp.StatusCode)
+		}
+		if got, _, _ := h.store.ProjectTarget(active); got != before {
+			t.Fatalf("%s: the project now targets %q, want it unchanged at %q — a refusal that retargeted "+
+				"anyway is the exact failure this test exists for", hdr, got, before)
+		}
+	}
+
+	// The same connection, the same body, no header: the operator at their own
+	// machine. Without this half the refusals above would prove only that the
+	// target is refused in general, not that the header is what refused it.
+	resp := h.postJSON(t, "/_driftwood/api/config", private)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d for the same private target with no forwarded header, want 200", resp.StatusCode)
+	}
+	if got, _, _ := h.store.ProjectTarget(active); got != "http://127.0.0.1:5432" {
+		t.Errorf("project targets %q after a local retarget, want the posted value", got)
+	}
+}
+
+// The forwarded-header rule withdraws trust and never grants it, and this pins
+// that direction so a later "helpful" relaxation cannot turn the check into a
+// way in. A forged header on a request from off-box buys nothing, and a header
+// set to empty cannot be used to clear the one that was there.
+func TestForwardedHeaderOnlyEverRemovesTrust(t *testing.T) {
+	cases := []struct {
+		name       string
+		remoteAddr string
+		headers    map[string]string
+		want       bool
+	}{
+		{"a local connection is trusted", "127.0.0.1:5000", nil, true},
+		{"a local connection claiming to be proxied is not", "127.0.0.1:5000",
+			map[string]string{"X-Forwarded-For": "203.0.113.7"}, false},
+		{"a local connection behind a TLS-terminating proxy is not", "127.0.0.1:5000",
+			map[string]string{"X-Forwarded-Proto": "https"}, false},
+		{"an off-box connection is not trusted", "203.0.113.7:5000", nil, false},
+		{"a forged header cannot buy trust", "203.0.113.7:5000",
+			map[string]string{"X-Forwarded-For": "127.0.0.1"}, false},
+		{"an empty header reads as absent", "127.0.0.1:5000",
+			map[string]string{"X-Forwarded-For": ""}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/_driftwood/api/config", nil)
+			r.RemoteAddr = tc.remoteAddr
+			for k, v := range tc.headers {
+				r.Header.Set(k, v)
+			}
+			if got := isLoopbackRequest(r); got != tc.want {
+				t.Errorf("isLoopbackRequest(%s, %v) = %v, want %v", tc.remoteAddr, tc.headers, got, tc.want)
+			}
+		})
 	}
 }
 

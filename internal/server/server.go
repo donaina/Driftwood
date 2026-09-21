@@ -416,6 +416,17 @@ func (s *Server) handleConfirmBaseline(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(hist)
 }
 
+// forwardedHeaders are the headers a reverse proxy sets to describe the client
+// it is speaking for. Caddy, nginx, Cloudflare and the rest all set at least one
+// of them, and none is set by a client talking to this process directly.
+var forwardedHeaders = []string{
+	"Forwarded",
+	"X-Forwarded-For",
+	"X-Forwarded-Host",
+	"X-Forwarded-Proto",
+	"X-Real-Ip",
+}
+
 // isLoopbackRequest reports whether the request came from this machine.
 //
 // It is the trust boundary for retargeting, and the only one available: the
@@ -424,7 +435,26 @@ func (s *Server) handleConfirmBaseline(w http.ResponseWriter, r *http.Request) {
 // want sniffed; the same string arriving from off-box is an instruction from
 // someone who may not be entitled to give it, and Driftwood runs inside
 // networks worth reaching.
+//
+// A reverse proxy inverts that answer. It opens its own connection to this
+// process from 127.0.0.1 whatever the real client's address was, so RemoteAddr
+// alone cannot tell an operator at their own browser from the whole internet:
+// every request arriving through Caddy is classified loopback and the
+// private-target refusal this guards never fires. The proxy's forwarded header
+// is its own evidence that something stood in front of the request, so the
+// presence of one withdraws the trust rather than granting it.
+//
+// That direction is the point. A client that forges a forwarded header on a
+// direct connection only loses access, never gains any, so the check fails
+// closed and cannot be talked around. A request carrying no such header that
+// arrives from loopback is still trusted, which is what keeps an SSH tunnel —
+// terminating on this machine, adding no headers — working unchanged.
 func isLoopbackRequest(r *http.Request) bool {
+	for _, h := range forwardedHeaders {
+		if r.Header.Get(h) != "" {
+			return false
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
