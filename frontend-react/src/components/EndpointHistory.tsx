@@ -131,6 +131,38 @@ interface EndpointHistoryProps {
   onConfirm: (history: HistoryItem, version: number) => void;
 }
 
+/* A path is a run of segments a browser will not break between: it breaks after
+   a hyphen, but not after a slash, so mostly what it has is one long word —
+   which is why the header row below could not shrink and overflowed the card.
+   `wrap-anywhere` fixes the overflow, but on its own it lets the line-breaking
+   fill each line to its last fitting character, so at 320px the middle of a
+   word was being cut in half: `/api/v2/organizat` / `ions/7/members/42` / …
+   That reads as corruption, not as a wrapped path.
+
+   A `<wbr>` after each slash supplies the break points a path actually has, and
+   the browser prefers a real break opportunity over the overflow-wrap fallback.
+   Measured on `/api/v2/organizations/7/members/42/notification-preferences`:
+   at 320px this wraps in five lines all breaking at slashes, where without it
+   the same path wrapped in four with `organizat` / `ions` cut in half. It costs
+   one line at 390px — four rather than three — because a line that ends at a
+   slash cannot also begin with one, so each line here starts with its own
+   segment. At 480px and above the two are identical.
+
+   `wrap-anywhere` stays on the element around this, as the guarantee rather
+   than the preference: if a single segment is ever wider than the card — a
+   long slug, an ID — that is what keeps it inside rather than overflowing. */
+const PathText: React.FC<{ path: string }> = ({ path }) => (
+  <>
+    {path.split('/').map((segment, index) => (
+      <React.Fragment key={index}>
+        {index > 0 && '/'}
+        {segment}
+        <wbr />
+      </React.Fragment>
+    ))}
+  </>
+);
+
 const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   history,
   selectedVersionsMap,
@@ -366,7 +398,14 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       <div className="mb-6">
         <PanelTitle className="mb-2">Contract Stability</PanelTitle>
         <Panel pad="sm">
-          <div className="flex justify-between items-center gap-4">
+          {/* Stacked below the shell's narrowest tier, not wrapped: the
+              sparkline is a fixed 120px, so the row's min-content is that plus
+              the percentage and the label — about 346px — which the card cannot
+              hold until the viewport reaches roughly 442px. `flex-wrap` would
+              have put the percentage on a line of its own and left it
+              left-aligned under the sparkline, where the number reads as
+              detached from what it measures. */}
+          <div className="flex justify-between items-center gap-4 max-[479px]:flex-col max-[479px]:items-start">
             <div>
               <div className="text-sm font-medium text-text-muted">
                 Current stability:
@@ -394,16 +433,19 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   if (history.versions.length === 0) {
     return (
       <Panel>
-        <div className="flex justify-between items-start">
-          <div className="flex items-center space-x-3">
+        {/* Same header treatment as the populated branch below; see the
+            comment there for why `min-w-0` and `wrap-anywhere` are both
+            needed and why the wrap is scoped to the shell's narrowest tier. */}
+        <div className="flex justify-between items-start gap-y-3 max-[479px]:flex-wrap">
+          <div className="flex items-center space-x-3 min-w-0">
             <span className={`method-badge method-${history.method.toLowerCase()}`}>
               {history.method}
             </span>
-            <span className="font-mono ml-2 font-semibold">
-              {history.path}
+            <span className="font-mono ml-2 font-semibold wrap-anywhere">
+              <PathText path={history.path} />
             </span>
           </div>
-          <div className="text-right space-y-1">
+          <div className="text-right space-y-1 max-[479px]:w-full">
             <div className="text-sm text-text-muted">
               Observations: {history.observation_count}
             </div>
@@ -420,16 +462,33 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
 
   return (
     <Panel>
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center space-x-3">
+      {/* The path is the row's whole problem. Chrome does not break a line
+          after `/` — a hyphen is a break opportunity, a slash is not — so the
+          `font-mono` span below behaves as one nearly unbreakable word and its
+          full width became the row's min-content: 518px for
+          `/api/v2/organizations/7/members/42/notification-preferences` inside a
+          290px card at 390px, with `justify-between` pushing the counts out to
+          the row's right edge, 260px past the panel. Neither `min-w-0` nor
+          `wrap-anywhere` is optional here: `min-w-0` removes the flex item's
+          automatic minimum so the group may shrink at all, and `wrap-anywhere`
+          (overflow-wrap:anywhere) is the only one of the two overflow-wrap
+          values that also lowers the intrinsic min-content — `break-words`
+          looks identical and leaves the floor exactly where it was. Measured
+          with `overflow-wrap: normal` instead, the row went straight back to
+          518px inside a 222px card. */}
+      <div className="flex justify-between items-start gap-y-3 mb-4 max-[479px]:flex-wrap">
+        <div className="flex items-center space-x-3 min-w-0">
           <span className={`method-badge method-${history.method.toLowerCase()}`}>
             {history.method}
           </span>
-          <span className="font-mono ml-2 font-semibold">
-            {history.path}
+          <span className="font-mono ml-2 font-semibold wrap-anywhere">
+            <PathText path={history.path} />
           </span>
         </div>
-        <div className="text-right space-y-1">
+        {/* `w-full` only in the wrapped tier, so the counts keep their place
+            at the row's right edge instead of drifting left on their own
+            line. */}
+        <div className="text-right space-y-1 max-[479px]:w-full">
           <div className="text-sm text-text-muted">
             Versions: {enhancedVersions.length}
           </div>
@@ -442,11 +501,17 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       {renderStabilityChart()}
 
       <Panel pad="sm">
-        <div className="flex justify-between items-center mb-4">
-          <PanelTitle>
+        {/* The three buttons measure 318px and never shrank, so the row's
+            min-content was that plus the title — more than the inner panel
+            holds below roughly 500px, where `justify-between` then pushed the
+            buttons past its right edge. `gap-2` rather than `space-x-2` on the
+            group: both space a single line identically, but only `gap` leaves
+            the first button of a wrapped line flush instead of indenting it. */}
+        <div className="flex justify-between items-center gap-y-2 mb-4 max-[479px]:flex-wrap">
+          <PanelTitle className="min-w-0">
             Contract Evolution Timeline
           </PanelTitle>
-          <div className="flex space-x-2">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => onExportTimeline('png', endpointKey)}>
               <DownloadIcon />
               PNG
