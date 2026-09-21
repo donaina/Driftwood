@@ -1458,7 +1458,10 @@ func (s *Store) loadFromFile() error {
 		return fmt.Errorf("could not read %s: %w", s.persistPath, err)
 	}
 
-	state, converted, err := decodeStore(data)
+	// The command line's target is passed down as the value a converted v1
+	// document should adopt; decodeV1 explains why it needs one. Nothing else
+	// has touched the config yet, so this is that value.
+	state, converted, err := decodeStore(data, s.config.TargetURL)
 	if err != nil {
 		// Moved aside rather than deleted, and the rename's own failure is
 		// reported rather than discarded: a corrupt store that could not be moved
@@ -1524,6 +1527,11 @@ func (s *Store) loadFromFile() error {
 // decodeStore reads either document format and always answers with a current
 // one. The bool reports whether the bytes were v1 and were converted.
 //
+// legacyTarget is used only on the v1 path, where the old format had no field
+// to carry a target and the converted project would otherwise be created
+// without one; decodeV1 has the details. A caller that only wants to know which
+// format some bytes are in may pass "" and discard the state.
+//
 // The two formats are told apart by the presence of the "version" key, not by
 // decoding into persistedState and checking whether Version came back zero.
 // Zero is a meaningful value here, so "decoded as zero" does not mean "was not
@@ -1538,14 +1546,14 @@ func (s *Store) loadFromFile() error {
 // fails there too and lands in the corruption branch either way. The probe earns
 // its place by naming the format the bytes actually are, not by catching a
 // conversion whose absence is currently guaranteed by the field types.
-func decodeStore(data []byte) (*persistedState, bool, error) {
+func decodeStore(data []byte, legacyTarget string) (*persistedState, bool, error) {
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return nil, false, fmt.Errorf("not a JSON object: %w", err)
 	}
 
 	if _, versioned := probe["version"]; !versioned {
-		state, err := decodeV1(data)
+		state, err := decodeV1(data, legacyTarget)
 		return state, true, err
 	}
 
@@ -1561,7 +1569,29 @@ func decodeStore(data []byte) (*persistedState, bool, error) {
 
 // decodeV1 reads the bare map of endpoints that v1 wrote, and wraps it in a
 // current document holding one project.
-func decodeV1(data []byte) (*persistedState, error) {
+//
+// legacyTarget is the target the converted project adopts, and it is a
+// parameter because v1 had nowhere to record one: the old format held endpoints
+// and nothing about where they came from, since the target lived in config.json
+// and in the launching process's own flags. v2 moved the target onto the
+// project, and GetConfig overlays the project's value onto the running config,
+// so a converted document that states no target leaves the whole install with
+// none — the proxy then refuses to start with "target URL cannot be empty".
+// Carrying the value in here is what stops a migration from producing an
+// install that cannot dial anything.
+//
+// It is threaded to the conversion rather than written over the loaded projects
+// afterwards, so that the document this returns is correct by construction and a
+// current document is untouched: a v2 project's target is the document's to
+// state, including when it states none, because a project with no target yet is
+// a state the dashboard creates.
+//
+// The allow-private decision is set alongside it, matching the constructor's own
+// seed. RefreshRouting re-validates every project with the AllowPrivate stored
+// beside it, so a converted project that carried a loopback target and no flag
+// would be dropped from the routing snapshot without an error — present in the
+// dashboard, holding its baselines, and never dialled.
+func decodeV1(data []byte, legacyTarget string) (*persistedState, error) {
 	var histories map[string]*types.EndpointHistory
 	if err := json.Unmarshal(data, &histories); err != nil {
 		return nil, fmt.Errorf("unreadable v1 store: %w", err)
@@ -1576,7 +1606,14 @@ func decodeV1(data []byte) (*persistedState, error) {
 		Projects: []types.Project{{
 			ID:        defaultProjectID,
 			Name:      defaultProjectName,
-			CreatedAt: time.Now(),
+			TargetURL: legacyTarget,
+			// Set without a loopback check, for the reason the constructor's
+			// seed sets it: this target came from the operator's own
+			// command line, and an operator naming http://localhost:3000 is
+			// naming the thing they want sniffed. The check belongs to targets
+			// that arrive over the wire.
+			TargetAllowPrivate: true,
+			CreatedAt:          time.Now(),
 		}},
 		Histories: map[string]map[string]*types.EndpointHistory{
 			defaultProjectID: histories,
@@ -1615,7 +1652,10 @@ func (s *Store) keepV1CopyThenRewrite(v1Data []byte) error {
 	if err != nil {
 		return fmt.Errorf("kept a copy of the old store at %s but could not read it back (%v), so %s has been left as it was", backup, err, s.persistPath)
 	}
-	if _, converted, err := decodeStore(check); err != nil || !converted {
+	// The target argument is empty here because this call is only asking
+	// whether the bytes are v1: it reads back the copy that was just made from
+	// the original v1 file, and discards the state.
+	if _, converted, err := decodeStore(check, ""); err != nil || !converted {
 		return fmt.Errorf("the copy of the old store at %s did not read back as valid (%v), so %s has been left as it was", backup, err, s.persistPath)
 	}
 

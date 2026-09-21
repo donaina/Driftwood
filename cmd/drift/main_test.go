@@ -1,11 +1,16 @@
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/donaina/driftwood/internal/events"
+	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/storage"
 )
@@ -173,5 +178,70 @@ func TestSeedingDoesNotTouchTheRealHome(t *testing.T) {
 	}
 	if beforeErr != nil && afterErr == nil {
 		t.Errorf("the test created %s in the real home directory", realState)
+	}
+}
+
+// An active project with no target must start, not end the process.
+//
+// This was a production crash loop: a project with no backend, made active,
+// killed Driftwood on every restart with "invalid target URL: target URL cannot
+// be empty" — taking every other project's monitoring down with the one that
+// had no backend. The test lives here rather than beside the proxy because the
+// fatal call was in main, and a log.Fatalf is exactly the kind of branch a test
+// cannot get past: which is why this one is written against the decision main
+// makes, extracted into buildProxy so it can be reached.
+//
+// A targetless project is not a malformed store. CreateProject accepts an empty
+// target_url and says so, and the request path already answers such a project
+// with a 502, so startup refusing it was the outlier rather than the rule.
+func TestBuildProxyServesAnActiveProjectWithNoTarget(t *testing.T) {
+	store := newTestStore(t)
+	hub := events.NewHub()
+	mockCtrl := mock.NewMockController()
+
+	project, err := store.CreateProject("Acme")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if err := store.SetActiveProject(project.ID); err != nil {
+		t.Fatalf("SetActiveProject: %v", err)
+	}
+
+	// What main actually reads. GetConfig overlays the active project's target,
+	// so this is the empty string that used to reach parseAndValidateTarget — and
+	// it is empty regardless of --target, because the overlay replaces the flag's
+	// value rather than falling back to it.
+	target := store.GetConfig().TargetURL
+	if target != "" {
+		t.Fatalf("the active project has target %q, so this is not the empty case", target)
+	}
+
+	prx, err := buildProxy(target, store, hub, mockCtrl)
+	if err != nil {
+		t.Fatalf("buildProxy refused a targetless active project, which is the crash this guards: %v", err)
+	}
+
+	// And it serves rather than merely constructing: the same honest 502 the
+	// request path gives any other project with nowhere to dial.
+	srv := httptest.NewServer(prx.Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/users")
+	if err != nil {
+		t.Fatalf("request through the targetless proxy: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "no target configured") {
+		t.Errorf("body = %q, want it to name the missing target", body)
+	}
+
+	// --target seeds the first project; it is not a standing override that
+	// refills a project the operator left empty. Promoting the flag's value here
+	// would silently point a client at another client's backend.
+	if got, _, _ := store.ProjectTarget(project.ID); got != "" {
+		t.Errorf("the targetless project was given %q, so the flag became a standing override", got)
 	}
 }

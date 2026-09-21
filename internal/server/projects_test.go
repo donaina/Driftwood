@@ -532,3 +532,52 @@ func TestProjectRoutesAnnounceTheChange(t *testing.T) {
 		t.Fatal("creating a project announced nothing; another dashboard would never learn about it")
 	}
 }
+
+// The setup wizard asks "where is your API running?", so it has to open when
+// that question is unanswered for the project in force — not merely when nobody
+// has ever saved a setting.
+//
+// The distinction matters because IsConfigured is set once and never unset, so
+// it reports on the install rather than on the project. An install launched
+// with --target is "configured" forever, which meant that after a second
+// project was created without a backend and switched to, every surface that
+// could ask for a target was switched off: the wizard by this flag, and startup
+// by a log.Fatalf that took the whole install down instead. That is the pair of
+// holes this test and the one below it close.
+func TestSetupStateAsksWhenTheActiveProjectHasNoTarget(t *testing.T) {
+	h := newHarness(t)
+
+	// The deploy box's state: launched once with --target, so the install counts
+	// as configured and keeps counting that way.
+	h.store.SetConfigured(true)
+
+	project, err := h.store.CreateProject("Acme")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if err := h.store.SetActiveProject(project.ID); err != nil {
+		t.Fatalf("SetActiveProject: %v", err)
+	}
+
+	state := func() bool {
+		resp := h.do(t, http.MethodGet, "/_driftwood/api/setup-state", nil)
+		var body struct {
+			Configured bool `json:"configured"`
+		}
+		decodeBody(t, resp, &body)
+		return body.Configured
+	}
+
+	if state() {
+		t.Error("a project with no target reported the install as configured, so nothing asks where its API is")
+	}
+
+	// And the other direction, so this cannot be satisfied by always asking: a
+	// target on the project answers the question and closes the wizard.
+	if err := h.store.SetProjectTarget(project.ID, "http://example.com", false); err != nil {
+		t.Fatalf("SetProjectTarget: %v", err)
+	}
+	if !state() {
+		t.Error("a project with a target still reported the install as unconfigured")
+	}
+}
