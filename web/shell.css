@@ -2044,8 +2044,10 @@
      with the thing it is explaining.
 
      This said "the setup wizard's", which no longer describes anything: the
-     wizard has no AI block, and this class has exactly one call site, in
-     renderAlerts. */
+     wizard has no AI block. It has two call sites: renderAlerts, and the
+     Scenario Library's note on a scenario the built-in simulator cannot
+     reproduce — the same shape of aside, hanging off a record, in a register
+     that is neither a delta nor a badge. */
   .callout {
     margin-top: 0.5rem;
     padding: 0.75rem;
