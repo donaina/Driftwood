@@ -109,8 +109,18 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 - Uses mono font for JSON payload examples
 - Vital Teal for active/inactive toggle switches
 
-### 7. Custom Alert Thresholds ✓ COMPLETED
+### 7. Custom Alert Thresholds — NOT BUILT (UI deleted)
 **Goal:** Allow teams to define what constitutes breaking vs non-breaking changes for their context.
+
+**Status (2026-09-21).** Nothing behind this exists. The settings form was
+deleted; `saveThresholdConfig` showed "Custom alert thresholds have been saved."
+over an empty function body, and the thresholds it collected were read by
+nothing, in either the shell or the Go diff engine. There is no threshold
+support anywhere in the Go source. `switchTab` deliberately does not route to
+thresholds and `CustomAlertThresholds.tsx` collects severities that no code
+reads, so a nav entry would put a screen in front of the user whose buttons lie.
+The feature list below is the original proposal, not a description of the
+product.
 
 **Features:**
 - Configure severity levels per change type:
@@ -130,23 +140,27 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 - Reset to defaults button
 - Explanation tooltips for each option
 
-### 8. Multi-Tenant View (Agency Mode) ✓ COMPLETED
+### 8. Multi-Tenant View (Agency Mode) — PARTIAL, and not multi-tenant
 **Goal:** Enable agencies/freelancers to monitor multiple client APIs from one dashboard.
 
-**Features:**
-- Workspace/client switching
-- Per-client baseline isolation
-- Aggregate health dashboard showing all clients
-- Client-specific alert routing
-- Role-based access (viewer, admin)
-- Client onboarding flow
+**Status (2026-09-21).** What exists is **namespaced projects within one trusted
+operator**, not multi-tenancy. There is no identity anywhere in the system — no
+auth, no user, no session — so nothing can be partitioned *by tenant*;
+`isLoopbackRequest` (`internal/server/server.go`) remains the only trust
+boundary. Per feature:
 
-**Implementation:**
-- New workspace selector in header (next to driftwood logo)
-- Client list sidebar (collapsible)
-- Aggregate health showing % healthy clients
-- Uses same design system with client-specific labeling
-- Mono-spaced client IDs for consistency
+- Workspace/client switching — **shipped** (project switcher in the header)
+- Per-client baseline isolation — **shipped** (per-project histories, traffic, alerts and caps)
+- Per-client target — **shipped** (switching project switches what is proxied)
+- Aggregate health dashboard showing all clients — **not built**
+- Client-specific alert routing — **not built**
+- Client onboarding flow — **not built**
+- Role-based access (viewer, admin) — **not possible as written**: with no identity there is nothing for a role to attach to. This is not deferred work; it would need an auth model the product does not have.
+
+**Implementation:** the header selector shipped. The client list sidebar and the
+"aggregate health showing % healthy clients" did not — the component that
+claimed the latter rendered four hardcoded string literals and was deleted in
+`c0ef2dd` ("stop inventing numbers").
 
 ## Design Consistency Notes
 
@@ -169,8 +183,8 @@ These improvements can be implemented incrementally, with each as its own PR fol
 4. **Integration Guides** - New static content route
 5. **Export & Reporting** - Enhance share/export functionality
 6. **Webhook Integrations** - New settings section + background worker
-7. **Custom Alert Thresholds** - New settings section + diff engine configuration ✓ COMPLETED
-8. **Multi-Tenant View** - Workspace routing + state isolation ✓ COMPLETED
+7. **Custom Alert Thresholds** - New settings section + diff engine configuration
+8. **Multi-Tenant View** - Project switching + per-project state isolation (partial; see §8)
 
 Each should include:
 - Test-first approach (unit/integration tests)
