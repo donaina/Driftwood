@@ -1735,52 +1735,12 @@
   }
 
   /* -----------------------------------------------------------------
-     Export & Reporting view. These rules used to be injected at runtime
-     by a document.createElement('style') block in the shell's inline
-     script, which meant they were absent from the stylesheet link and
-     invisible to the cascade layers. Folded in here so the view ships
-     styled with everything else.
+     Shared form rules for the shell's settings views. These used to be
+     injected at runtime by a document.createElement('style') block in
+     the shell's inline script, which meant they were absent from the
+     stylesheet link and invisible to the cascade layers. Folded in here
+     so the views ship styled with everything else.
      ----------------------------------------------------------------- */
-  .export-reporting-library {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 2rem;
-  }
-
-  .export-reporting-header {
-    margin-bottom: 2rem;
-  }
-
-  .export-option {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-  }
-
-  .export-option h3 {
-    color: var(--text-main);
-    margin-bottom: 0.5rem;
-  }
-
-  .export-option p {
-    color: var(--text-muted);
-    margin-bottom: 1rem;
-  }
-
-  .scheduled-reports {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1.5rem;
-    margin-bottom: 2rem;
-  }
-
-  .scheduled-reports h3 {
-    margin-top: 0;
-  }
-
   .form-group {
     margin-bottom: 1rem;
   }
@@ -1809,35 +1769,7 @@
     border-color: var(--accent-primary);
   }
 
-  .report-history {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 1.5rem;
-  }
-
-  .report-history h3 {
-    margin-top: 0;
-  }
-
-  /* Same story for the Webhook & Alert Integrations view. Its .form-group
-     rules were byte-identical to the ones above except that they omitted
-     `select`, so they are dropped rather than duplicated; the superset
-     above covers both views. */
-  .webhook-integrations-library {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 2rem;
-  }
-
-
-
-  .webhook-integrations-header {
-    margin-bottom: 2rem;
-  }
-
-
-
+  /* Webhook & Alert Integrations view. */
   .webhook-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);

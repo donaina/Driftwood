@@ -184,7 +184,12 @@ func setControlCORS(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Origin")
 	}
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Driftwood-Target")
+	// X-Driftwood-Target is deliberately not advertised here. A header letting a
+	// caller choose which operator-configured backend it reaches would be
+	// privilege escalation against a posture where loopback is the only trust
+	// boundary, and there is no identity to check it against. Switching project
+	// is a dashboard action (POST /api/projects/active), not a per-request one.
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
 // errNoSuchProject is projectFor's refusal, and aliases the store's own sentinel
