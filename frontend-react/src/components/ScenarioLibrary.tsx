@@ -361,11 +361,13 @@ const ScenarioLibrary: React.FC = () => {
         </div>
 
         <Panel>
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex items-center space-x-3">
+          {/* Same unshrinkable row as the cards below — see the comment on the
+              scenario grid for why `flex-wrap` and `min-w-0` are both needed. */}
+          <div className="flex justify-between items-start gap-y-3 mb-4 max-[479px]:flex-wrap">
+            <div className="flex items-center space-x-3 min-w-0">
               {renderSeverityBadge(activeScenario.severity)}
-              <div>
-                <PanelTitle className="mb-1">
+              <div className="min-w-0">
+                <PanelTitle className="mb-1 wrap-anywhere">
                   {activeScenario.title}
                 </PanelTitle>
                 {renderMeta(activeScenario)}
@@ -487,12 +489,38 @@ const ScenarioLibrary: React.FC = () => {
         )}
 
         {filteredScenarios.map(scenario => (
-          <Panel key={scenario.id}>
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center space-x-3">
+          /* `min-w-0` has to sit on the grid item, not only inside it. A
+             single-column grid sizes its track to the widest item's min-content
+             and refuses to go below it, and that floor comes from the track's
+             automatic minimum — which only `min-width: 0` on the item itself
+             removes. Shrinking the row's children alone does nothing: the badge
+             (an inline-flex pill), the title (wraps only at its longest word)
+             and the nowrap button still summed to 451px of min-content inside a
+             352px panel at 400px, so every card was that width and the panel
+             scrolled sideways to hide it — invisibly, because overflow-y:auto
+             makes overflow-x compute to auto too. */
+          <Panel key={scenario.id} className="min-w-0">
+            {/* `flex-wrap` is scoped to `max-[479px]`, the shell's own narrowest
+                tier, rather than left on unconditionally. Unscoped it is decided
+                by the row's *content* width, so cards with long titles would drop
+                their button while short-titled ones in the same column kept it
+                inline — a ragged, per-card difference across the whole 480–746px
+                band. Below 479px every card wraps, so the tier reads uniformly;
+                at 480px and above nothing wraps and the row is unchanged from
+                before this fix, which still fits because `min-w-0` lets the title
+                take the shortfall. */}
+            <div className="flex justify-between items-start gap-y-3 mb-4 max-[479px]:flex-wrap">
+              <div className="flex items-center space-x-3 min-w-0">
                 {renderSeverityBadge(scenario.severity)}
-                <div>
-                  <PanelTitle className="mb-1">
+                <div className="min-w-0">
+                  {/* `wrap-anywhere` (overflow-wrap:anywhere) and not
+                      `break-words`: only `anywhere` also lowers the element's
+                      intrinsic min-content, which is what lets the card shrink
+                      past its longest word. `break-word` looks identical and
+                      leaves the floor in place. It breaks mid-word only when a
+                      single word genuinely has no room — at 320px,
+                      "Status.UNKNOWN" — and never at 360px or above. */}
+                  <PanelTitle className="mb-1 wrap-anywhere">
                     {scenario.title}
                   </PanelTitle>
                   {renderMeta(scenario)}
