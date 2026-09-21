@@ -7,6 +7,27 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 ### 1. Setup Wizard for First-Time Users ✓ COMPLETED
 **Goal:** Guide new users through initial configuration to reduce setup friction.
 
+**Status (2026-09-21).** Shipped as a three-step wizard — and shipping it meant first
+removing two fabrications from its original implementation, both of which are worth
+knowing about because they are the pattern this doc keeps running into:
+
+- `detectLocalhost` "reported *Found API at http://localhost:3000* without opening a single
+  socket" — it looped a port list and hardcoded a hit behind a 1s timer, so it announced a
+  discovery it had not made and said the same thing on a machine with nothing running.
+- Step 2 printed "Found 5 API endpoints" after a 1.5s timer regardless of what was behind
+  the target. The honest answer at that point is usually zero, because Driftwood learns
+  endpoints from traffic and a fresh install has none yet.
+
+It now probes real ports and reports what it finds, including finding nothing.
+
+**Two further deviations from the proposal below:** it is a **view, not a `/setup` route**,
+and it opens when `/_driftwood/api/setup-state` reports that nobody has ever named a target
+— *not* when no baselines exist. The baseline-count trigger was removed deliberately: every
+request the proxy sees is auto-baselined, so a browser's incidental `GET /favicon.ico` was
+enough to make a genuinely untouched install look configured. Counting baselines measured
+traffic, not intent. There is also **no "Try with Demo" button**; the simulator panel is
+where that lives.
+
 **Features:**
 - Interactive walkthrough for configuring target API
 - Auto-detection of common local development servers (localhost:3000, localhost:8080, etc.)
@@ -16,31 +37,68 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 
 **Implementation:**
 - New `/setup` route that shows on first visit if no baselines exist
-- Uses same design system (Geist fonts, Vital Teal accents, etc.)
+- Uses same design system (Geist fonts, the accent-primary brand blue, etc.)
 - Progress indicator with 3-4 steps
-- "Try with Demo" button that pre-configures the mock simulator
+- "Try with Demo" button that pre-configures the mock simulator *(not built — the simulator
+  panel serves this; see Status)*
 
-### 2. Scenario Library
+### 2. Scenario Library — SHIPPED AS A CATALOGUE
 **Goal:** Provide pre-configured API breaking change scenarios for learning and experimentation.
 
-**Features:**
+**Status (2026-09-21).** Shipped as a **catalogue**, not a runner: 11 scenarios
+across REST, GraphQL and gRPC, filterable by severity *and* protocol. Three items
+in the proposal below did not ship, and two of them should not:
+
+- **One-click activation / the "Load Scenario" button — not built.** It drove
+  `setMockMode`, which is private to the shell's closure and not on `window`, and
+  no React component calls into the shell at all. Wiring it would mean building a
+  new shell↔React bridge, which is a feature rather than a fix for a stale
+  branch. Each scenario instead carries a caveat naming whether the built-in
+  simulator can reproduce it, so the library is honest about being a reference.
+- **Colour-coding difficulty — rejected, not deferred.** `DESIGN.md` §7 reserves
+  healthy/warning/breaking/info for contract state and nothing else. Spending
+  three of those four roles on *effort* means a Beginner scenario wearing Caution
+  Amber reads as a warning about the contract. Difficulty is neutral
+  `--text-muted` text in the shell's `.label-caps` register, and takes no shape
+  either, since §4's ● ▲ ■ ○ alphabet is reserved the same way.
+- **User-created scenario sharing — not built.** Nothing stores a scenario.
+
+**Features:** the list below is the original proposal, kept for provenance.
+
 - Collection of common API breaking changes (type changes, missing fields, status code changes, etc.)
 - Each scenario includes:
   - Description of what changed
   - Expected impact on consumers
   - How to fix it
-  - One-click activation
-- Filterable by severity (breaking, warning, info) and type (REST, GraphQL, gRPC)
-- User-created scenario sharing
+  - One-click activation *(not built — see Status)*
+- Filterable by severity (breaking, warning, info) and type (REST, GraphQL, gRPC) *(shipped, both axes)*
+- User-created scenario sharing *(not built)*
 
-**Implementation:**
-- New `/scenarios` route in the dashboard
-- Scenario cards with Vital Teal/Fault Red/Caution Amber indicators
-- "Load Scenario" button that configures mock simulator accordingly
-- Integration with guided tour for educational paths
+**Implementation:** annotated with what actually shipped, so nothing here is
+copied back into the product as though it were a description of it.
 
-### 3. Contract Evolution Timeline
+- New `/scenarios` route in the dashboard — shipped, as the Scenario Library nav entry
+- Scenario cards with Vital Teal/Fault Red/Caution Amber indicators — **rejected**;
+  cards carry the §4 contract-state badge for severity and a neutral difficulty label
+- "Load Scenario" button that configures mock simulator accordingly — **not built**
+- Integration with guided tour for educational paths — not built
+
+### 3. Contract Evolution Timeline — MOSTLY SHIPPED
 **Goal:** Visualize how API contracts change over time to help teams understand drift patterns.
+
+**Status (2026-09-21).** Shipped in `EndpointHistory.tsx`, inside the **History** view
+(`nav-history` → `showHistoryLibrary`) rather than as a new tab in the baseline detail view:
+
+- Timeline of baseline versions, each with its change description and a
+  shape-and-colour status node (the §4 alphabet, not colour alone) — shipped
+- Selecting two versions renders a **Version Comparison** panel — shipped
+- Contract-stability sparkline across observed requests — shipped
+- **PNG/SVG export — NOT shipped.** Both buttons are on screen, and `handleExportTimeline`
+  (`HistoryView.tsx`) is a placeholder that toasts *"Export for X is planned for a future
+  update."* It does not claim a file was written, which is what separates this from the
+  deleted thresholds form — but the buttons themselves promise an artifact that does not
+  exist, and they are the one soft spot in an otherwise honest view. Either wire them or take
+  them off the screen.
 
 **Features:**
 - Timeline view showing baseline versions and when changes occurred
@@ -55,8 +113,22 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 - Color-coded dots: ● Vital Teal (healthy), ■ Fault Red (breaking), ▲ Caution Amber (warning)
 - Mono-spaced timestamps for consistency
 
-### 4. Interactive Integration Guides
+### 4. Interactive Integration Guides — SHIPPED
 **Goal:** Provide copy-paste ready integration examples for popular frameworks.
+
+**Status (2026-09-21).** Shipped, as `IntegrationsLibrary.tsx` mounted by the
+`nav-integrations` entry — all five frameworks (Express, FastAPI, NestJS, Django, Rails), each
+with a code snippet and numbered setup steps. Deviations from the proposal:
+
+- **"Try in Sandbox" — not built**, and correctly so: there is no sandbox to run anything in,
+  so the button would have been a control reporting an action it did not take.
+- **No copy button.** "Ready-to-copy" means the snippet is a selectable `<pre>`, not one
+  click. Worth adding, and it is real work rather than the fake it would have been before.
+- **No framework logos** — the card carries the framework's first letter in a tinted square.
+- **One live palette breach**, to fold into the next UI pass: that square is
+  `bg-accent-info/20` + `text-accent-info` (`IntegrationsLibrary.tsx:183-184`), which spends
+  a contract-state role on chrome — the same mistake §1, §6 and §7 made in prose. It wants
+  `accent-primary`. `EndpointHistory.tsx:269` does it too, on the pin button's pressed state.
 
 **Features:**
 - Framework-specific guides (Express, FastAPI, NestJS, Django, Rails, etc.)
@@ -73,10 +145,25 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
   - Code snippet with syntax highlighting
   - Configuration explanation
   - Verification steps
-- Uses mono font (JetBrains Mono) for code snippets
+- Uses mono font (Geist Mono) for code snippets
 
-### 5. Export & Reporting
+### 5. Export & Reporting — NOT BUILT (Phase 5)
 **Goal:** Generate shareable reports of API contract stability for team communication.
+
+**Status (2026-09-21).** Nothing here exists. There is no report generator, no scheduler and no
+export view. The only export route is `/api/export/typescript`, which emits `.d.ts` interface
+definitions from a locked baseline — a contract artifact, not a report. `go.mod` has no
+dependencies and the repo contains zero `time.Ticker`, so "scheduled email reports" needs
+machinery nobody has written yet. Reports and schedules are **per-project**, which is why this
+follows Phase 4 rather than preceding it.
+
+One caution that belongs in the implementation rather than a footnote: **a scheduled report
+must not leak.** `SamplePayload` is stored raw by design, so a report that includes it exports
+whatever token or email happened to be in a stored response. The AI sidecar already redacts at
+its boundary — carry that lesson over rather than rediscovering it in someone's inbox.
+
+Note that §5's colour prescription is legitimate as written: a stability summary is contract
+state, so the healthy/warning/breaking roles are the right ones there.
 
 **Features:**
 - PDF/PNG export of current dashboard view
@@ -92,8 +179,21 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 - Uses same Vital Teal/Fault Red/Caution Amber color scheme
 - Clean, print-friendly CSS for exports
 
-### 6. Webhook & Alert Integrations
+### 6. Webhook & Alert Integrations — NOT BUILT (component kept as the Phase 5 seed)
 **Goal:** Send drift alerts to external systems for team notification.
+
+**Status (2026-09-21).** Nothing behind this exists: no webhook field, route or
+outbound call in any Go file. `WebhookIntegrations.tsx` does exist and is built
+into the bundle, but `switchTab` deliberately does not route to it, because its
+"Save Configuration" and "Test webhook sent" toasts report success over empty
+function bodies with no network call — a nav entry would put a screen in front of
+the user whose buttons lie, which is the thing the last three releases were about
+removing. It is **kept on purpose as the Phase 5 seed**, not as working code.
+
+When it is wired, delivery needs URL validation, retry and delivery records, and
+must reuse the existing SSRF guards (`isBlockedHost`/`isBlockedIP`,
+`internal/proxy/proxy.go`). Those toasts must then report what actually happened
+rather than what was attempted.
 
 **Features:**
 - Configure webhooks for Slack, Microsoft Teams, Discord, email
@@ -107,20 +207,24 @@ Following the completion of immediate wins (enhanced empty states, guided tour, 
 - Form for webhook URL and secret
 - Test button to send sample alert
 - Uses mono font for JSON payload examples
-- Vital Teal for active/inactive toggle switches
+- accent-primary for active/inactive toggle switches — *not* Vital Teal: a toggle's
+  state is not a contract state, and Vital Teal means healthy
 
-### 7. Custom Alert Thresholds — NOT BUILT (UI deleted)
+### 7. Custom Alert Thresholds — NOT BUILT (component kept as the Phase 5 seed)
 **Goal:** Allow teams to define what constitutes breaking vs non-breaking changes for their context.
 
-**Status (2026-09-21).** Nothing behind this exists. The settings form was
+**Status (2026-09-21).** Nothing behind this exists. The shell's settings form was
 deleted; `saveThresholdConfig` showed "Custom alert thresholds have been saved."
 over an empty function body, and the thresholds it collected were read by
 nothing, in either the shell or the Go diff engine. There is no threshold
 support anywhere in the Go source. `switchTab` deliberately does not route to
 thresholds and `CustomAlertThresholds.tsx` collects severities that no code
 reads, so a nav entry would put a screen in front of the user whose buttons lie.
-The feature list below is the original proposal, not a description of the
-product.
+
+The component itself was **not** deleted — it ships in the bundle, unrouted, and
+still toasts "Thresholds Saved / Custom alert thresholds have been saved." over a
+no-op. It is **kept on purpose as the Phase 5 seed**. The feature list below is
+the original proposal, not a description of the product.
 
 **Features:**
 - Configure severity levels per change type:
@@ -136,7 +240,7 @@ product.
 **Implementation:**
 - New `/settings` → "Thresholds" section
 - Table-based configuration with mono font for JSON paths
-- Toggle switches with Vital Teal accent
+- Toggle switches using accent-primary (see the note in §6)
 - Reset to defaults button
 - Explanation tooltips for each option
 
@@ -166,8 +270,18 @@ claimed the latter rendered four hardcoded string literals and was deleted in
 
 All proposed improvements should follow the existing Driftwood design system:
 
-- **Colors:** Deep Monitor (#09090B), Vital Teal (#00C9A7), Fault Red (#FF3B30), Caution Amber (#FF9F0A), Data Sky (#5AC8FA)
-- **Typography:** Geist for UI, JetBrains Mono for numbers/code
+- **Colors:** Deep Monitor (#09090B) is the dark ground. Four roles mean **contract state
+  and nothing else** — healthy, warning, breaking, info (Vital Teal #00C9A7, Caution Amber
+  #FF9F0A, Fault Red #FF3B30, Data Sky #5AC8FA in dark mode; each has a darkened light-mode
+  counterpart in `frontend-react/src/tokens.css`, so the hexes above are only half the
+  story). **accent-primary** (#4096ff dark / #1a6fd4 light) is the brand and interactive
+  colour — primary buttons, the active nav item, focus rings, the logo — and is deliberately
+  *not* accent-healthy. This line used to omit it, which is why §1, §6 and §7 all reached for
+  a semantic role to style chrome. Colour literals live only in `tokens.css`; a component
+  that needs a colour references the token.
+- **Typography:** Geist for UI, **Geist Mono** for numbers/code — not JetBrains Mono, which
+  this doc claimed and the product has never used. Geist Mono also carries the 400 and 500
+  weights the shell sets mono at, so the sans and the mono stay on one typeface lineage.
 - **Components:** Flat buttons with 6px radius, tactile feedback, status badges with shape + color coding
 - **Layout:** Grid-based, no overlapping elements, asymmetric vitals strip
 - **Motion:** Spring physics (stiffness: 100, damping: 20), honor prefers-reduced-motion
@@ -175,15 +289,15 @@ All proposed improvements should follow the existing Driftwood design system:
 
 ## Implementation Approach
 
-These improvements can be implemented incrementally, with each as its own PR following the established pattern:
+These improvements can be implemented incrementally, with each as its own PR following the established pattern. **Read each item's Status block before starting it** — most have shipped in part or in full, and two (§6, §7) have no backend at all.
 
-1. **Setup Wizard** - New route + state management
-2. **Scenario Library** - New route + mock simulator integration  
-3. **Contract Evolution Timeline** - Enhance baseline view + storage history
-4. **Integration Guides** - New static content route
-5. **Export & Reporting** - Enhance share/export functionality
-6. **Webhook Integrations** - New settings section + background worker
-7. **Custom Alert Thresholds** - New settings section + diff engine configuration
+1. **Setup Wizard** - Shipped as a view, not a route. See §1.
+2. **Scenario Library** - Shipped as a catalogue. The mock-simulator integration (the "Load Scenario" loader) did not ship and is not a stale-branch fix; it needs a shell↔React bridge that does not exist. See §2.
+3. **Contract Evolution Timeline** - Shipped in the History view, except the PNG/SVG export. See §3.
+4. **Integration Guides** - Shipped. See §4.
+5. **Export & Reporting** - Not built; Phase 5, after per-project state exists. See §5.
+6. **Webhook Integrations** - Not built; Phase 5. New settings section + background worker, with real delivery and the SSRF guards. See §6.
+7. **Custom Alert Thresholds** - Not built; Phase 5. New settings section + diff engine configuration. See §7.
 8. **Multi-Tenant View** - Project switching + per-project state isolation (partial; see §8)
 
 Each should include:
