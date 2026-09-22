@@ -147,15 +147,25 @@ with a code snippet and numbered setup steps. Deviations from the proposal:
   - Verification steps
 - Uses mono font (Geist Mono) for code snippets
 
-### 5. Export & Reporting — NOT BUILT (Phase 5)
+### 5. Export & Reporting — NOT BUILT (the remaining half of Phase 5)
 **Goal:** Generate shareable reports of API contract stability for team communication.
 
-**Status (2026-09-21).** Nothing here exists. There is no report generator, no scheduler and no
+**Status (2026-09-23).** Nothing here exists, and this is now **the whole of what is left of
+Phase 5** — §6 shipped its other half. There is no report generator, no scheduler and no
 export view. The only export route is `/api/export/typescript`, which emits `.d.ts` interface
 definitions from a locked baseline — a contract artifact, not a report. `go.mod` has no
 dependencies and the repo contains zero `time.Ticker`, so "scheduled email reports" needs
 machinery nobody has written yet. Reports and schedules are **per-project**, which is why this
 follows Phase 4 rather than preceding it.
+
+One thing this section no longer has to invent: **the delivery path exists.** A scheduled
+report should reuse the deliverer's transport, its SSRF posture and its delivery records
+rather than growing a second outbound mechanism beside them — a report that bypassed
+`netguard` would be a second, weaker door into the same operator-named address space. What is
+genuinely new here is the **generator** (only `contract.GenerateTypeScriptInterfaces` exists,
+and it is pure and reusable) and the **scheduler** (a `time.Ticker` owned by `main`, new
+machinery — the deliverer deliberately uses `time.NewTimer` so the ticker arrives with
+schedules or not at all).
 
 One caution that belongs in the implementation rather than a footnote: **a scheduled report
 must not leak.** `SamplePayload` is stored raw by design, so a report that includes it exports
@@ -179,41 +189,119 @@ state, so the healthy/warning/breaking roles are the right ones there.
 - Uses same Vital Teal/Fault Red/Caution Amber color scheme
 - Clean, print-friendly CSS for exports
 
-### 6. Webhook & Alert Integrations — NOT BUILT (component kept as the Phase 5 seed)
+### 6. Webhook & Alert Integrations ✓ SHIPPED (delivery core)
 **Goal:** Send drift alerts to external systems for team notification.
 
-**Status (2026-09-21).** Nothing behind this exists: no webhook field, route or
-outbound call in any Go file. `WebhookIntegrations.tsx` does exist and is built
-into the bundle, but `switchTab` deliberately does not route to it, because its
-"Save Configuration" and "Test webhook sent" toasts report success over empty
-function bodies with no network call — a nav entry would put a screen in front of
-the user whose buttons lie, which is the thing the last three releases were about
-removing. It is **kept on purpose as the Phase 5 seed**, not as working code.
+**Status (2026-09-23).** Shipped over six PRs (#67–#71 merged, #72 open), and live in
+production since the 2026-09-22 deploy. Drift now leaves the browser tab: a contract alert
+raises a real outbound POST to Slack, Microsoft Teams, Discord or a generic endpoint,
+retries on a schedule, and files a delivery record the dashboard renders.
 
-When it is wired, delivery needs URL validation, retry and delivery records, and
-must reuse the existing SSRF guards (`isBlockedHost`/`isBlockedIP`,
-`internal/proxy/proxy.go`). Those toasts must then report what actually happened
-rather than what was attempted.
+The previous status for this section read *"NOT BUILT — component kept on purpose as the
+Phase 5 seed"*, and the component was unrouted for a stated reason: its Save and Test
+buttons toasted success over empty function bodies. That is no longer the case — the view
+is routed as **Alert Delivery**, and every control on it now drives a route that exists.
+What shipped first, before any of the UI, was the SSRF guard extraction
+(`internal/netguard`), because the deliverer and the proxy both need the same rule and the
+import cycle made the obvious design impossible. That PR is the one that touched shipped
+security code, deliberately reviewable alone.
+
+**Deliberately out of scope** — each a decision, not an omission:
+
+- **Email/SMTP.** A different transport, a form the UI has no shape for, and `net/smtp` is
+  frozen upstream. The four shipped channels are all an HTTP POST differing only in body.
+- **Alert filtering, custom templates, rate limiting.** The stated follow-up. The three
+  dead "Alert Types" checkboxes were not left lying: they were replaced by one true
+  sentence saying that every alert a project raises is delivered, and that filtering is
+  not configurable yet.
+- **The AI explanation in the payload.** The sidecar's prose arrives up to 8s *after* the
+  alert by design, so a payload that sometimes carries a paragraph and sometimes does not
+  is worse than one that never does. It is also the only alert field whose content the
+  product does not author — excluding it, together with excluding response bodies, is what
+  makes the payload **structurally incapable** of leaking a stored token or email, rather
+  than merely redacted. Doing it properly means a second, follow-up delivery when the
+  explanation lands.
+- **Widening the SSE `"alert"` frame to warnings.** One line, but it changes a deliberate
+  decision (that frame is an *interrupt* channel, deliberately narrower than the alert
+  log). It is what would close the remaining asymmetry — a warning can reach Slack before
+  the dashboard's alert count refreshes, because `onNewAlert` → `loadAlerts()` only fires
+  on a breaking event. Worth its own ticket.
+- **Scheduled reports.** The remaining half of Phase 5; see §5.
+
+**Still open in this section:**
+
+- **The Teams envelope is unverified against a real tenant.** Microsoft retired Office 365
+  connectors; the shipped default is a Power Automate workflow webhook taking an Adaptive
+  Card. A wrong envelope is a 400 at delivery time — which the Test button surfaces in
+  seconds — but it is the one shipped-uncertain thing here and should not be described as
+  verified until someone sends to a real tenant.
+- **`openapi.LoadFromURL`** (`internal/openapi/openapi.go:129`) remains an unnetted
+  outbound GET: no timeout, no SSRF check, unbounded `io.ReadAll`. Moving the guards made
+  it a two-line fix; it was flagged in #67, #69 and #70 and is still not done.
+- **Nothing is scheduled and there is no scheduler.** Zero `time.Ticker` in the repo. The
+  deliverer's retry uses `time.NewTimer` precisely so the ticker arrives with schedules or
+  not at all.
+
+**After the scoped plan — what is worth improving next,** roughly in order of what an
+operator would feel first:
+
+- **Tune the constants.** 2 workers, a 64-deep queue, 3 attempts on a 1s/4s backoff, a 30s
+  `Retry-After` cap and 200 records per project are *reasoned, not measured*. They sit in
+  one block with the reasoning in comments so the first real deployment can correct them.
+- **Rate limiting and alert filtering**, the two halves of "do not spam the channel".
+  Filtering is the more valuable one: a project with a chatty endpoint currently delivers
+  every warning.
+- **A second delivery when the explanation lands** — the follow-up that would let the AI
+  prose into a channel without weakening the structural guarantee that kept it out of the
+  first payload.
+- **Per-project routing** — which channel hears about which project — and a retry for
+  deliveries dropped on queue saturation, which today is recorded as `dropped` and nothing
+  more. That record is honest; it is not yet useful.
+- **Persisting delivery records.** They are in-memory with the alerts they describe, which
+  is deliberate (`historiesForPersistLocked` exists to keep runtime telemetry out of the
+  persisted document), but it means "did last night's alert get through" is unanswerable
+  after a restart.
+- **Email as a fifth kind**, if anyone needs it — the one item here that is a genuinely
+  different transport rather than a variation on the one that exists.
 
 **Features:**
-- Configure webhooks for Slack, Microsoft Teams, Discord, email
-- Customizable alert templates
-- Alert filtering (only breaking changes, include warnings, etc.)
-- Rate limiting to prevent notification spam
-- Delivery status tracking and retry logic
+- Configure webhooks for Slack, Microsoft Teams, Discord, email *(email not shipped — see
+  above)*
+- Customizable alert templates *(not shipped — the follow-up)*
+- Alert filtering (only breaking changes, include warnings, etc.) *(not shipped — the
+  follow-up; the dead checkboxes that pretended otherwise are gone)*
+- Rate limiting to prevent notification spam *(not shipped — the follow-up)*
+- Delivery status tracking and retry logic ✓ *(3 attempts on a 1s/4s backoff; 3xx is
+  terminal and never retried, because a redirect is the SSRF bypass the URL check cannot
+  see; records are capped at 200 per project, newest-first)*
 
 **Implementation:**
-- New `/settings` → "Alerts" section
-- Form for webhook URL and secret
-- Test button to send sample alert
-- Uses mono font for JSON payload examples
-- accent-primary for active/inactive toggle switches — *not* Vital Teal: a toggle's
-  state is not a contract state, and Vital Teal means healthy
+- New `/settings` → "Alerts" section *(shipped as a top-level **Alert Delivery** nav item
+  instead — "Alerts" was already taken by the contract alert log, and the sibling labels
+  name outcomes rather than mechanisms)*
+- Form for webhook URL and secret ✓ *(four independently saveable cards; the secret field
+  exists on the generic card only — Slack, Teams and Discord authenticate by a token
+  inside the URL they gave the operator and ignore headers they do not recognise, so a
+  secret there would be a control whose effect nothing reads)*
+- Test button to send sample alert ✓ *(synchronous, and it reports what actually happened —
+  `Reached Slack (200 in 142ms)` — including the receiver's own error text; the test is
+  deliberately not recorded, since a record answers "did my alert get delivered")*
+- Uses mono font for JSON payload examples ✓
+- accent-primary for active/inactive toggle switches ✓ — *not* Vital Teal: a toggle's
+  state is not a contract state, and Vital Teal means healthy. The delivery-records panel
+  is the one place severity hues appear here, and correctly: a failed delivery *is* a
+  broken thing. `DESIGN.md`'s ban on decorative severity colour is unchanged.
 
-### 7. Custom Alert Thresholds — NOT BUILT (component kept as the Phase 5 seed)
+### 7. Custom Alert Thresholds — NOT BUILT (the last unrouted component)
 **Goal:** Allow teams to define what constitutes breaking vs non-breaking changes for their context.
 
-**Status (2026-09-21).** Nothing behind this exists. The shell's settings form was
+**Status (2026-09-23).** Nothing behind this exists, and §6 shipping did not change that — it
+changed the *reason* this is unrouted, which is worth stating because it used to be shared.
+The shell's doctrine comment at `web/index.html:1528-1542` now records the split: webhooks is
+routed because a backend exists, and thresholds "stays out of this table until that changes,
+for its own reason rather than by association."
+
+The shell's settings form was
 deleted; `saveThresholdConfig` showed "Custom alert thresholds have been saved."
 over an empty function body, and the thresholds it collected were read by
 nothing, in either the shell or the Go diff engine. There is no threshold
@@ -223,8 +311,10 @@ reads, so a nav entry would put a screen in front of the user whose buttons lie.
 
 The component itself was **not** deleted — it ships in the bundle, unrouted, and
 still toasts "Thresholds Saved / Custom alert thresholds have been saved." over a
-no-op. It is **kept on purpose as the Phase 5 seed**. The feature list below is
-the original proposal, not a description of the product.
+no-op. It is **kept on purpose**, as the one screen left waiting on a backend that
+does not exist; §6's component waited the same way and stopped waiting when its
+backend arrived. The feature list below is the original proposal, not a
+description of the product.
 
 **Features:**
 - Configure severity levels per change type:
@@ -289,19 +379,37 @@ All proposed improvements should follow the existing Driftwood design system:
 
 ## Implementation Approach
 
-These improvements can be implemented incrementally, with each as its own PR following the established pattern. **Read each item's Status block before starting it** — most have shipped in part or in full, and two (§6, §7) have no backend at all.
+These improvements can be implemented incrementally, with each as its own PR following the established pattern. **Read each item's Status block before starting it** — most have shipped in part or in full, and only one (§7) still has no backend at all.
 
 1. **Setup Wizard** - Shipped as a view, not a route. See §1.
 2. **Scenario Library** - Shipped as a catalogue. The mock-simulator integration (the "Load Scenario" loader) did not ship and is not a stale-branch fix; it needs a shell↔React bridge that does not exist. See §2.
 3. **Contract Evolution Timeline** - Shipped in the History view, except the PNG/SVG export. See §3.
 4. **Integration Guides** - Shipped. See §4.
-5. **Export & Reporting** - Not built; Phase 5, after per-project state exists. See §5.
-6. **Webhook Integrations** - Not built; Phase 5. New settings section + background worker, with real delivery and the SSRF guards. See §6.
-7. **Custom Alert Thresholds** - Not built; Phase 5. New settings section + diff engine configuration. See §7.
+5. **Export & Reporting** - Not built; the remaining half of Phase 5, and it reuses §6's deliverer rather than growing a second outbound path. See §5.
+6. **Webhook Integrations** - **Shipped**: SSRF guard extraction, persisted per-project config, a real outbound POST with retry, delivery records, a synchronous test route, a routed Alert Delivery view, and HMAC signing for the generic kind. See §6 for what was deliberately left out.
+7. **Custom Alert Thresholds** - Not built; the last item with no backend. Its `CustomAlertThresholds.tsx` is still unrouted for the reason recorded in the shell, and the shell's doctrine comment now distinguishes the two cases. See §7.
 8. **Multi-Tenant View** - Project switching + per-project state isolation (partial; see §8)
 
 Each should include:
 - Test-first approach (unit/integration tests)
 - Manual verification steps
 - Documentation in README if user-facing
+
+### Verified debris
+
+Checked against the tree on 2026-09-23, not carried over from an earlier note. Each is real and
+none is urgent; they are recorded so the next reader does not have to re-derive them, and so a
+claim that *used* to be on this list but is no longer true does not get repeated:
+
+- `ViewHeader`'s `lead` prop (`frontend-react/src/components/ui.tsx:289`) is declared, rendered
+  at `:307`, and passed by **no caller anywhere in the tree**. Either a view wants it or it
+  should go.
+- Three earlier entries were checked and **are no longer true**, so they are struck rather than
+  inherited: the "12 root planning artifacts" are gone (the root holds only `README`,
+  `CONTRIBUTING`, `DESIGN` and this file); the port-18791 process holding a deleted
+  `bin/drift-bin` is gone; and the CSS previously described as dead for the deleted Export view
+  (`web/shell.css:1632-1725`) is live Integration Guides styling that §4 ships against.
+- `frontend-react/dist/` is a stale local build, but it is **gitignored**
+  (`frontend-react/.gitignore:11`), so it is not repository debris and does not belong on a
+  cleanup list. `web/dist` is the served one.
 - No direct commits to main - branch → PR → user merge workflow
