@@ -205,6 +205,34 @@ export const Button: React.FC<
   </button>
 );
 
+/* A text field.
+
+   The class string below had been copy-pasted six times, and every copy was
+   wrong in the same two ways — which is the drift this file exists to end:
+
+   - `border-border-color` is the hairline divider, and `--color-border-input`
+     says in its own comment why a control cannot use it: WCAG 1.4.11 wants 3:1
+     for the visual information that *identifies* a control, and a field whose
+     only boundary is its border has nothing else, while "a card or a table can
+     keep the hairline: its boundary is not what identifies it". Until this
+     component nothing in the product referenced that token at all.
+   - `focus:border-accent-healthy` is a severity token. §2 and DESIGN.md's ban
+     list make healthy/amber/red mean contract state and nothing else, so a field
+     that turns green on focus is asserting the contract is fine. The interactive
+     accent is `--accent-primary`, which is what the shell's own
+     `.form-group input:focus` (web/shell.css) already uses.
+
+   `inputClass` is exported because the same string is what a `<select>` in this
+   product needs, and a second component wrapping the same four classes would be
+   a second place for them to drift from these. */
+export const inputClass =
+  'w-full px-4 py-3 rounded-sm border border-border-input bg-bg-hover text-text-main placeholder:text-text-muted focus:outline-none focus:border-accent-primary';
+
+export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({
+  className = '',
+  ...rest
+}) => <input className={[inputClass, className].filter(Boolean).join(' ')} {...rest} />;
+
 /* A labelled form control. §4: "Label above input … Settings panel
    max-width 550px." */
 export const Field: React.FC<{

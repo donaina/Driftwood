@@ -1769,121 +1769,16 @@
     border-color: var(--accent-primary);
   }
 
-  /* Webhook & Alert Integrations view. */
-  .webhook-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    margin-bottom: 1.5rem;
-  }
-
-
-
-  .webhook-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-    padding: 0 1rem;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-
-
-  .webhook-card-title {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-
-
-  .webhook-service-icon {
-    width: 32px;
-    height: 32px;
-    background: var(--accent-info);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    color: var(--on-accent);
-  }
-
-
-
-  .webhook-card-body {
-    padding: 1rem;
-  }
-
-
-
-  .webhook-card-description {
-    color: var(--text-muted);
-    margin-bottom: 1.5rem;
-    line-height: 1.5;
-  }
-
-
-
-  .webhook-setup-steps h4 {
-    margin-top: 0;
-    margin-bottom: 0.75rem;
-    color: var(--text-main);
-  }
-
-
-
-  .webhook-setup-steps ol {
-    margin-left: 1.5rem;
-    margin-bottom: 1.5rem;
-    color: var(--text-main);
-  }
-
-
-
-  .webhook-setup-steps li {
-    margin-bottom: 0.5rem;
-  }
-
-
-
-  .webhook-config {
-    margin-top: 1.5rem;
-  }
-
-
-
-  .alert-types {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-
-
-  .alert-types label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: var(--text-base);
-    color: var(--text-main);
-  }
-
-
-
-  .alert-types input {
-    width: auto;
-  }
-
-
-
-  .webhook-config .btn {
-    width: 100%;
-    margin-top: 0.5rem;
-  }
-
+  /* The Webhook & Alert Integrations view's own rules lived here — .webhook-card
+     and its header, title, icon, body and description, .webhook-setup-steps,
+     .webhook-config and .alert-types, about 110 lines. They styled the vanilla
+     renderer that was deleted from web/index.html, and nothing has referenced any
+     of them since WebhookIntegrations.tsx took the view over. Dropped rather than
+     kept against a return: the React view is built from the same primitives as
+     every other view, which is what stops a second look arriving with the second
+     copy of the markup. (.webhook-url-input and .webhook-grid had no rule here at
+     all — the markup named classes the stylesheet never defined.)
+   */
   /* ---------------------------------------------------------------------
      Press states.
 

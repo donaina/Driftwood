@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Field, Panel, PanelTitle, toast } from './ui';
+import { Button, Field, Panel, PanelTitle, inputClass, toast } from './ui';
 
 const CustomAlertThresholds: React.FC = () => {
   const [thresholds, setThresholds] = useState({
@@ -154,7 +154,7 @@ const CustomAlertThresholds: React.FC = () => {
             <select
               value={thresholds.typeChange}
               onChange={(e) => handleThresholdChange(e, 'typeChange')}
-              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
+              className={inputClass}
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
@@ -167,7 +167,7 @@ const CustomAlertThresholds: React.FC = () => {
             <select
               value={thresholds.requiredOptional}
               onChange={(e) => handleThresholdChange(e, 'requiredOptional')}
-              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
+              className={inputClass}
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
@@ -180,7 +180,7 @@ const CustomAlertThresholds: React.FC = () => {
             <select
               value={thresholds.addedRemoved}
               onChange={(e) => handleThresholdChange(e, 'addedRemoved')}
-              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
+              className={inputClass}
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
@@ -193,7 +193,7 @@ const CustomAlertThresholds: React.FC = () => {
             <select
               value={thresholds.statusCode}
               onChange={(e) => handleThresholdChange(e, 'statusCode')}
-              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
+              className={inputClass}
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
@@ -206,7 +206,7 @@ const CustomAlertThresholds: React.FC = () => {
             <select
               value={thresholds.headerChanges}
               onChange={(e) => handleThresholdChange(e, 'headerChanges')}
-              className="w-full px-4 py-3 rounded-sm border border-border-color bg-bg-hover text-text-main focus:outline-none focus:border-accent-healthy"
+              className={inputClass}
             >
               <option value="breaking">Breaking</option>
               <option value="warning">Warning</option>
