@@ -2,7 +2,10 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -17,6 +20,7 @@ const (
 	webhooksRoute   = "/_driftwood/api/webhooks"
 	deleteRoute     = "/_driftwood/api/webhooks/delete"
 	deliveriesRoute = "/_driftwood/api/webhooks/deliveries"
+	testRoute       = "/_driftwood/api/webhooks/test"
 	// A URL that parses, is https, and names a host the SSRF rules allow. What
 	// the route is asked to store is not what it dials, so nothing here has to
 	// be listening.
@@ -458,6 +462,158 @@ func TestDeliveriesRouteRefusesAnUnknownProject(t *testing.T) {
 	h := newHarness(t)
 
 	resp := h.do(t, http.MethodGet, deliveriesRoute+"?project=nope", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+	readAndDecode(t, resp, nil)
+}
+
+/* The test route. What it must get right is not "did a request happen" — it is
+   that the request named the channel the operator pointed at, and that a send
+   which reached a receiver and was refused comes back as a result rather than as
+   a failure of the request that asked for it. */
+
+func TestTestRouteReportsWhatTheReceiverDid(t *testing.T) {
+	h := newHarness(t)
+	h.deliveries.testResult = webhook.TestResult{OK: true, StatusCode: http.StatusOK, LatencyMS: 142}
+
+	var result struct {
+		OK         bool   `json:"ok"`
+		StatusCode int    `json:"status_code"`
+		LatencyMS  int64  `json:"latency_ms"`
+		Error      string `json:"error"`
+	}
+	resp := h.postJSON(t, testRoute, `{"kind":"slack"}`)
+	readAndDecode(t, resp, &result)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if !result.OK || result.StatusCode != http.StatusOK || result.LatencyMS != 142 {
+		t.Errorf("the route reported %+v, want the result it was given", result)
+	}
+
+	// The channel is the one the caller named, under the active project — a test
+	// that sent to some other channel would report on something else.
+	want := h.store.ActiveProject() + "/slack"
+	if len(h.deliveries.testCalls) != 1 || h.deliveries.testCalls[0] != want {
+		t.Errorf("Test was called with %v, want [%s]", h.deliveries.testCalls, want)
+	}
+	if h.deliveries.testCtxDone {
+		t.Error("the deliverer was handed a context that was already done, so the send could not " +
+			"be cancelled when the operator closed the tab")
+	}
+}
+
+// A receiver that refused the message is a result, not a failed request. The
+// route exists to report that, and a 5xx here would tell the dashboard the test
+// button was broken when it worked perfectly.
+func TestTestRouteReportsARefusalAsAResult(t *testing.T) {
+	h := newHarness(t)
+	h.deliveries.testResult = webhook.TestResult{
+		StatusCode: http.StatusBadRequest,
+		LatencyMS:  30,
+		Error:      "the receiver refused the test message",
+	}
+
+	var result struct {
+		OK         bool   `json:"ok"`
+		StatusCode int    `json:"status_code"`
+		Error      string `json:"error"`
+	}
+	resp := h.postJSON(t, testRoute, `{"kind":"teams"}`)
+	readAndDecode(t, resp, &result)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — a refused delivery is what the route is for", resp.StatusCode)
+	}
+	if result.OK {
+		t.Error("ok = true for a receiver answering 400")
+	}
+	if result.StatusCode != http.StatusBadRequest || result.Error == "" {
+		t.Errorf("the route reported %+v, want the status and the reason", result)
+	}
+}
+
+func TestTestRouteRefusesAChannelWithNothingToSendTo(t *testing.T) {
+	h := newHarness(t)
+	h.deliveries.testErr = fmt.Errorf("no URL is saved for the slack channel: %w", webhook.ErrNotConfigured)
+
+	resp := h.postJSON(t, testRoute, `{"kind":"slack"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 — the caller asked to test a channel they have not "+
+			"configured", resp.StatusCode)
+	}
+	readAndDecode(t, resp, nil)
+}
+
+// And a fault on our side is ours. Telling the operator to check a URL when the
+// deliverer could not render the body is the bug the ErrInvalidTarget idiom
+// exists to prevent, in the other direction.
+func TestTestRouteReportsOurOwnFaultAsAServerError(t *testing.T) {
+	h := newHarness(t)
+	h.deliveries.testErr = fmt.Errorf("rendering the slack body: %w", errors.New("boom"))
+
+	resp := h.postJSON(t, testRoute, `{"kind":"slack"}`)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+	readAndDecode(t, resp, nil)
+}
+
+// A server wired without a deliverer has nothing to send and must say so rather
+// than answer an empty result that reads like a success.
+func TestTestRouteWithoutADelivererIsAServerError(t *testing.T) {
+	if _, err := (webhook.NoDeliveries{}).Test(context.Background(), "default", "slack"); err == nil {
+		t.Fatal("NoDeliveries.Test returned no error")
+	} else if errors.Is(err, webhook.ErrNotConfigured) {
+		t.Error("a server with no deliverer reported a configuration problem, which would tell " +
+			"the operator to check a URL that is fine")
+	}
+}
+
+func TestTestRouteRefusesBadRequests(t *testing.T) {
+	h := newHarness(t)
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"unknown kind", `{"kind":"carrier-pigeon"}`},
+		{"no kind", `{}`},
+		{"not JSON", `{`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := h.postJSON(t, testRoute, tc.body)
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400", resp.StatusCode)
+			}
+			readAndDecode(t, resp, nil)
+		})
+	}
+
+	// A refused request must not have reached the deliverer at all: a kind
+	// nothing renders cannot be sent, so there is nothing to test.
+	if len(h.deliveries.testCalls) != 0 {
+		t.Errorf("a refused request reached the deliverer: %v", h.deliveries.testCalls)
+	}
+}
+
+func TestTestRouteRefusesOtherMethods(t *testing.T) {
+	h := newHarness(t)
+
+	resp := h.do(t, http.MethodGet, testRoute, nil)
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("GET %s = %d, want 405 — a GET that caused an outbound request would be a link "+
+			"a browser could follow, or an image tag a page could embed", testRoute, resp.StatusCode)
+	}
+	readAndDecode(t, resp, nil)
+}
+
+func TestTestRouteRefusesAnUnknownProject(t *testing.T) {
+	h := newHarness(t)
+
+	resp := h.postJSON(t, testRoute+"?project=nope", `{"kind":"slack"}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
 	}

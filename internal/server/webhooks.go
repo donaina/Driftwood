@@ -8,6 +8,7 @@ import (
 
 	"github.com/donaina/driftwood/internal/netguard"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/pkg/types"
 )
 
@@ -267,4 +268,74 @@ func (s *Server) handleDeliveries(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(records)
+}
+
+// handleTestWebhook sends one sample message to a configured channel and reports
+// what actually happened.
+//
+// It has no rule of its own, and that is a decision rather than an omission. A
+// gate exists to judge a URL, and this request carries none: the destination is
+// the address the operator already saved, judged when they saved it and carrying
+// its own AllowPrivate verdict from that moment. The body is product-authored —
+// see webhook.StatusTest — so a caller who reaches this route learns nothing
+// about the operator's API and causes nothing more than a message in a channel
+// the operator pointed Driftwood at.
+//
+// That is what keeps a "send a test" button from being an SSRF primitive: the
+// destination is operator-configured, not caller-chosen, which is the same
+// property that makes the target route's SetProjectTarget safe. Gating the route
+// on loopback instead would break the ordinary case — an operator whose
+// dashboard is behind an authenticated reverse proxy pressing Test on a public
+// Slack URL — while adding nothing, since anyone who can reach this control
+// plane can already retarget the proxy and delete a project's contracts.
+//
+// Synchronous, and that is fine here in a way it would not be on the proxy path:
+// this is a button press, and httpServer's 30s WriteTimeout sits well outside the
+// deliverer's 8s client timeout.
+func (s *Server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !types.IsWebhookKind(req.Kind) {
+		http.Error(w, "unknown webhook kind", http.StatusBadRequest)
+		return
+	}
+
+	// The request's context, so a closed tab stops the send rather than leaving
+	// Driftwood to finish a message nobody is waiting for.
+	result, err := s.deliveries.Test(r.Context(), projectID, req.Kind)
+	if err != nil {
+		/* A channel with nothing to send to is 400 and anything else is 500,
+		   which is the target route's idiom: "A refused target is the client's
+		   problem; a target that was accepted but not written down is ours."
+
+		   Here the client's problem is asking to test a channel they have not
+		   configured, and ours is a deliverer that cannot render a body it was
+		   asked to render. Telling an operator to check a URL when the fault is
+		   in the sending is the same bug that idiom exists to prevent. */
+		status := http.StatusInternalServerError
+		if errors.Is(err, webhook.ErrNotConfigured) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
 }

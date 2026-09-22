@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,15 +122,43 @@ type Discard struct{}
 
 func (Discard) Enqueue(string, types.Alert) {}
 
-// DeliveryLog is the read side, which the API serves.
-type DeliveryLog interface {
+// Deliveries is what the API needs from the deliverer: the records it has filed,
+// and the ability to send one test message.
+//
+// It was called DeliveryLog, and the name stopped being true when the test route
+// arrived. The server no longer only reads — it can cause an outbound request —
+// and a name describing the old, narrower thing is how the next reader comes to
+// believe the enqueue side is still out of reach from here. It is not: Test is a
+// send, deliberately synchronous and deliberately not Enqueue.
+type Deliveries interface {
 	Recent(projectID string, limit int) []Record
+	Test(ctx context.Context, projectID, kind string) (TestResult, error)
 }
 
-// NoDeliveries is a log that holds nothing, for a server built without one.
+// NoDeliveries is a deliverer that holds nothing and can send nothing, for a
+// server built without one.
 type NoDeliveries struct{}
 
 func (NoDeliveries) Recent(string, int) []Record { return []Record{} }
+
+// Test fails rather than reporting a result, and that is the honest answer: a
+// server with no deliverer did not reach a receiver and was not refused by one,
+// so it has nothing to report about a channel that nothing is wired to deliver
+// to. It is not ErrNotConfigured — nothing about the request was wrong — so the
+// route answers 500 rather than telling the operator to check a URL that is
+// already fine.
+func (NoDeliveries) Test(context.Context, string, string) (TestResult, error) {
+	return TestResult{}, errors.New("no alert deliverer is configured")
+}
+
+// ErrNotConfigured is Test's only error, and it means "there is nothing to
+// test" rather than "the test failed".
+//
+// The split is the ErrInvalidTarget idiom applied to a button: a channel with no
+// URL is the caller's problem and answers 400, while a receiver that answered
+// 400 is a result — the whole point of the route is to report that rather than
+// to fail the request that asked for it.
+var ErrNotConfigured = errors.New("webhook is not configured")
 
 // Record is one attempt-series against one channel: what was tried, how it went,
 // and how many times it was tried.
@@ -412,7 +441,13 @@ func (d *Deliverer) deliver(j job) {
 	for {
 		attempts++
 
-		status, retryAfter, err := d.post(cfg, contentType, body)
+		// out.reply is not kept. What a vendor says about a refused delivery is
+		// the vendor's bytes, and a record says what we tried and what came back
+		// at the level an operator acts on: the status code and our own text.
+		// Test is where the reply is shown, because there the operator is looking
+		// at the answer and nothing is being written down.
+		out := d.post(d.ctx, cfg, contentType, body)
+		status, retryAfter, err := out.status, out.retryAfter, out.err
 		lastStatus, lastErr = status, err
 
 		if err == nil && status >= 200 && status < 300 {
@@ -450,18 +485,140 @@ func (d *Deliverer) deliver(j job) {
 	d.recordFailed(j, attempts, lastStatus, lastErr, detectedAt)
 }
 
+// TestResult is what one test send did, and it is the whole response body.
+//
+// StatusCode is zero when the attempt never got a response — a refused
+// connection, a DNS failure, a timeout. Error is our own text in that case and
+// the receiver's status in the other; there is deliberately no field for what
+// the receiver *said*, for the reason post drains rather than reads the body.
+type TestResult struct {
+	OK         bool   `json:"ok"`
+	StatusCode int    `json:"status_code,omitempty"`
+	LatencyMS  int64  `json:"latency_ms"`
+	Error      string `json:"error,omitempty"`
+}
+
+// Test sends one sample alert to a configured channel and reports what happened.
+//
+// Synchronous because it is not on the proxy path and nobody is waiting on
+// anything else: the operator pressed a button, and the answer is the response.
+// One attempt, no retry — a retry schedule behind a button turns a clear
+// "connection refused" into a fifteen-second wait that ends in the same answer,
+// and the operator can press it again.
+//
+// It sends whether or not the channel is enabled. Configuring a URL, testing it
+// and then turning the channel on is the order an operator actually works in,
+// and a Test button that refuses until the toggle is flipped would be a control
+// whose effect depends on another control.
+//
+// The send is not recorded. A record answers "did my alert get delivered", and a
+// test is not an alert: entries with an empty traffic_id and a made-up endpoint
+// would push real deliveries out of a list that holds the last ten. The card
+// reports the outcome instead, in the response the operator is already looking
+// at.
+func (d *Deliverer) Test(ctx context.Context, projectID, kind string) (TestResult, error) {
+	cfg, ok := d.store.GetWebhook(projectID, kind)
+	if !ok || cfg.URL == "" {
+		return TestResult{}, fmt.Errorf("no URL is saved for the %s channel: %w", kind, ErrNotConfigured)
+	}
+
+	body, contentType, err := Render(kind, BuildPayload(EventTest, d.projectRef(projectID), testAlert(), time.Now()))
+	if err != nil {
+		return TestResult{}, err
+	}
+
+	start := time.Now()
+	out := d.post(ctx, cfg, contentType, body)
+	latency := time.Since(start)
+
+	result := TestResult{StatusCode: out.status, LatencyMS: latency.Milliseconds()}
+	switch {
+	case out.err != nil:
+		// Unwrapped already by post, then redacted because this text reaches a
+		// screen and bounded because it reaches a browser.
+		result.Error = truncate(capture.RedactValue(out.err.Error()), 300)
+	case out.status >= 200 && out.status < 300:
+		result.OK = true
+	case out.reply != "":
+		// The receiver's own words, redacted and bounded by post. This is the
+		// whole diagnosis when a payload is wrong rather than a URL: "400" alone
+		// cannot tell an operator whether to check the URL or the envelope, and
+		// Teams is the kind where the envelope is the thing most likely to be
+		// wrong.
+		result.Error = out.reply
+	default:
+		result.Error = "the receiver refused the test message and said nothing about why"
+	}
+	return result, nil
+}
+
+// StatusTest is the contract_status a test send carries.
+//
+// Deliberately not one of the three severities. A test message that said
+// BREAKING would be indistinguishable from a real break in a channel other
+// people read, and would go on saying so in the scrollback after the operator
+// has forgotten they pressed a button.
+const StatusTest = "TEST"
+
+// testAlert is the alert a test send is built from: no deltas, and a status that
+// is not a severity.
+//
+// Both halves are one decision. This codebase has a scar about fabricating a
+// contract that looks real — the deleted /api/users seed that made the first
+// healthy response look BREAKING — and inventing a delta to make the test
+// message look more like a real one would be that mistake with a wider audience.
+// So there is nothing to invent one from, the endpoint names a route Driftwood
+// serves itself, and the event field says driftwood_test to anything parsing the
+// body rather than reading it.
+func testAlert() types.Alert {
+	return types.Alert{
+		Endpoint:       "GET /_driftwood/test",
+		ContractStatus: StatusTest,
+	}
+}
+
+// maxReplyBytes bounds how much of a receiver's reply is kept. Two kilobytes is
+// several times the longest vendor error body and remains useful for the HTML a
+// proxy in front of a webhook returns when it refuses one.
+const maxReplyBytes = 2048
+
+// attempt is one POST's outcome, in full.
+//
+// reply is the receiver's own words, bounded and redacted, and it is read by
+// exactly one caller: Test, which reports it on the card. deliver deliberately
+// does not record it — see recordFailed — and the field is named here rather
+// than returned positionally so that the choice to ignore it is visible at the
+// place that makes it.
+//
+// Reading it at all is what lets an operator tell "the URL is wrong" from "the
+// payload is wrong". A bare 400 cannot distinguish them, and the Teams envelope
+// is the case where that distinction is the entire diagnosis: Power Automate
+// answers a wrong envelope with a 400 and a sentence saying so.
+type attempt struct {
+	status     int
+	retryAfter time.Duration
+	reply      string
+	err        error
+}
+
 // post makes one attempt. It returns the status code, a Retry-After duration if
-// the receiver sent one, and the transport error if the attempt never got a
-// response.
+// the receiver sent one, the receiver's reply, and the transport error if the
+// attempt never got a response.
 //
 // The client is chosen from the config rather than fixed on the Deliverer: the
 // config is what carries the operator's answer about private addresses, and the
 // dial has to honour it or a URL the API accepted is a URL every delivery
 // refuses.
-func (d *Deliverer) post(cfg types.WebhookConfig, contentType string, body []byte) (int, time.Duration, error) {
-	req, err := http.NewRequestWithContext(d.ctx, http.MethodPost, cfg.URL, bytes.NewReader(body))
+//
+// ctx is a parameter rather than d.ctx because there are two callers with
+// different lifetimes. A worker's delivery is bounded by the deliverer's own
+// context, which outlives any one request. A test send is on a request, and if
+// the operator closes the tab mid-test the request that asked for it is gone —
+// there is nobody left to report the answer to, so the send should stop with it.
+func (d *Deliverer) post(ctx context.Context, cfg types.WebhookConfig, contentType string, body []byte) attempt {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.URL, bytes.NewReader(body))
 	if err != nil {
-		return 0, 0, err
+		return attempt{err: err}
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", "Driftwood")
@@ -473,16 +630,19 @@ func (d *Deliverer) post(cfg types.WebhookConfig, contentType string, body []byt
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, 0, unwrapTransportError(err)
+		return attempt{err: unwrapTransportError(err)}
 	}
-	// The body is drained and discarded rather than read: what a vendor returns
-	// to a failed delivery is the vendor's bytes, we cannot redact them
-	// meaningfully, and a status code plus our own error text is what an operator
-	// acts on. Draining lets the connection be reused.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	// Read a bounded prefix, then drain the rest. Draining is not optional: a
+	// response left unread keeps the connection out of the pool.
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxReplyBytes))
+	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
 
-	return resp.StatusCode, retryAfterOf(resp, time.Now()), nil
+	return attempt{
+		status:     resp.StatusCode,
+		retryAfter: retryAfterOf(resp, time.Now()),
+		reply:      truncate(capture.RedactValue(strings.TrimSpace(string(raw))), maxReplyBytes),
+	}
 }
 
 // retryable reports whether another attempt could plausibly succeed.
@@ -651,6 +811,13 @@ func (d *Deliverer) record(r Record) {
 }
 
 // Recent returns a project's delivery records, newest first.
+//
+// The copy is built onto a non-nil empty slice, so a project with no deliveries
+// answers [] rather than null. That is not a detail of encoding: the API's
+// published contract for this route is a list, and a client that does
+// `records.map(...)` gets a TypeError from null. It shipped as null once, and
+// the server's own test did not catch it because the test's stand-in returned
+// [] — which is the whole hazard of asserting against a stand-in.
 func (d *Deliverer) Recent(projectID string, limit int) []Record {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -659,5 +826,5 @@ func (d *Deliverer) Recent(projectID string, limit int) []Record {
 	if limit > 0 && len(list) > limit {
 		list = list[:limit]
 	}
-	return append([]Record(nil), list...)
+	return append([]Record{}, list...)
 }
