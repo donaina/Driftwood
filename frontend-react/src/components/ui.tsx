@@ -226,13 +226,47 @@ export const Field: React.FC<{
 /* The h2 every view opens with. `align` is the two shapes that existed:
    centred while the view has nothing to show, and split once it has an action
    to sit beside the title. */
+
+/* The split shape cannot hold a title, an action and the gap between them in
+   the narrowest tier. Measured at 320px: the row has 272px, the title has
+   already been squeezed to its min-content floor of 91px — the width of
+   "Version" alone at 24px, which nothing can shrink without breaking the word —
+   and the action is 187px of a Button, `whitespace-nowrap` deliberately (see
+   Button above: the label broke onto two lines the moment it gained an icon).
+   91 + 187 = 278, so the row overflows itself by exactly 6px and the first
+   width that fits is 326px.
+
+   Six pixels is enough to be visible rather than theoretical: the button's left
+   edge lands on top of the title's last line, because `items-center` holds it
+   against a title that has wrapped to three lines of 24px text.
+
+   Scoped to the shell's own narrowest tier rather than to the 326px where the
+   overflow stops, matching the restacking the React islands already do at this
+   tier. Worth it here on the merits, not just for consistency: below 479px the
+   title is already breaking to two and three lines beside a vertically centred
+   button — 400px currently renders a 96px-tall header reading "Version /
+   History / Browser" with the button floating next to it — so stacking is
+   better at those widths than what it replaces, not a cost paid to fix 320px.
+
+   One pixel of imprecision, shared with every `max-[479px]:` in the components:
+   Tailwind compiles that variant to `@media not all and (width >= 479px)`,
+   which excludes 479px, where the shell's own `@media (max-width: 479px)`
+   includes it. Measured, the row stacks at 326-478px and not at 479px. Nothing
+   is broken at 479 — the row fits with 0 excess — so this is left as the
+   convention rather than special-cased. */
 export const ViewHeader: React.FC<{
   title: string;
   align?: 'center' | 'between';
   action?: React.ReactNode;
   lead?: string;
 }> = ({ title, align = 'between', action, lead }) => (
-  <div className={align === 'center' ? 'text-center py-12' : 'flex justify-between items-center'}>
+  <div
+    className={
+      align === 'center'
+        ? 'text-center py-12'
+        : 'flex justify-between items-center gap-y-3 max-[479px]:flex-col max-[479px]:items-start'
+    }
+  >
     <h2
       className={
         align === 'center'
