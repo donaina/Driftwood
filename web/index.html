@@ -153,6 +153,10 @@
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25 14.5 13.25H1.5L8 2.25Z"/><path d="M8 6.5v3"/><path d="M8 11.5v.01"/></svg>
           <span class="nav-label">Contract Alerts</span>
         </button>
+        <button type="button" class="nav-item" id="nav-webhooks" title="Webhook &amp; Alert Delivery">
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M14.25 1.75 7 9"/><path d="M14.25 1.75 9.75 14.25 7 9 1.75 6.25 14.25 1.75Z"/></svg>
+          <span class="nav-label">Alert Delivery</span>
+        </button>
         <button type="button" class="nav-item" id="nav-settings" title="Proxy Settings">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h2.75M8.75 5h4.75M2.5 11h4.75M10.75 11h2.75"/><circle cx="6.75" cy="5" r="1.55"/><circle cx="9.25" cy="11" r="1.55"/></svg>
           <span class="nav-label">Proxy Settings</span>
@@ -637,6 +641,7 @@
       on('nav-baselines', () => switchTab('baselines'));
       on('nav-history', () => switchTab('history'));
       on('nav-alerts', () => switchTab('alerts'));
+      on('nav-webhooks', () => switchTab('webhooks'));
       on('nav-settings', () => switchTab('settings'));
       on('nav-scenario', () => switchTab('scenario'));
       on('nav-integrations', () => switchTab('integrations'));
@@ -1518,18 +1523,28 @@
        destination is known to exist. */
     /* Destinations with no .view-panel of their own: each of these names a
        show*Library function that reveals its own root and mounts into it.
-       Thresholds and webhooks are deliberately absent. Both have a component
-       and neither has anything behind it — CustomAlertThresholds collects
-       severities that no code reads, and WebhookIntegrations reports a save and
-       a test delivery that never leave the browser. Routing to either would put
-       a nav entry in front of a screen whose buttons lie, which is the thing
-       the last three releases were about removing. They get entries when the
-       backend that makes them true exists. */
+
+       Thresholds and webhooks used to be absent from this table together, for
+       one reason: both had a component and neither had anything behind it.
+       CustomAlertThresholds collects severities that no code reads, and
+       WebhookIntegrations reported a save and a test delivery that never left
+       the browser. Routing to either would have put a nav entry in front of a
+       screen whose buttons lie.
+
+       They are no longer the same case. Webhooks has a backend now — config
+       persisted per project, a real outbound POST, delivery records, retry with
+       backoff, and a test route that reports what the receiver did — so it is
+       routed, and its component was rewritten to match. Thresholds still has
+       nothing: the severities it collects are read by neither the shell nor the
+       Go diff engine, and there is no route to save them to. It stays out of
+       this table until that changes, for its own reason rather than by
+       association. */
     function switchTab(tabName) {
       const reactViews = {
         'history': 'showHistoryLibrary',
         'scenario': 'showScenarioLibrary',
-        'integrations': 'showIntegrationsLibrary'
+        'integrations': 'showIntegrationsLibrary',
+        'webhooks': 'showWebhookLibrary'
       };
 
       const navEl = document.getElementById(`nav-${tabName}`);
@@ -2338,124 +2353,19 @@ window.showThresholdsLibrary = function() {
 };
 
 
-// Webhook & Alert Integrations functionality
-document.addEventListener('DOMContentLoaded', function() {
-  const webhookServices = [
-    {
-      id: 'slack',
-      name: 'Slack',
-      icon: '#',
-      description: 'Send drift alerts to Slack channels for team notification',
-      setupSteps: [
-        'Create a Slack app and enable Incoming Webhooks',
-        'Copy the webhook URL from Slack',
-        'Paste the URL below and save',
-        'Configure alert types and frequency'
-      ]
-    },
-    {
-      id: 'teams',
-      name: 'Microsoft Teams',
-      icon: '#',
-      description: 'Send drift alerts to Microsoft Teams channels',
-      setupSteps: [
-        'Configure an Incoming Webhook connector in Teams',
-        'Copy the webhook URL from Teams',
-        'Paste the URL below and save',
-        'Configure alert types and frequency'
-      ]
-    },
-    {
-      id: 'discord',
-      name: 'Discord',
-      icon: '#',
-      description: 'Send drift alerts to Discord channels',
-      setupSteps: [
-        'Create a webhook in your Discord channel settings',
-        'Copy the webhook URL from Discord',
-        'Paste the URL below and save',
-        'Configure alert types and frequency'
-      ]
-    },
-    {
-      id: 'email',
-      name: 'Email',
-      icon: '#',
-      description: 'Send drift alerts via email',
-      setupSteps: [
-        'Configure SMTP settings in the backend',
-        'Add recipient email addresses',
-        'Set email template preferences',
-        'Configure alert types and frequency'
-      ]
-    }
-  ];
+/* The vanilla Webhook & Alert Integrations renderer lived here — its own
+   webhookServices array, renderWebhooks, saveWebhookConfig and testWebhook,
+   roughly 120 lines. It was unreachable by construction (`if (!webhookGrid)
+   return;`, and #webhook-grid is not in the document) and it was a second copy
+   of a view that WebhookIntegrations.tsx implements for real, which is the same
+   reason the vanilla thresholds form and the vanilla history renderer were
+   deleted. Two copies of a view is how the last two field-name bugs survived
+   this long; one copy cannot drift from itself.
 
-  const webhookGrid = document.getElementById('webhook-grid');
-
-  function renderWebhooks() {
-    // This container is not in the document: the view is React-backed
-        // (webhook-react-root) and this vanilla renderer is superseded. Unguarded, it threw
-        // a TypeError on every page load — one of the four uncaught exceptions.
-        if (!webhookGrid) return;
-        webhookGrid.innerHTML = '';
-
-    webhookServices.forEach(service => {
-      const card = document.createElement('div');
-      card.className = 'webhook-card';
-      card.innerHTML = `
-        <div class="webhook-card-header">
-          <div class="webhook-card-title">
-            <div class="webhook-service-icon">${service.icon}</div>
-            <div>${service.name}</div>
-          </div>
-        </div>
-        <div class="webhook-card-body">
-          <p class="webhook-card-description">${service.description}</p>
-
-          <div class="webhook-setup-steps">
-            <h4>Setup Steps:</h4>
-            <ol>
-              ${service.setupSteps.map(step => `<li>${step}</li>`).join('')}
-            </ol>
-          </div>
-
-          <div class="webhook-config">
-            <div class="form-group">
-              <label for="webhook-url-${service.id}">Webhook URL:</label>
-              <input type="url" id="webhook-url-${service.id}" placeholder="Enter your webhook URL here" class="webhook-url-input">
-            </div>
-            <div class="form-group">
-              <label>Alert Types:</label>
-              <div class="alert-types">
-                <label><input type="checkbox" value="breaking" checked> Breaking Changes</label>
-                <label><input type="checkbox" value="warning"> Warnings</label>
-                <label><input type="checkbox" value="info"> Informational</label>
-              </div>
-            </div>
-            <button class="btn btn-primary" onclick="saveWebhookConfig(${jsArg(service.id)})">Save Configuration</button>
-            <button class="btn" onclick="testWebhook(${jsArg(service.id)})">Test Connection</button>
-          </div>
-        </div>
-      `;
-      webhookGrid.appendChild(card);
-    });
-  }
-
-  function saveWebhookConfig(serviceId) {
-    const url = document.getElementById(`webhook-url-${serviceId}`).value;
-    // In a real implementation, this would save to backend
-    showToast('Webhook Saved', `Configuration saved for ${serviceId}`);
-  }
-
-  function testWebhook(serviceId) {
-    // In a real implementation, this would send a test payload
-    showToast('Webhook Test', `Test webhook sent to ${serviceId}`);
-  }
-
-  // Initial render
-  renderWebhooks();
-});
+   saveWebhookConfig read the URL out of the DOM by element id and then toasted
+   "Configuration saved" over an empty body, and testWebhook toasted "Test
+   webhook sent" without sending one. Both of those lies are now backed by real
+   routes on the React side. */
 
 // Add navigation to webhook integrations library
 window.showWebhookLibrary = function() {
@@ -2468,11 +2378,13 @@ window.showWebhookLibrary = function() {
     window.mountWebhook(document.getElementById('webhook-react-root'));
   }
 
-  // Update nav active state
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.remove('active');
-  });
-  // We'd add a nav item for webhook integrations in a real implementation
+  /* This used to strip .active from every nav item and re-add nothing, with a
+     comment saying a nav item would be added "in a real implementation". That
+     undid the class switchTab had set two frames earlier — it adds .active to
+     #nav-webhooks and only then calls this function — so the nav highlight was
+     cleared on every visit to this view. showIntegrationsLibrary has it right by
+     not touching nav state at all; the shell owns that, and this is a mount
+     hook. */
 };
 
 // Add navigation to history library
