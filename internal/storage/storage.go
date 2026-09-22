@@ -24,7 +24,26 @@ import (
 // absence of keys, and nothing distinguished either from a future format. That
 // is why the version is a key of its own rather than, say, inferred from whether
 // some field is present.
-const storeVersion = 2
+//
+// v3 added webhook delivery config. The bump is not ceremony: a v2 build reading
+// a v3 document would not fail. It would decode it, ignore the "webhooks" key it
+// does not know, and rewrite the document without it on the next baseline save —
+// silently dropping a configured URL and its signing secret. Refusing to read a
+// version this build does not write is loud; that is not.
+const storeVersion = 3
+
+// minReadableVersion is the oldest document this build will open.
+//
+// Reading a range rather than demanding equality is what lets a v2 file keep
+// working: the only difference between v2 and v3 is a field that is absent-means-
+// none, so every v2 document is a valid v3 document that has not been stamped
+// yet. It is stamped lazily, on the next natural save, rather than converted on
+// load — see TestV2StoreIsReadAndNotRewritten for why an unchanged document must
+// not be rewritten just because the process started.
+//
+// The range only ever widens backwards. A version above storeVersion is still
+// refused, because that document may carry a change this build cannot preserve.
+const minReadableVersion = 2
 
 // defaultProjectID is the project every install has before projects are a
 // user-facing idea, and the one an existing install's endpoints are moved into
@@ -68,6 +87,20 @@ type persistedState struct {
 	Active    string                                       `json:"active_project"`
 	Projects  []types.Project                              `json:"projects"`
 	Histories map[string]map[string]*types.EndpointHistory `json:"histories"`
+
+	/* Where each project delivers its alerts: projectID -> kind -> config.
+
+	   A map here rather than a field on types.Project, and that is the load
+	   bearing part. Project is returned by GET /api/projects and broadcast on
+	   every project change through announceProjects, so a URL carrying a Slack
+	   or Discord token — which is what those URLs are — would ride into an
+	   unrelated route and an unrelated SSE event. Keeping it in its own map
+	   means the only code that sees a webhook URL is the code that asked for one.
+
+	   Absent for an install with no webhooks configured, which is every install
+	   until the feature is used; omitempty keeps those documents byte-identical
+	   to what v2 wrote apart from the version. */
+	Webhooks map[string]map[string]types.WebhookConfig `json:"webhooks,omitempty"`
 }
 
 type Store struct {
@@ -91,6 +124,20 @@ type Store struct {
 	histories  map[string]map[string]*types.EndpointHistory
 	traffics   map[string][]types.CapturedTraffic
 	alertOrder map[string][]string
+
+	/* projectID -> kind -> that channel's delivery config.
+
+	   Per kind rather than one config per project, because the dashboard shows
+	   four independently saveable cards. Collapsing them to one would make three
+	   of the four Save buttons report a save that overwrote the others.
+
+	   Delivery *records* are deliberately not here. They live in the deliverer,
+	   in memory, for the reason historiesForPersistLocked already gives about
+	   observations: a record is telemetry about runtime, and persisting it would
+	   put a snapshot of live activity into a file that otherwise holds nothing
+	   but accepted contracts. It also keeps this version bump a config-only
+	   migration. */
+	webhooks map[string]map[string]types.WebhookConfig
 
 	/* Alerts are keyed by traffic ID rather than by project.
 
@@ -218,6 +265,7 @@ func NewStore(targetURL, proxyPort string) (*Store, error) {
 				CreatedAt:          now,
 			},
 		},
+		webhooks:     make(map[string]map[string]types.WebhookConfig),
 		projectOrder: []string{defaultProjectID},
 		active:       defaultProjectID,
 		config: types.ProxyConfig{
@@ -337,6 +385,12 @@ func (s *Store) ensureProjectLocked(projectID string) {
 	}
 	if _, ok := s.alertOrder[projectID]; !ok {
 		s.alertOrder[projectID] = make([]string, 0)
+	}
+	if s.webhooks == nil {
+		s.webhooks = make(map[string]map[string]types.WebhookConfig)
+	}
+	if _, ok := s.webhooks[projectID]; !ok {
+		s.webhooks[projectID] = make(map[string]types.WebhookConfig)
 	}
 }
 
@@ -525,6 +579,92 @@ func (s *Store) ProjectTarget(id string) (string, bool, bool) {
 	return p.TargetURL, p.TargetAllowPrivate, true
 }
 
+// GetWebhooks returns every configured channel for a project, in WebhookKinds
+// order so the dashboard's cards do not reorder themselves between loads.
+//
+// Only the configured ones. A kind with no config is absent rather than present
+// and empty, because "no URL has been set for Slack" and "Slack has been
+// configured with an empty URL" are different states, and only the first is
+// reachable — the handler refuses to store an empty URL. Collapsing them would
+// make the dashboard guess.
+func (s *Store) GetWebhooks(projectID string) []types.WebhookConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	configs := s.webhooks[projectID]
+	if len(configs) == 0 {
+		return []types.WebhookConfig{}
+	}
+
+	out := make([]types.WebhookConfig, 0, len(configs))
+	for _, kind := range types.WebhookKinds {
+		if cfg, ok := configs[kind]; ok {
+			out = append(out, cfg)
+		}
+	}
+	return out
+}
+
+// GetWebhook returns one channel's config. Used by the deliverer, which needs
+// the URL and secret for a kind that is about to be delivered to.
+func (s *Store) GetWebhook(projectID, kind string) (types.WebhookConfig, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cfg, ok := s.webhooks[projectID][kind]
+	return cfg, ok
+}
+
+// SetWebhook records one channel's config for one project and writes it to disk.
+//
+// The URL is not validated here. Validation needs to know whether the request
+// that carried the URL came from the operator or off the wire, and the store has
+// no idea what a request is — the same split SetProjectTarget documents. The
+// handler validates with netguard and this records the outcome.
+//
+// Only the kind is checked, because a config for a kind nothing renders is a
+// setting with no effect, and storing one would put a card in the dashboard
+// whose Save button reported success.
+func (s *Store) SetWebhook(projectID string, cfg types.WebhookConfig) error {
+	if !types.IsWebhookKind(cfg.Kind) {
+		return fmt.Errorf("unknown webhook kind %q", cfg.Kind)
+	}
+
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	s.mu.Lock()
+	if _, ok := s.projects[projectID]; !ok {
+		s.mu.Unlock()
+		return fmt.Errorf("%w: %q", ErrNoSuchProject, projectID)
+	}
+	s.ensureProjectLocked(projectID)
+	cfg.UpdatedAt = time.Now()
+	s.webhooks[projectID][cfg.Kind] = cfg
+	s.mu.Unlock()
+
+	return s.persistLocked()
+}
+
+// DeleteWebhook removes one channel's config. Removing a kind that was never
+// configured is not an error: the caller asked for it to be gone, and it is.
+func (s *Store) DeleteWebhook(projectID, kind string) error {
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	s.mu.Lock()
+	if _, ok := s.projects[projectID]; !ok {
+		s.mu.Unlock()
+		return fmt.Errorf("%w: %q", ErrNoSuchProject, projectID)
+	}
+	if configs, ok := s.webhooks[projectID]; ok {
+		delete(configs, kind)
+	}
+	s.mu.Unlock()
+
+	return s.persistLocked()
+}
+
 // Routing returns what the proxy needs to resolve a request: which project is
 // active, and every project's target.
 //
@@ -614,6 +754,7 @@ func (s *Store) DeleteProject(id string) error {
 	delete(s.alertOrder, id)
 	delete(s.histories, id)
 	delete(s.traffics, id)
+	delete(s.webhooks, id)
 	delete(s.projects, id)
 
 	for i, existing := range s.projectOrder {
@@ -1386,11 +1527,41 @@ func (s *Store) stateForPersistLocked() *persistedState {
 		}
 	}
 
+	// The same shape and the same reasoning as Histories above: every project's
+	// config, in projectOrder, so a save does not reshuffle the document. Only
+	// the known kinds are emitted, so a kind that a later build stops supporting
+	// cannot keep reappearing in the file.
+	//
+	// Ordering inside each project is left to the encoder, which sorts map keys
+	// — unlike the project list, which needs projectOrder because it is a slice.
+	// Two saves of an unchanged store produce identical bytes either way, which
+	// is the property that matters.
+	webhooks := make(map[string]map[string]types.WebhookConfig, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		if _, ok := s.projects[id]; !ok {
+			continue
+		}
+		forConfig := s.webhooks[id]
+		if len(forConfig) == 0 {
+			continue
+		}
+		out := make(map[string]types.WebhookConfig, len(forConfig))
+		for _, kind := range types.WebhookKinds {
+			if cfg, ok := forConfig[kind]; ok {
+				out[kind] = cfg
+			}
+		}
+		if len(out) > 0 {
+			webhooks[id] = out
+		}
+	}
+
 	return &persistedState{
 		Version:   storeVersion,
 		Active:    active,
 		Projects:  projects,
 		Histories: histories,
+		Webhooks:  webhooks,
 	}
 }
 
@@ -1518,6 +1689,20 @@ func (s *Store) loadFromFile() error {
 		s.histories[id] = histories
 	}
 
+	// Webhooks arrive the same way, and for the same reason: a project the store
+	// reports is one the accessors can be pointed at without an existence check
+	// first. A v2 document has no "webhooks" key at all, so this is also the path
+	// that makes a pre-webhook install read as "no channels configured" rather
+	// than as nil — which would panic on the first write.
+	s.webhooks = make(map[string]map[string]types.WebhookConfig, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		configs, ok := state.Webhooks[id]
+		if !ok {
+			configs = make(map[string]types.WebhookConfig)
+		}
+		s.webhooks[id] = configs
+	}
+
 	if converted {
 		return s.keepV1CopyThenRewrite(data)
 	}
@@ -1561,8 +1746,18 @@ func decodeStore(data []byte, legacyTarget string) (*persistedState, bool, error
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, false, fmt.Errorf("unreadable store document: %w", err)
 	}
-	if state.Version != storeVersion {
-		return nil, false, fmt.Errorf("store document is version %d and this build writes version %d", state.Version, storeVersion)
+	// A range, not an equality. Every document from minReadableVersion up to
+	// storeVersion describes data this build can hold: the only changes in that
+	// span have been additive, absent-means-none fields, so an older document is
+	// simply one that has not been stamped with the current number yet. It gets
+	// stamped on the next natural save rather than being rewritten here.
+	//
+	// Above storeVersion is still refused. Such a document may carry a field this
+	// build would drop on its next save, and dropping it silently is the failure
+	// this check exists to prevent — so the error names both numbers and leaves
+	// the file exactly where it is.
+	if state.Version < minReadableVersion || state.Version > storeVersion {
+		return nil, false, fmt.Errorf("store document is version %d, and this build reads versions %d to %d", state.Version, minReadableVersion, storeVersion)
 	}
 	return &state, false, nil
 }

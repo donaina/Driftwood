@@ -156,6 +156,10 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleDeleteProject(w, r)
 		case proxy.ControlPrefix + "/api/projects/active":
 			s.handleSetActiveProject(w, r)
+		case proxy.ControlPrefix + "/api/webhooks":
+			s.handleWebhooks(w, r)
+		case proxy.ControlPrefix + "/api/webhooks/delete":
+			s.handleDeleteWebhook(w, r)
 		default:
 			// An unmatched control-API path is a 404 in JSON, not the dashboard.
 			// Returning HTML to a client that mistyped an endpoint hides the

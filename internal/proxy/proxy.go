@@ -248,9 +248,11 @@ func (p *Proxy) SetProjectTarget(projectID, target string, allowPrivate bool) er
 	if !p.knownProject(projectID) {
 		return fmt.Errorf("no project %q", projectID)
 	}
+	// Returned as it comes: netguard attaches ErrInvalidTarget itself, so
+	// re-wrapping here would only repeat the sentinel's own message.
 	parsed, err := parseAndValidateTarget(target, allowPrivate)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidTarget, err)
+		return err
 	}
 	return p.storeTarget(projectID, parsed, allowPrivate)
 }
@@ -282,7 +284,7 @@ func (p *Proxy) knownProject(projectID string) bool {
 // implementation, reached two ways.
 func (p *Proxy) ValidateTarget(target string, allowPrivate bool) error {
 	if _, err := parseAndValidateTarget(target, allowPrivate); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidTarget, err)
+		return err
 	}
 	return nil
 }
