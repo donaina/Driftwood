@@ -36,11 +36,16 @@ type Server struct {
 	// how the site is stored to hand it a request.
 	site http.Handler
 
-	// deliveries is the read side of the alert deliverer, and is deliberately the
-	// narrow interface rather than the *webhook.Deliverer: the server serves what
-	// has been delivered and never causes a delivery, so the enqueue side is not
-	// in reach from here. Never nil — see NewServer.
-	deliveries webhook.DeliveryLog
+	// deliveries is what the server needs from the alert deliverer, and is
+	// deliberately the narrow interface rather than the *webhook.Deliverer: the
+	// API serves the records and can ask for one test send, and the enqueue side
+	// is still not in reach from here. Never nil — see NewServer.
+	//
+	// The test route is why this is no longer only a log. The server can now
+	// cause an outbound request, which is worth being explicit about: the
+	// destination is operator-configured rather than caller-chosen, which is what
+	// keeps a "send a test" button from being an SSRF primitive.
+	deliveries webhook.Deliveries
 }
 
 // NewServer assembles the control plane.
@@ -50,11 +55,13 @@ type Server struct {
 // dereference, and the route is not on the proxy path — nothing about a request
 // through the proxy would have exercised it. A parameter makes the omission a
 // compile error at all three call sites instead.
-func NewServer(store *storage.Store, hub *events.Hub, prx *proxy.Proxy, mockCtrl *mock.MockController, siteHandler http.Handler, deliveries webhook.DeliveryLog) *Server {
+func NewServer(store *storage.Store, hub *events.Hub, prx *proxy.Proxy, mockCtrl *mock.MockController, siteHandler http.Handler, deliveries webhook.Deliveries) *Server {
 	if deliveries == nil {
-		// A server built without a deliverer answers the route with an empty list
-		// rather than panicking. That is the honest answer: nothing has been
-		// delivered because nothing is delivering.
+		// A server built without a deliverer answers the records route with an
+		// empty list rather than panicking, and the test route with a 500. Both
+		// are the honest answer: nothing has been delivered because nothing is
+		// delivering, and a server that cannot send has nothing to report about
+		// whether a send would work.
 		deliveries = webhook.NoDeliveries{}
 	}
 	return &Server{
@@ -183,6 +190,8 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleDeleteWebhook(w, r)
 		case proxy.ControlPrefix + "/api/webhooks/deliveries":
 			s.handleDeliveries(w, r)
+		case proxy.ControlPrefix + "/api/webhooks/test":
+			s.handleTestWebhook(w, r)
 		default:
 			// An unmatched control-API path is a 404 in JSON, not the dashboard.
 			// Returning HTML to a client that mistyped an endpoint hides the

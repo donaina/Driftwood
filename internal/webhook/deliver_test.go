@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1018,5 +1019,256 @@ drain:
 	}
 	if len(seen) != 1 {
 		t.Errorf("published %d frames for one delivered alert, want 1", len(seen))
+	}
+}
+
+/* The test send. It is synchronous and single-attempt, so these assert the
+   shape of the message as much as the outcome: a test alert that could be
+   mistaken for a real break in a channel other people read is the failure mode
+   worth failing a test over. */
+
+// testReceiver answers every request with status, and records the bodies it saw.
+func testReceiver(t *testing.T, status int) (*httptest.Server, *[]map[string]interface{}, *int64) {
+	t.Helper()
+	var mu sync.Mutex
+	bodies := new([]map[string]interface{})
+	var hits int64
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&hits, 1)
+		raw, _ := io.ReadAll(r.Body)
+		var decoded map[string]interface{}
+		_ = json.Unmarshal(raw, &decoded)
+		mu.Lock()
+		*bodies = append(*bodies, decoded)
+		mu.Unlock()
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, bodies, &hits
+}
+
+func TestTestSendReportsSuccessAndItsLatency(t *testing.T) {
+	receiver, bodies, _ := testReceiver(t, http.StatusOK)
+	d, projectID := newDeliverer(t, configFor(types.WebhookGeneric, receiver.URL))
+
+	result, err := d.Test(context.Background(), projectID, types.WebhookGeneric)
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if !result.OK {
+		t.Errorf("OK = false, error %q", result.Error)
+	}
+	if result.StatusCode != http.StatusOK {
+		t.Errorf("StatusCode = %d, want 200", result.StatusCode)
+	}
+	if result.LatencyMS < 0 {
+		t.Errorf("LatencyMS = %d, want >= 0", result.LatencyMS)
+	}
+
+	body := (*bodies)[0]
+	if body["event"] != EventTest {
+		t.Errorf("event = %v, want %q", body["event"], EventTest)
+	}
+	if body["endpoint"] != "GET /_driftwood/test" {
+		t.Errorf("endpoint = %v, want the test route", body["endpoint"])
+	}
+	if body["contract_status"] != StatusTest {
+		t.Errorf("contract_status = %v, want %q", body["contract_status"], StatusTest)
+	}
+}
+
+// The assertion that matters most here. A test message that announced BREAKING,
+// or that carried an invented delta, would be indistinguishable from a real
+// break in a channel the operator's colleagues read — the /api/users seed
+// mistake with a wider audience.
+func TestTestSendCannotBeMistakenForARealAlert(t *testing.T) {
+	receiver, bodies, _ := testReceiver(t, http.StatusOK)
+
+	for _, kind := range types.WebhookKinds {
+		t.Run(kind, func(t *testing.T) {
+			d, projectID := newDeliverer(t, configFor(kind, receiver.URL))
+			if _, err := d.Test(context.Background(), projectID, kind); err != nil {
+				t.Fatalf("Test: %v", err)
+			}
+		})
+	}
+
+	for i, body := range *bodies {
+		raw, _ := json.Marshal(body)
+		text := string(raw)
+
+		if strings.Contains(text, string(types.SeverityBreaking)) {
+			t.Errorf("body %d names BREAKING: %s", i, text)
+		}
+		if !strings.Contains(text, StatusTest) {
+			t.Errorf("body %d does not carry %q: %s", i, StatusTest, text)
+		}
+		// The generic kind is the canonical payload, so this is where the delta
+		// list would show up if a test were given fabricated ones.
+		if deltas, ok := body["deltas"]; ok && deltas != nil {
+			if list, isList := deltas.([]interface{}); !isList || len(list) > 0 {
+				t.Errorf("body %d carries deltas: %v", i, deltas)
+			}
+		}
+	}
+}
+
+func TestTestSendMakesExactlyOneAttempt(t *testing.T) {
+	// A 500 is retryable for a real delivery, so if Test shared the retry path
+	// this receiver would be hit three times.
+	receiver, _, hits := testReceiver(t, http.StatusInternalServerError)
+	fastBackoff(t)
+
+	d, projectID := newDeliverer(t, configFor(types.WebhookGeneric, receiver.URL))
+
+	result, err := d.Test(context.Background(), projectID, types.WebhookGeneric)
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if result.OK {
+		t.Error("OK = true against a receiver answering 500")
+	}
+	if result.StatusCode != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want 500", result.StatusCode)
+	}
+	if got := atomic.LoadInt64(hits); got != 1 {
+		t.Errorf("receiver was hit %d times, want 1 — a button press must not run a retry schedule", got)
+	}
+}
+
+func TestTestSendReportsATransportFailureWithoutTheURL(t *testing.T) {
+	receiver, _, _ := testReceiver(t, http.StatusOK)
+	url := receiver.URL + "/services/Xk9-SECRET-WEBHOOK-TOKEN"
+	receiver.Close() // so the connection is refused rather than answered
+
+	d, projectID := newDeliverer(t, configFor(types.WebhookGeneric, url))
+
+	result, err := d.Test(context.Background(), projectID, types.WebhookGeneric)
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if result.OK {
+		t.Error("OK = true against a closed receiver")
+	}
+	if result.Error == "" {
+		t.Error("a transport failure reported no error")
+	}
+	if strings.Contains(result.Error, "Xk9-SECRET-WEBHOOK-TOKEN") {
+		t.Errorf("the error carries the URL's credential: %q", result.Error)
+	}
+}
+
+func TestTestSendWithNoURLIsNotConfigured(t *testing.T) {
+	// An enabled channel needs a URL, so this is the state a channel is in
+	// before the operator has pasted one: saved as a kind, nothing else.
+	d, projectID := newDeliverer(t, types.WebhookConfig{Kind: types.WebhookSlack})
+
+	if _, err := d.Test(context.Background(), projectID, types.WebhookSlack); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("err = %v, want ErrNotConfigured", err)
+	}
+}
+
+// A test is not an alert, so it does not enter the record log. Pinned because
+// the alternative is tempting and wrong: entries with an empty traffic_id would
+// push real deliveries out of a list that holds the last ten.
+func TestTestSendIsNotRecorded(t *testing.T) {
+	receiver, _, _ := testReceiver(t, http.StatusOK)
+	d, projectID := newDeliverer(t, configFor(types.WebhookGeneric, receiver.URL))
+
+	if _, err := d.Test(context.Background(), projectID, types.WebhookGeneric); err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+
+	if records := d.Recent(projectID, 0); len(records) != 0 {
+		t.Errorf("a test send filed %d delivery records: %+v", len(records), records)
+	}
+}
+
+// The test route reaches the same address a real delivery does, and the verdict
+// on whether that address may be private is the one recorded when it was saved.
+func TestTestSendHonoursTheSavedPrivateVerdict(t *testing.T) {
+	receiver, _, _ := testReceiver(t, http.StatusOK)
+	d, projectID := newDeliverer(t, guardedConfig(types.WebhookGeneric, receiver.URL))
+
+	result, err := d.Test(context.Background(), projectID, types.WebhookGeneric)
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if result.OK {
+		t.Error("a URL that never passed the loopback rule was reached")
+	}
+	if !strings.Contains(result.Error, "SSRF protection") {
+		t.Errorf("error = %q, want the guard's refusal", result.Error)
+	}
+}
+
+// The receiver's own words are what an operator needs to tell "the URL is wrong"
+// from "the payload is wrong" — and Teams, whose envelope is the unverified
+// part, is exactly the kind where that is the whole diagnosis.
+func TestTestSendReportsWhatTheReceiverSaid(t *testing.T) {
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_payload"}`))
+	}))
+	defer receiver.Close()
+
+	d, projectID := newDeliverer(t, configFor(types.WebhookSlack, receiver.URL))
+
+	result, err := d.Test(context.Background(), projectID, types.WebhookSlack)
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if !strings.Contains(result.Error, "invalid_payload") {
+		t.Errorf("error = %q, want the receiver's own words — a bare 400 cannot tell an operator "+
+			"whether to check the URL or the envelope", result.Error)
+	}
+}
+
+// And the same bytes must not reach a record. The test route reads the reply
+// because the operator is looking at the answer; deliver records none of it,
+// because a record is written down and kept.
+func TestRecordedFailureCarriesNoneOfTheReceiversReply(t *testing.T) {
+	const planted = "PLANTED-VENDOR-RESPONSE-BODY-7c21"
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("invalid_payload: " + planted))
+	}))
+	defer receiver.Close()
+
+	d, projectID := newDeliverer(t, configFor(types.WebhookSlack, receiver.URL))
+	d.Enqueue(projectID, sampleAlert())
+
+	waitFor(t, "the failure to be recorded", func() bool { return len(d.Recent(projectID, 0)) == 1 })
+
+	rec := onlyRecord(t, d, projectID)
+	if rec.Status != StatusFailed {
+		t.Fatalf("status = %q, want %q", rec.Status, StatusFailed)
+	}
+	if strings.Contains(rec.Error, planted) {
+		t.Errorf("the record carries the receiver's body: %q", rec.Error)
+	}
+}
+
+// An empty log is a list, not null. Found by pressing Test against a running
+// build and reading the delivery route: the server's own test asserted [] and
+// passed, because its stand-in returned [] while the real Recent returned a nil
+// slice. A client that maps over the response gets a TypeError from null.
+func TestAnEmptyLogMarshalsToAList(t *testing.T) {
+	d, projectID := newDeliverer(t)
+
+	raw, err := json.Marshal(d.Recent(projectID, 50))
+	if err != nil {
+		t.Fatalf("marshalling: %v", err)
+	}
+	if string(raw) != "[]" {
+		t.Errorf("an empty delivery log marshals to %s, want []", raw)
+	}
+
+	// And a limit is still a bound rather than a no-op, since the same slice is
+	// what the route encodes.
+	d.Enqueue(projectID, sampleAlert())
+	if got := d.Recent(projectID, 0); len(got) != 0 {
+		t.Errorf("a project with no channel configured filed %d records: %+v", len(got), got)
 	}
 }

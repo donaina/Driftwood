@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -44,13 +45,24 @@ type harness struct {
 	deliveries *fakeDeliveryLog
 }
 
-// fakeDeliveryLog is a DeliveryLog a test can seed, and that records the limit
-// it was asked for.
+// fakeDeliveryLog is a Deliveries a test can seed, and that records the limit it
+// was asked for and every test send it was asked to make.
 type fakeDeliveryLog struct {
 	records []webhook.Record
 	// limit is the last limit the server passed, so a test can assert the route
 	// bounds its response rather than trusting that the constant is wired.
 	limit int
+
+	// testResult and testErr are what Test answers, so a test can drive both
+	// branches of the route without a receiver.
+	testResult webhook.TestResult
+	testErr    error
+	// testCalls records what the route asked for, which is how a test asserts the
+	// project and kind travelled intact rather than that a request happened.
+	testCalls []string
+	// testCtxErr records whether the context the route handed down was the
+	// request's, by reporting whether it was already done when Test ran.
+	testCtxDone bool
 }
 
 func (f *fakeDeliveryLog) Recent(projectID string, limit int) []webhook.Record {
@@ -65,6 +77,12 @@ func (f *fakeDeliveryLog) Recent(projectID string, limit int) []webhook.Record {
 		out = out[:limit]
 	}
 	return out
+}
+
+func (f *fakeDeliveryLog) Test(ctx context.Context, projectID, kind string) (webhook.TestResult, error) {
+	f.testCalls = append(f.testCalls, projectID+"/"+kind)
+	f.testCtxDone = ctx.Err() != nil
+	return f.testResult, f.testErr
 }
 
 // newHarness builds a server with no marketing site, which is the default and
