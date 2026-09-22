@@ -44,23 +44,36 @@ var ErrInvalidTarget = errors.New("invalid target")
 // allowPrivate is the caller's assertion that whoever named this target is the
 // operator rather than a request that arrived over the wire — see IsBlockedHost
 // for why that distinction, and not public-versus-private, is the one being made.
+//
+// Every error it returns is a refusal on the client's merits, so every error it
+// returns wraps ErrInvalidTarget. It did not, briefly, and the wrapping was done
+// by the two proxy methods that called it instead. That convention held for
+// exactly as long as the proxy was the only caller: the webhook route was written
+// against this function soon after and reported a blocked URL as a 500, telling
+// the operator to look at the server for a URL they had typed wrong. A sentinel
+// that the deciding function does not attach is a sentinel each caller has to
+// remember, which is not a contract.
 func ParseAndValidate(raw string, allowPrivate bool) (*url.URL, error) {
+	refuse := func(err error) (*url.URL, error) {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTarget, err)
+	}
+
 	if strings.TrimSpace(raw) == "" {
-		return nil, fmt.Errorf("target URL cannot be empty")
+		return refuse(errors.New("target URL cannot be empty"))
 	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("invalid URL: %w", err)
+		return refuse(fmt.Errorf("invalid URL: %w", err))
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("scheme must be http or https, got %q", parsed.Scheme)
+		return refuse(fmt.Errorf("scheme must be http or https, got %q", parsed.Scheme))
 	}
 	if parsed.Host == "" {
-		return nil, fmt.Errorf("URL must have a host")
+		return refuse(errors.New("URL must have a host"))
 	}
 
 	if !allowPrivate && IsBlockedHost(parsed.Hostname()) {
-		return nil, fmt.Errorf("target host %q is blocked (SSRF protection)", parsed.Hostname())
+		return refuse(fmt.Errorf("target host %q is blocked (SSRF protection)", parsed.Hostname()))
 	}
 	return parsed, nil
 }
