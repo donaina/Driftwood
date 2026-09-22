@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +13,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -23,6 +21,7 @@ import (
 	"github.com/donaina/driftwood/internal/diff"
 	"github.com/donaina/driftwood/internal/events"
 	"github.com/donaina/driftwood/internal/mock"
+	"github.com/donaina/driftwood/internal/netguard"
 	"github.com/donaina/driftwood/internal/storage"
 	"github.com/donaina/driftwood/pkg/types"
 )
@@ -214,112 +213,22 @@ func newTransport() *http.Transport {
 	}
 }
 
+// The SSRF rules now live in internal/netguard, because the alert deliverer
+// needs them too and it cannot import this package — the proxy imports the
+// deliverer, so a shared rule here would be an import cycle. The package moved
+// verbatim; these two declarations are the whole of what stayed behind.
+//
+// They exist so the rest of this package, and the tests that pin its behaviour,
+// are unchanged. ErrInvalidTarget is the *same error value* as netguard's, not a
+// copy of it, which is what keeps errors.Is working for callers — server.go
+// answers 400 on this sentinel, and it does that through proxy.ErrInvalidTarget.
+// TestProxySSRFValidation is unchanged and still passes, which is the assertion
+// that the move preserved behaviour.
+var ErrInvalidTarget = netguard.ErrInvalidTarget
+
 func parseAndValidateTarget(raw string, allowPrivate bool) (*url.URL, error) {
-	if strings.TrimSpace(raw) == "" {
-		return nil, fmt.Errorf("target URL cannot be empty")
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return nil, fmt.Errorf("invalid URL: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("scheme must be http or https, got %q", parsed.Scheme)
-	}
-	if parsed.Host == "" {
-		return nil, fmt.Errorf("URL must have a host")
-	}
-
-	if !allowPrivate && isBlockedHost(parsed.Hostname()) {
-		return nil, fmt.Errorf("target host %q is blocked (SSRF protection)", parsed.Hostname())
-	}
-	return parsed, nil
+	return netguard.ParseAndValidate(raw, allowPrivate)
 }
-
-// isBlockedHost reports whether a target host names infrastructure the proxy
-// has no business reaching.
-//
-// Only SetTarget consults this. The constructor does not, because Driftwood's
-// own default target is http://localhost:3000 — it is a local dev tool, and a
-// rule that blocked private hosts unconditionally would reject its primary use.
-// The line that matters is not private-versus-public but who named the target:
-// an operator typing a flag, or a request that arrived over the wire.
-func isBlockedHost(host string) bool {
-	// Hostnames are case-insensitive, and a trailing dot is a legal fully
-	// qualified spelling of the same name. A plain string compare let both
-	// spellings of "localhost" through.
-	host = strings.ToLower(strings.TrimSuffix(host, "."))
-	if host == "" {
-		return true
-	}
-
-	switch host {
-	case "localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback":
-		return true
-	case "metadata.google.internal", "metadata.goog":
-		// The GCP metadata service answers to these names, which are not IP
-		// literals, so nothing below would catch them.
-		return true
-	}
-
-	if ip := parseIPLiteral(host); ip != nil {
-		return isBlockedIP(ip)
-	}
-
-	// A name with no dot resolves against the search domains, so it names
-	// something inside the network Driftwood runs in rather than a host on the
-	// public internet. A dot is not proof of safety, but its absence is proof
-	// of locality.
-	return !strings.Contains(host, ".")
-}
-
-// isBlockedIP reports whether an address is one Driftwood will not dial. The
-// stdlib predicates cover the ranges the hand-rolled octet comparisons did,
-// plus IPv6 ULA (fd00::/8) and the unspecified address, both of which were
-// reachable before.
-func isBlockedIP(ip net.IP) bool {
-	return ip.IsLoopback() ||
-		ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified()
-}
-
-// parseIPLiteral reads the spellings a resolver accepts for an address but
-// net.ParseIP does not: the single-integer decimal and hexadecimal forms. Both
-// 2130706433 and 0x7f000001 mean 127.0.0.1 to getaddrinfo, which is what
-// actually dials them, so a check that only understood dotted quads waved them
-// straight through.
-func parseIPLiteral(host string) net.IP {
-	if ip := net.ParseIP(host); ip != nil {
-		return ip
-	}
-
-	base, digits := 10, host
-	if strings.HasPrefix(host, "0x") || strings.HasPrefix(host, "0X") {
-		base, digits = 16, host[2:]
-	}
-	if digits == "" {
-		return nil
-	}
-	n, err := strconv.ParseUint(digits, base, 32)
-	if err != nil {
-		return nil
-	}
-	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
-}
-
-// ErrInvalidTarget reports that a target was refused on its merits: a scheme
-// that is not http or https, or a host the SSRF rules will not dial.
-//
-// It is a sentinel because the caller has to tell this apart from a failure to
-// *record* a target that was accepted. Both are errors and neither is a 200, but
-// they are different answers to the client — 400 for "you asked for something I
-// will not do", 500 for "I agreed and could not write it down" — and a handler
-// that cannot distinguish them reports the second as the first. That is not
-// hypothetical: this feature's first version surfaced an unwritable data
-// directory as "invalid target URL", and the existing test for that route is
-// what said so.
-var ErrInvalidTarget = errors.New("invalid target")
 
 // SetProjectTarget points one project at a new backend.
 //
