@@ -223,3 +223,58 @@ type EventMessage struct {
 	Timestamp time.Time   `json:"timestamp"`
 	Data      interface{} `json:"data"`
 }
+
+// Where an alert can be delivered.
+//
+// Four channels, and the list is closed: each one is a POST to a URL the
+// operator supplies, and they differ only in the shape of the JSON body. That is
+// the whole reason they are one mechanism with a name rather than four
+// mechanisms — everything except Render is shared.
+//
+// Email is deliberately not here. It is a different transport with different
+// configuration (a host, a port, credentials, a from-address), net/smtp is
+// frozen upstream, and the dashboard has no form for any of it. A channel that
+// cannot be configured is a card whose Save button lies.
+const (
+	WebhookSlack   = "slack"
+	WebhookTeams   = "teams"
+	WebhookDiscord = "discord"
+	WebhookGeneric = "generic"
+)
+
+// WebhookKinds is every kind, in a fixed order. It is a slice rather than a map
+// because two callers need to iterate it deterministically: the store, so an
+// unchanged document writes byte-identical bytes, and the dashboard, so the
+// cards do not reorder themselves between loads.
+var WebhookKinds = []string{WebhookSlack, WebhookTeams, WebhookDiscord, WebhookGeneric}
+
+// IsWebhookKind reports whether kind names a channel this build can deliver to.
+// A request carrying anything else is refused rather than stored: a config for a
+// kind nothing renders is a setting with no effect, which is the shape of lie
+// this feature exists to remove.
+func IsWebhookKind(kind string) bool {
+	for _, k := range WebhookKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// WebhookConfig is one project's delivery settings for one channel.
+//
+// Secret is stored in the clear, in the 0600 store inside a 0700 directory, and
+// it is never returned by any route — the API answers has_secret instead. That
+// is a deliberate trade rather than an oversight: the alternative is not storing
+// it, and a signing secret the operator cannot retrieve is one they cannot use.
+// What it buys is that a dashboard screenshot, a browser cache or a logged
+// response body cannot leak it, because none of them ever contain it.
+type WebhookConfig struct {
+	Enabled bool   `json:"enabled"`
+	Kind    string `json:"kind"`
+	URL     string `json:"url"`
+	// Secret signs the generic body; see the deliverer's signature headers. Empty
+	// for the three vendor kinds, which authenticate by the URL's own token.
+	Secret    string    `json:"secret,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
