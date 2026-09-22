@@ -16,6 +16,7 @@ import (
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/pkg/types"
 )
 
@@ -36,6 +37,34 @@ type harness struct {
 	// real stream and assert what a browser would receive rather than what the
 	// server intended to send.
 	hub *events.Hub
+	// deliveries is the fake log the server reads records from. A fake rather
+	// than a real *webhook.Deliverer because the route under test serves records
+	// and never causes a delivery — constructing a deliverer here would start
+	// workers to exercise none of them, and would reach the network to do it.
+	deliveries *fakeDeliveryLog
+}
+
+// fakeDeliveryLog is a DeliveryLog a test can seed, and that records the limit
+// it was asked for.
+type fakeDeliveryLog struct {
+	records []webhook.Record
+	// limit is the last limit the server passed, so a test can assert the route
+	// bounds its response rather than trusting that the constant is wired.
+	limit int
+}
+
+func (f *fakeDeliveryLog) Recent(projectID string, limit int) []webhook.Record {
+	f.limit = limit
+	out := make([]webhook.Record, 0, len(f.records))
+	for _, r := range f.records {
+		if r.ProjectID == projectID {
+			out = append(out, r)
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 // newHarness builds a server with no marketing site, which is the default and
@@ -78,10 +107,11 @@ func newHarnessWith(t *testing.T, siteHandler http.Handler) *harness {
 		t.Fatalf("NewProxyAllowPrivate: %v", err)
 	}
 
-	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl, siteHandler).Router())
+	deliveries := &fakeDeliveryLog{}
+	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl, siteHandler, deliveries).Router())
 	t.Cleanup(front.Close)
 
-	return &harness{router: front, hits: &hits, store: store, hub: hub}
+	return &harness{router: front, hits: &hits, store: store, hub: hub, deliveries: deliveries}
 }
 
 func (h *harness) do(t *testing.T, method, path string, hdr map[string]string) *http.Response {

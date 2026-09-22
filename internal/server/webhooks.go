@@ -144,11 +144,19 @@ func (s *Server) handleWebhooks(w http.ResponseWriter, r *http.Request) {
 			   place that knows where the request came from — the same split
 			   SetProjectTarget documents.
 
+			   The verdict is recorded on the config, not re-derived later. The
+			   deliverer runs in a background worker where there is no request to
+			   look at, and the dial needs the same answer the string check just
+			   gave: a URL accepted here and refused at connection time is a
+			   channel the dashboard shows as on that never delivers anything.
+
 			   A refused URL is 400 and a URL that was accepted but not written
 			   down is 500. Reporting the second as the first tells the operator
 			   to fix a URL that was fine, which is the bug this idiom already
 			   exists to prevent on the target route. */
-			if _, err := netguard.ParseAndValidate(cfg.URL, isLoopbackRequest(r)); err != nil {
+			allowPrivate := isLoopbackRequest(r)
+			parsed, err := netguard.ParseAndValidate(cfg.URL, allowPrivate)
+			if err != nil {
 				status := http.StatusInternalServerError
 				if errors.Is(err, netguard.ErrInvalidTarget) {
 					status = http.StatusBadRequest
@@ -156,6 +164,17 @@ func (s *Server) handleWebhooks(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), status)
 				return
 			}
+			// Recorded only when the address actually needed the permission.
+			// Writing the request's own answer instead would set the flag on every
+			// public URL saved from a local dashboard, and the flag would then be
+			// a permission standing ready for whatever address a later edit put
+			// in its place — which is the one thing it must not be.
+			cfg.AllowPrivate = allowPrivate && netguard.IsBlockedHost(parsed.Hostname())
+		} else {
+			// No URL, so nothing was permitted. Clearing the URL has to clear the
+			// permission with it, or a later URL inherits a decision made about a
+			// different address.
+			cfg.AllowPrivate = false
 		}
 
 		if err := s.store.SetWebhook(projectID, cfg); err != nil {
@@ -215,4 +234,37 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 
 	s.hub.Publish(projectID, "webhook_updated", s.webhookList(projectID))
 	s.writeWebhookList(w, projectID)
+}
+
+// deliveriesLimit bounds the delivery-records response.
+//
+// A fixed number rather than a `?limit=` the caller chooses, because this list
+// is read by one screen showing the last handful, and a caller-supplied limit is
+// an unbounded read wearing a query parameter. Fifty is more than the ten the
+// view renders, so the view can page without a second round trip, and small
+// enough that this response is never the reason a page is slow.
+const deliveriesLimit = 50
+
+// handleDeliveries reports what the deliverer has tried recently.
+//
+// Ungated, like the read side of every other route here: a Record carries the
+// status code and our own error text and nothing the receiver said — no vendor
+// response body is stored anywhere — so there is nothing in this response that
+// reading it from off-box would disclose.
+func (s *Server) handleDeliveries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	records := s.deliveries.Recent(projectID, deliveriesLimit)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(records)
 }

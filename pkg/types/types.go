@@ -273,6 +273,21 @@ type WebhookConfig struct {
 	Enabled bool   `json:"enabled"`
 	Kind    string `json:"kind"`
 	URL     string `json:"url"`
+	// AllowPrivate records the answer to "may this URL be private", decided when
+	// the URL was saved and from where the request that carried it arrived.
+	//
+	// It is persisted rather than re-derived because the deliverer runs in a
+	// background worker with no request to look at: the decision has to travel
+	// with the address it applies to, exactly as Project.TargetAllowPrivate does
+	// for a target. A private URL can only be saved from loopback in the first
+	// place, so this records an authorisation the operator gave rather than
+	// granting a new one.
+	//
+	// Set only when the URL needed it — a public URL saved from a local
+	// dashboard does not carry it — so a document edited by hand to point at a
+	// private address arrives without the permission, and the deliverer's dial
+	// refuses it. The flag authorises an address, not a config.
+	AllowPrivate bool `json:"allow_private,omitempty"`
 	// Secret signs the generic body; see the deliverer's signature headers. Empty
 	// for the three vendor kinds, which authenticate by the URL's own token.
 	Secret    string    `json:"secret,omitempty"`

@@ -15,6 +15,7 @@ import (
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/pkg/types"
 	"github.com/donaina/driftwood/site"
 	"github.com/donaina/driftwood/web"
@@ -34,15 +35,35 @@ type Server struct {
 	// without reaching into the embed, and so this package does not have to know
 	// how the site is stored to hand it a request.
 	site http.Handler
+
+	// deliveries is the read side of the alert deliverer, and is deliberately the
+	// narrow interface rather than the *webhook.Deliverer: the server serves what
+	// has been delivered and never causes a delivery, so the enqueue side is not
+	// in reach from here. Never nil — see NewServer.
+	deliveries webhook.DeliveryLog
 }
 
-func NewServer(store *storage.Store, hub *events.Hub, prx *proxy.Proxy, mockCtrl *mock.MockController, siteHandler http.Handler) *Server {
+// NewServer assembles the control plane.
+//
+// deliveries is a sixth parameter rather than a field set afterwards because a
+// Server that forgets it would answer the delivery-records route with a nil
+// dereference, and the route is not on the proxy path — nothing about a request
+// through the proxy would have exercised it. A parameter makes the omission a
+// compile error at all three call sites instead.
+func NewServer(store *storage.Store, hub *events.Hub, prx *proxy.Proxy, mockCtrl *mock.MockController, siteHandler http.Handler, deliveries webhook.DeliveryLog) *Server {
+	if deliveries == nil {
+		// A server built without a deliverer answers the route with an empty list
+		// rather than panicking. That is the honest answer: nothing has been
+		// delivered because nothing is delivering.
+		deliveries = webhook.NoDeliveries{}
+	}
 	return &Server{
-		store:    store,
-		hub:      hub,
-		proxy:    prx,
-		mockCtrl: mockCtrl,
-		site:     siteHandler,
+		store:      store,
+		hub:        hub,
+		proxy:      prx,
+		mockCtrl:   mockCtrl,
+		site:       siteHandler,
+		deliveries: deliveries,
 	}
 }
 
@@ -160,6 +181,8 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleWebhooks(w, r)
 		case proxy.ControlPrefix + "/api/webhooks/delete":
 			s.handleDeleteWebhook(w, r)
+		case proxy.ControlPrefix + "/api/webhooks/deliveries":
+			s.handleDeliveries(w, r)
 		default:
 			// An unmatched control-API path is a 404 in JSON, not the dashboard.
 			// Returning HTML to a client that mistyped an endpoint hides the

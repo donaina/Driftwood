@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/donaina/driftwood/internal/events"
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/pkg/types"
 )
 
@@ -780,5 +782,233 @@ func TestGzippedResponseIsForwardedCompressedAndAnalyzedBounded(t *testing.T) {
 	}
 	if n := len(traffics[0].ResponseBody); n > maxAnalyzedBody {
 		t.Errorf("the analysis retained %d bytes of a %d-byte expansion; the decompression is unbounded", n, expanded)
+	}
+}
+
+/*
+The deliverer is on the request path only to *hand off*. Nothing on it may dial,
+and nothing may wait on a receiver.
+
+	This is the same property TestBreakingChangeDoesNotWaitOnTheSidecar pins for
+	the AI sidecar, and it needs its own test because it is a different call on a
+	different path: the webhook enqueue happens for breaking changes *and*
+	warnings, before the explanation is ever considered. Held open, a receiver
+	must not add a millisecond to the client's response — the whole point of
+	Enqueue being a non-blocking send to a buffered queue.
+*/
+func TestAlertDeliveryDoesNotWaitOnTheReceiver(t *testing.T) {
+	isolateHome(t)
+
+	entered := make(chan struct{}, 4)
+	release := make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+	// LIFO, and load-bearing: Close waits on the handler still sitting on
+	// <-release, so unblocking has to be registered after it and run first.
+	t.Cleanup(receiver.Close)
+	t.Cleanup(unblock)
+
+	// The first response becomes the baseline; the second breaks it.
+	var hits int64
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if atomic.AddInt64(&hits, 1) == 1 {
+			_, _ = w.Write([]byte(`{"count":1}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":"one"}`))
+	}))
+	defer backend.Close()
+
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	projectID := store.ActiveProject()
+	if err := store.SetWebhook(projectID, types.WebhookConfig{
+		Kind: types.WebhookGeneric, URL: receiver.URL, Enabled: true, AllowPrivate: true,
+	}); err != nil {
+		t.Fatalf("SetWebhook: %v", err)
+	}
+
+	deliverer := webhook.New(store, events.NewHub())
+	deliverer.Run()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = deliverer.Close(ctx)
+	})
+
+	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{},
+		WithDelivery(deliverer))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	proxySrv := httptest.NewServer(prx.Handler())
+	defer proxySrv.Close()
+
+	// No t.Fatal below the goroutine boundary: it belongs to the test goroutine.
+	fetch := func() error {
+		resp, err := http.Get(proxySrv.URL + "/thing")
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		_, err = io.Copy(io.Discard, resp.Body)
+		return err
+	}
+
+	if err := fetch(); err != nil {
+		t.Fatalf("establishing the baseline: %v", err)
+	}
+
+	type result struct {
+		took time.Duration
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		start := time.Now()
+		err := fetch()
+		done <- result{time.Since(start), err}
+	}()
+
+	// Without this the test proves nothing: a proxy that never handed the alert
+	// to the deliverer would satisfy the timing assertion for the wrong reason.
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the receiver was never called, so there was nothing to wait on")
+	}
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("the breaking request failed: %v", r.err)
+		}
+		if r.took > 2*time.Second {
+			t.Errorf("the breaking request took %s with the receiver held open: the client "+
+				"waited on an outbound POST", r.took)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the breaking request had not returned 3s in, with the receiver held open: " +
+			"the delivery is happening on the request path")
+	}
+
+	// Let the delivery finish, so its handler does not outlive the test.
+	unblock()
+}
+
+/*
+A warning is delivered, not only a break.
+
+	The store raises an alert for HasBreakingChanges || HasWarnings, and the shell
+	says so in its own words — "Only BREAKING and WARNING alerts are ever stored".
+	The SSE "alert" frame is deliberately narrower, breaking only, because it is an
+	interrupt channel. A webhook is a record channel, like the alert log, so
+	delivering breaking-only would mean an operator sees a WARNING on screen that
+	was never sent anywhere, with nothing saying why. This pins that decision where
+	a later narrowing would have to break it.
+*/
+func TestAWarningOnlyChangeIsDelivered(t *testing.T) {
+	isolateHome(t)
+
+	var deliveries int64
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&deliveries, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer receiver.Close()
+
+	/* A whole number that gained a fractional part. This is the number change the
+	   differ documents as WARNING — the field now returns values outside the
+	   narrower promise the baseline made — and it is the cleanest warning-only
+	   diff available: an added field is INFO and raises no alert at all, and a
+	   removed field is BREAKING for an inferred baseline because inference marks
+	   every key it has seen as required. */
+	var hits int64
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if atomic.AddInt64(&hits, 1) == 1 {
+			_, _ = w.Write([]byte(`{"count":1}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"count":1.5}`))
+	}))
+	defer backend.Close()
+
+	store, err := storage.NewStore(backend.URL, "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	projectID := store.ActiveProject()
+	if err := store.SetWebhook(projectID, types.WebhookConfig{
+		Kind: types.WebhookGeneric, URL: receiver.URL, Enabled: true, AllowPrivate: true,
+	}); err != nil {
+		t.Fatalf("SetWebhook: %v", err)
+	}
+
+	deliverer := webhook.New(store, events.NewHub())
+	deliverer.Run()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = deliverer.Close(ctx)
+	})
+
+	prx, err := NewProxyAllowPrivate(backend.URL, store, events.NewHub(), &mock.MockController{},
+		WithDelivery(deliverer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxySrv := httptest.NewServer(prx.Handler())
+	defer proxySrv.Close()
+
+	fetch := func() {
+		resp, err := http.Get(proxySrv.URL + "/warn")
+		if err != nil {
+			t.Fatalf("proxied request: %v", err)
+		}
+		defer resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+	}
+	fetch() // baseline
+	fetch() // the fractional part
+
+	// The alert has to be the warning the store raised, not something else.
+	alerts := store.GetAlerts(projectID, 10)
+	if len(alerts) != 1 {
+		t.Fatalf("stored %d alerts, want 1 — the premise of this test is a warning-only change", len(alerts))
+	}
+	if alerts[0].ContractStatus != string(types.SeverityWarning) {
+		t.Fatalf("the alert is %q, want WARNING — the premise of this test is a warning-only change",
+			alerts[0].ContractStatus)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for atomic.LoadInt64(&deliveries) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if got := atomic.LoadInt64(&deliveries); got != 1 {
+		t.Errorf("a warning-only alert produced %d deliveries, want exactly 1", got)
+	}
+
+	records := deliverer.Recent(projectID, 10)
+	if len(records) != 1 {
+		t.Fatalf("recorded %d deliveries, want 1", len(records))
+	}
+	if records[0].Status != webhook.StatusDelivered {
+		t.Errorf("the warning's delivery is %q: %s", records[0].Status, records[0].Error)
 	}
 }
