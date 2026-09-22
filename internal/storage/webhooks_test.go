@@ -340,3 +340,54 @@ func TestWebhookSecretIsWrittenToA0600Store(t *testing.T) {
 		t.Errorf("store file mode = %o, want 600 — it holds a signing secret", perm)
 	}
 }
+
+// AllowPrivate is the deliverer's permission to dial a private address, and it
+// has to survive a restart like any other part of the config.
+//
+// This is not a symmetry check. The deliverer runs in a background worker with no
+// request to look at, so the flag on disk is the *only* thing that lets a
+// loopback receiver keep working after a restart. Losing it would turn every
+// local channel into one the dashboard shows as enabled and that never delivers
+// anything — with the failure recorded against the operator's own receiver.
+func TestWebhookAllowPrivateSurvivesRestart(t *testing.T) {
+	driftwoodHome(t)
+
+	store, err := NewStore("http://localhost:3000", "8787")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	project := store.ActiveProject()
+
+	if err := store.SetWebhook(project, types.WebhookConfig{
+		Kind: types.WebhookGeneric, URL: "http://127.0.0.1:9099/hook",
+		Enabled: true, AllowPrivate: true,
+	}); err != nil {
+		t.Fatalf("SetWebhook: %v", err)
+	}
+	// The other channel, with the flag off, so the assertion is that the value
+	// round-trips rather than that the field defaults to true on load.
+	if err := store.SetWebhook(project, types.WebhookConfig{
+		Kind: types.WebhookSlack, URL: "https://hooks.slack.com/services/T/B/X", Enabled: true,
+	}); err != nil {
+		t.Fatalf("SetWebhook: %v", err)
+	}
+
+	reopened, err := NewStore("http://localhost:3000", "8787")
+	if err != nil {
+		t.Fatalf("reopening: %v", err)
+	}
+
+	permitted, ok := reopened.GetWebhook(project, types.WebhookGeneric)
+	if !ok {
+		t.Fatal("the local channel did not survive the restart")
+	}
+	if !permitted.AllowPrivate {
+		t.Error("the permission to dial a private address did not survive the restart, " +
+			"so every delivery to this channel will now be refused")
+	}
+
+	guarded, _ := reopened.GetWebhook(project, types.WebhookSlack)
+	if guarded.AllowPrivate {
+		t.Error("a public URL came back carrying the private-address permission")
+	}
+}

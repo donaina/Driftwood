@@ -969,7 +969,20 @@ func hasConfirmedVersion(h *types.EndpointHistory) bool {
 	return false
 }
 
-func (s *Store) AddTraffic(projectID string, t types.CapturedTraffic) {
+// AddTraffic records one sniffed request and returns the alert it raised, if it
+// raised one.
+//
+// The return value exists so the caller that decides to deliver an alert does not
+// have to decide *whether* there is one. The proxy used to restate the condition
+// — HasBreakingChanges || HasWarnings — which is the store's, and a second copy
+// of a predicate is how the two come to disagree about which alerts exist.
+//
+// The returned alert is a value copy. The pointer that lives in s.alerts is
+// mutated by UpdateAlertAIExplanation when the sidecar answers, and a caller
+// holding the real thing would race with that; GetAlerts dereferences for the
+// same reason. Only Diff is shared, and it is the one field nothing writes after
+// the diff is computed.
+func (s *Store) AddTraffic(projectID string, t types.CapturedTraffic) *types.Alert {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -988,6 +1001,8 @@ func (s *Store) AddTraffic(projectID string, t types.CapturedTraffic) {
 	}
 	s.traffics[projectID] = traffics
 
+	var raised *types.Alert
+
 	if t.Diff != nil && (t.Diff.HasBreakingChanges || t.Diff.HasWarnings) {
 		alert := &types.Alert{
 			TrafficID:      t.ID,
@@ -997,6 +1012,8 @@ func (s *Store) AddTraffic(projectID string, t types.CapturedTraffic) {
 			AIExplanation:  nil,
 		}
 		s.alerts[t.ID] = alert
+		copied := *alert
+		raised = &copied
 		order := append(s.alertOrder[projectID], t.ID)
 		if len(order) > s.maxAlerts {
 			delete(s.alerts, order[0])
@@ -1012,6 +1029,7 @@ func (s *Store) AddTraffic(projectID string, t types.CapturedTraffic) {
 	}
 
 	s.recordObservationLocked(projectID, t)
+	return raised
 }
 
 // recordObservationLocked appends one sighting to the endpoint's history. The

@@ -174,7 +174,16 @@ var lookupIP = net.DefaultResolver.LookupIPAddr
 // It is deliberately a wrapper rather than a replacement: callers keep their own
 // timeouts and keep-alive settings and hand the base dialer in, so this adds a
 // check without becoming a second place where dial policy is decided.
-func DialContext(base *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
+//
+// allowPrivate is ParseAndValidate's argument and means the same thing here, for
+// the same reason: the rule is who named the target, not public-versus-private.
+// It is not optional, and a dial check that ignored it would be a second,
+// stricter rule wearing the first one's name — an operator who names
+// http://127.0.0.1:9099 because their alert receiver runs beside Driftwood would
+// have the URL accepted by the API and then every delivery refused forever, with
+// the refusal recorded against the operator's own receiver. That is the
+// "accepted but does not work" failure this codebase has a standing rule about.
+func DialContext(base *net.Dialer, allowPrivate bool) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	if base == nil {
 		base = &net.Dialer{}
 	}
@@ -198,9 +207,16 @@ func DialContext(base *net.Dialer) func(ctx context.Context, network, addr strin
 		if err != nil {
 			return nil, err
 		}
-		for _, ip := range ips {
-			if IsBlockedIP(ip.IP) {
-				return nil, fmt.Errorf("host %q resolves to blocked address %s (SSRF protection)", host, ip.IP)
+		// Skipped when the operator has already permitted private addresses, and
+		// that is not a hole. Rebinding is a way to reach an address the operator
+		// did not intend to name; when every private address is one they may name
+		// on purpose, a name resolving into that range has gotten them nothing
+		// they did not already have. The check is vacuous there, not bypassed.
+		if !allowPrivate {
+			for _, ip := range ips {
+				if IsBlockedIP(ip.IP) {
+					return nil, fmt.Errorf("host %q resolves to blocked address %s (SSRF protection)", host, ip.IP)
+				}
 			}
 		}
 		if len(ips) == 0 {

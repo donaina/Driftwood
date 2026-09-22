@@ -19,6 +19,7 @@ import (
 	"github.com/donaina/driftwood/internal/proxy"
 	"github.com/donaina/driftwood/internal/server"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/site"
 	"github.com/donaina/driftwood/web"
 )
@@ -91,13 +92,24 @@ func main() {
 	hub := events.NewHub()
 	mockCtrl := mock.NewMockController()
 
+	// The deliverer is built before the proxy because the proxy is handed it as
+	// an option, and started after: Run spawns the workers, and nothing should be
+	// able to enqueue into a deliverer that has not started.
+	//
+	// It is not conditional on any channel being configured. Config is editable
+	// while the process runs — that is what the webhooks API is for — so a
+	// deliverer that only existed when a URL was already saved would need
+	// starting from the route that saves the first one.
+	deliverer := webhook.New(store, hub)
+
 	// Private targets are allowed here because the operator named this one: the
 	// API being sniffed is usually on localhost. A target that arrives over HTTP
 	// instead is checked — see Proxy.SetTarget.
-	prx, err := buildProxy(cfg.TargetURL, store, hub, mockCtrl)
+	prx, err := buildProxy(cfg.TargetURL, store, hub, mockCtrl, proxy.WithDelivery(deliverer))
 	if err != nil {
 		log.Fatalf("Failed to initialize proxy: %v", err)
 	}
+	deliverer.Run()
 
 	// Nil unless it was asked for, which is what keeps "/" proxied by default.
 	var siteHandler http.Handler
@@ -105,7 +117,7 @@ func main() {
 		siteHandler = http.HandlerFunc(site.ServeSite)
 	}
 
-	srv := server.NewServer(store, hub, prx, mockCtrl, siteHandler)
+	srv := server.NewServer(store, hub, prx, mockCtrl, siteHandler, deliverer)
 	addr := net.JoinHostPort(*host, cfg.ProxyPort)
 
 	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://%s", addr)
@@ -176,6 +188,21 @@ func main() {
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			log.Printf("HTTP server shutdown error: %v", err)
 		}
+
+		// The deliverer drains last, and on its own budget.
+		//
+		// Last because an alert raised by a request still being handled is a
+		// delivery the operator is owed; once the listener is closed there are no
+		// more, so this is the point where the queue is final. Its own budget
+		// because shutdownCtx is shared and already partly spent — a delivery
+		// still retrying should get a fresh window rather than whatever is left
+		// of the server's drain, and a slow receiver should not be able to eat
+		// the time the server needs to finish.
+		drainCtx, cancelDeliveries := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancelDeliveries()
+		if err := deliverer.Close(drainCtx); err != nil {
+			log.Printf("Alert deliveries: %v", err)
+		}
 		serverStopCtx()
 	}()
 
@@ -207,14 +234,14 @@ func main() {
 // state, and the request path answers it with a 502. Treating it as fatal here
 // was the outlier, and it made one client's missing backend into an outage for
 // every other client on the install.
-func buildProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*proxy.Proxy, error) {
+func buildProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, opts ...proxy.Option) (*proxy.Proxy, error) {
 	if strings.TrimSpace(target) == "" {
-		return proxy.NewProxyWithoutTarget(store, hub, mockCtrl)
+		return proxy.NewProxyWithoutTarget(store, hub, mockCtrl, opts...)
 	}
 	// Private targets are allowed here because the operator named this one: the
 	// API being sniffed is usually on localhost. A target that arrives over HTTP
 	// instead is checked — see SetProjectTarget.
-	return proxy.NewProxyAllowPrivate(target, store, hub, mockCtrl)
+	return proxy.NewProxyAllowPrivate(target, store, hub, mockCtrl, opts...)
 }
 
 func envTruthy(name string) bool {

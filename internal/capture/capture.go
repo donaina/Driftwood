@@ -67,7 +67,26 @@ func SanitizeBody(body string) string {
 	}
 
 	// Fallback: regex-based sanitization for non-JSON
-	result := ccPattern.ReplaceAllString(body, "[REDACTED_CC]")
+	return RedactValue(body)
+}
+
+// RedactValue replaces the value-shaped secrets in a string, whatever shape that
+// string is in.
+//
+// The patterns are key-independent — they match a card number, a JWT, a
+// "token: abc" pair wherever they appear — which is exactly what makes this
+// usable on text that is not a JSON body: a request path, an alert message, an
+// error. The key-name redaction in sanitizeJSON cannot be used that way, because
+// there is no key to match against.
+//
+// It is exported because SanitizeBody is not the only place a value from a
+// response can reach the outside. The webhook payload is the other one, and it
+// needs the same rules rather than a second copy of them.
+func RedactValue(s string) string {
+	if s == "" {
+		return s
+	}
+	result := ccPattern.ReplaceAllString(s, "[REDACTED_CC]")
 	result = ssnPattern.ReplaceAllString(result, "[REDACTED_SSN]")
 	result = apiKeyPattern.ReplaceAllString(result, "[REDACTED_API_KEY]")
 	result = jwtPattern.ReplaceAllString(result, "[REDACTED_JWT]")

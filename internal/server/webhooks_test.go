@@ -9,12 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/pkg/types"
 )
 
 const (
-	webhooksRoute = "/_driftwood/api/webhooks"
-	deleteRoute   = "/_driftwood/api/webhooks/delete"
+	webhooksRoute   = "/_driftwood/api/webhooks"
+	deleteRoute     = "/_driftwood/api/webhooks/delete"
+	deliveriesRoute = "/_driftwood/api/webhooks/deliveries"
 	// A URL that parses, is https, and names a host the SSRF rules allow. What
 	// the route is asked to store is not what it dials, so nothing here has to
 	// be listening.
@@ -333,4 +335,131 @@ func TestWebhookChangeIsAnnouncedOnTheHub(t *testing.T) {
 			t.Fatal("saving a webhook published nothing on the stream")
 		}
 	}
+}
+
+// TestWebhookRecordsThePrivateURLVerdict covers the field the deliverer depends
+// on, and the two things that can make it wrong.
+//
+// The verdict is not re-derived at delivery time — the deliverer has no request
+// to look at — so it has to be recorded when the URL is saved, and cleared when
+// the URL is. A stale permission on a config whose URL changed would let a later
+// URL inherit a decision made about a different address.
+func TestWebhookRecordsThePrivateURLVerdict(t *testing.T) {
+	h := newHarness(t)
+
+	// A public URL saved from loopback. The rule permits a private address from
+	// here, but this one is not private, and the flag follows the address rather
+	// than the request.
+	h.postJSON(t, webhooksRoute, `{"kind":"generic","url":"`+slackURL+`","enabled":true}`)
+	if cfg, ok := h.store.GetWebhook(h.store.ActiveProject(), "generic"); !ok || cfg.AllowPrivate {
+		t.Errorf("a public URL was saved with allow_private set: %+v", cfg)
+	}
+
+	// A loopback URL from loopback. This is the local receiver case, and the
+	// flag is what keeps the deliverer's dial from refusing it forever.
+	h.postJSON(t, webhooksRoute, `{"kind":"generic","url":"http://127.0.0.1:9099/hook","enabled":true}`)
+	cfg, ok := h.store.GetWebhook(h.store.ActiveProject(), "generic")
+	if !ok {
+		t.Fatal("the loopback URL was not saved")
+	}
+	if !cfg.AllowPrivate {
+		t.Error("a loopback URL saved from loopback was not permitted, so every delivery to it will be refused at the dial")
+	}
+
+	// And a URL that arrives over the wire never carries the permission, even
+	// though the address is the same one that was just permitted.
+	resp := h.postJSONWithHeaders(t, webhooksRoute,
+		`{"kind":"generic","url":"http://127.0.0.1:9099/hook","enabled":true}`,
+		map[string]string{"X-Forwarded-For": "203.0.113.7"})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	readAndDecode(t, resp, nil)
+
+	cfg, _ = h.store.GetWebhook(h.store.ActiveProject(), "generic")
+	if cfg.AllowPrivate != true {
+		// Refused, so the stored config is untouched — the refusal must not have
+		// written anything.
+		t.Error("a refused URL changed the stored config")
+	}
+
+	// Clearing the URL clears the permission with it.
+	h.postJSON(t, webhooksRoute, `{"kind":"generic","url":"","enabled":false}`)
+	if cfg, _ := h.store.GetWebhook(h.store.ActiveProject(), "generic"); cfg.AllowPrivate {
+		t.Error("clearing the URL left the private-address permission behind")
+	}
+}
+
+// TestDeliveriesRouteReportsRecords: the read side of the deliverer, wired to
+// the server. The fake log is the server's own seam — the route serves records
+// and never causes a delivery, so constructing a real deliverer here would start
+// workers to exercise none of them.
+func TestDeliveriesRouteReportsRecords(t *testing.T) {
+	h := newHarness(t)
+	active := h.store.ActiveProject()
+
+	h.deliveries.records = []webhook.Record{
+		{
+			ID: "wd_1", ProjectID: active, Kind: types.WebhookSlack,
+			Endpoint: "GET /api/users", Status: webhook.StatusDelivered,
+			Attempts: 1, StatusCode: 200,
+		},
+		{
+			ID: "wd_2", ProjectID: active, Kind: types.WebhookDiscord,
+			Endpoint: "GET /api/users", Status: webhook.StatusFailed,
+			Attempts: 3, StatusCode: 500, Error: "the receiver refused the payload",
+		},
+		// Another project's record, which must not appear.
+		{ID: "wd_3", ProjectID: "someone-else", Status: webhook.StatusDelivered},
+	}
+
+	var records []webhook.Record
+	body := readAndDecode(t, h.do(t, http.MethodGet, deliveriesRoute, nil), &records)
+
+	if len(records) != 2 {
+		t.Fatalf("the route returned %d records, want 2 for this project: %s", len(records), body)
+	}
+	if records[0].Status != webhook.StatusDelivered || records[1].Status != webhook.StatusFailed {
+		t.Errorf("the records came back as %+v", records)
+	}
+	// The failed one has to carry what an operator acts on.
+	if records[1].Attempts != 3 || records[1].StatusCode != 500 || records[1].Error == "" {
+		t.Errorf("the failed record lost its detail: %+v", records[1])
+	}
+	if h.deliveries.limit != deliveriesLimit {
+		t.Errorf("the route asked for %d records, want the bounded %d", h.deliveries.limit, deliveriesLimit)
+	}
+}
+
+// An empty log is an empty list, not null and not a 500 — the dashboard renders
+// an EmptyState from it, and a null would make that state unreachable.
+func TestDeliveriesRouteIsEmptyBeforeAnythingIsSent(t *testing.T) {
+	h := newHarness(t)
+
+	resp := h.do(t, http.MethodGet, deliveriesRoute, nil)
+	body := readAndDecode(t, resp, nil)
+
+	if strings.TrimSpace(body) != "[]" {
+		t.Errorf("an empty delivery log answered %q, want []", strings.TrimSpace(body))
+	}
+}
+
+func TestDeliveriesRouteRefusesOtherMethods(t *testing.T) {
+	h := newHarness(t)
+
+	resp := h.postJSON(t, deliveriesRoute, `{}`)
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST on the deliveries route = %d, want 405", resp.StatusCode)
+	}
+	readAndDecode(t, resp, nil)
+}
+
+func TestDeliveriesRouteRefusesAnUnknownProject(t *testing.T) {
+	h := newHarness(t)
+
+	resp := h.do(t, http.MethodGet, deliveriesRoute+"?project=nope", nil)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+	readAndDecode(t, resp, nil)
 }

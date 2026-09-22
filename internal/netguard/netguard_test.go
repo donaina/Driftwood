@@ -194,7 +194,7 @@ func TestDialContextRefusesResolvedLoopback(t *testing.T) {
 			})
 			defer restore()
 
-			dial := DialContext(&net.Dialer{})
+			dial := DialContext(&net.Dialer{}, false)
 			conn, err := dial(context.Background(), "tcp", "rebind.example.com:80")
 			if err == nil {
 				conn.Close()
@@ -204,6 +204,34 @@ func TestDialContextRefusesResolvedLoopback(t *testing.T) {
 				t.Errorf("refusal did not say why: %v", err)
 			}
 		})
+	}
+}
+
+// TestDialContextAllowsPrivateWhenTheOperatorNamedIt is the other half of the
+// rule, and it is the same rule: ParseAndValidate takes allowPrivate because who
+// named the destination decides, and a dial check that ignored it would refuse
+// the very configuration the URL check accepted. The receiver-beside-Driftwood
+// case is the one that shows it — http://127.0.0.1:9099 saves fine from loopback,
+// and every delivery to it must not then fail.
+func TestDialContextAllowsPrivateWhenTheOperatorNamedIt(t *testing.T) {
+	restore := stubResolver(t, func(_ context.Context, _ string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+	})
+	defer restore()
+
+	// Port 1 on loopback, so the dial itself fails — the assertion is that it
+	// got as far as dialling the address, which is what the error names.
+	dial := DialContext(&net.Dialer{Timeout: 200 * time.Millisecond}, true)
+	conn, err := dial(context.Background(), "tcp", "receiver.example.com:1")
+	if err == nil {
+		conn.Close()
+		t.Fatal("something was listening on loopback port 1")
+	}
+	if strings.Contains(err.Error(), "SSRF protection") {
+		t.Errorf("a permitted private address was refused by the SSRF check: %v", err)
+	}
+	if !strings.Contains(err.Error(), "127.0.0.1") {
+		t.Errorf("the dial did not reach the resolved address: %v", err)
 	}
 }
 
@@ -222,7 +250,7 @@ func TestDialContextDialsTheVettedAddress(t *testing.T) {
 	})
 	defer restore()
 
-	dial := DialContext(&net.Dialer{Timeout: 200 * time.Millisecond})
+	dial := DialContext(&net.Dialer{Timeout: 200 * time.Millisecond}, false)
 	conn, err := dial(context.Background(), "tcp", "harmless.example.com:1")
 	if err == nil {
 		conn.Close()
@@ -245,7 +273,7 @@ func TestDialContextRefusesEmptyResolution(t *testing.T) {
 	})
 	defer restore()
 
-	if conn, err := DialContext(&net.Dialer{})(context.Background(), "tcp", "nowhere.example.com:80"); err == nil {
+	if conn, err := DialContext(&net.Dialer{}, false)(context.Background(), "tcp", "nowhere.example.com:80"); err == nil {
 		conn.Close()
 		t.Fatal("dial to a name that resolved to nothing was allowed")
 	}
@@ -259,7 +287,7 @@ func TestDialContextPropagatesResolverFailure(t *testing.T) {
 	})
 	defer restore()
 
-	_, err := DialContext(&net.Dialer{})(context.Background(), "tcp", "nx.example.com:80")
+	_, err := DialContext(&net.Dialer{}, false)(context.Background(), "tcp", "nx.example.com:80")
 	if err == nil || !strings.Contains(err.Error(), "no such host") {
 		t.Fatalf("resolver error was not propagated: %v", err)
 	}

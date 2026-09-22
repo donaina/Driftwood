@@ -23,6 +23,7 @@ import (
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/netguard"
 	"github.com/donaina/driftwood/internal/storage"
+	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/pkg/types"
 )
 
@@ -122,10 +123,27 @@ type Proxy struct {
 	// channel rather than a semaphore dependency, because a non-blocking send is
 	// exactly the "drop it when full" behaviour wanted here.
 	explainSlots chan struct{}
+
+	// delivery is where a raised alert goes. Always set — see WithDelivery.
+	delivery webhook.Sink
 }
 
-func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
-	return newProxyWithTarget(target, store, hub, mockCtrl, false)
+// Option configures a proxy at construction.
+//
+// Variadic options rather than a wider constructor signature, so every existing
+// call site stays source-compatible and a test proxy gets the same defaults a
+// running one does. What a forgotten option must never do is leave a nil field
+// on the request path — see newProxy.
+type Option func(*Proxy)
+
+// WithDelivery points the proxy's alerts at a deliverer. Without it they go to
+// webhook.Discard, which is a no-op.
+func WithDelivery(sink webhook.Sink) Option {
+	return func(p *Proxy) { p.delivery = sink }
+}
+
+func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, opts ...Option) (*Proxy, error) {
+	return newProxyWithTarget(target, store, hub, mockCtrl, false, opts...)
 }
 
 // NewProxyAllowPrivate builds a proxy that accepts a private target.
@@ -138,8 +156,8 @@ func NewProxy(target string, store *storage.Store, hub *events.Hub, mockCtrl *mo
 //
 // It was called NewProxyForTest and called from main, which is how the SSRF
 // blocklist came to be disabled in every shipped binary.
-func NewProxyAllowPrivate(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
-	return newProxyWithTarget(target, store, hub, mockCtrl, true)
+func NewProxyAllowPrivate(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, opts ...Option) (*Proxy, error) {
+	return newProxyWithTarget(target, store, hub, mockCtrl, true, opts...)
 }
 
 // NewProxyWithoutTarget builds a proxy for an install whose active project has
@@ -158,8 +176,8 @@ func NewProxyAllowPrivate(target string, store *storage.Store, hub *events.Hub, 
 // active project stays targetless until somebody sets one — which is what makes
 // this constructor honest, and what keeps it from quietly promoting the flag's
 // target onto a project the operator left empty on purpose.
-func NewProxyWithoutTarget(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) (*Proxy, error) {
-	p := newProxy(store, hub, mockCtrl)
+func NewProxyWithoutTarget(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, opts ...Option) (*Proxy, error) {
+	p := newProxy(store, hub, mockCtrl, opts...)
 	return p, p.RefreshRouting()
 }
 
@@ -171,13 +189,13 @@ func NewProxyWithoutTarget(store *storage.Store, hub *events.Hub, mockCtrl *mock
 // store already answers, and the two would diverge the first time a project was
 // switched — the request path would still be dialling the target the process
 // started with while every view showed the new project's.
-func newProxyWithTarget(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, allowPrivate bool) (*Proxy, error) {
+func newProxyWithTarget(target string, store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, allowPrivate bool, opts ...Option) (*Proxy, error) {
 	parsed, err := parseAndValidateTarget(target, allowPrivate)
 	if err != nil {
 		return nil, fmt.Errorf("invalid target URL: %w", err)
 	}
 
-	p := newProxy(store, hub, mockCtrl)
+	p := newProxy(store, hub, mockCtrl, opts...)
 	if err := p.storeTarget(store.ActiveProject(), parsed, allowPrivate); err != nil {
 		return nil, err
 	}
@@ -190,14 +208,21 @@ func newProxyWithTarget(target string, store *storage.Store, hub *events.Hub, mo
 // explainSlots, and a send on a nil channel takes the default branch forever, so
 // every explanation was silently dropped in exactly the tests meant to catch
 // that.
-func newProxy(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController) *Proxy {
-	return &Proxy{
-		store:        store,
-		hub:          hub,
-		mockCtrl:     mockCtrl,
-		transport:    newTransport(),
+func newProxy(store *storage.Store, hub *events.Hub, mockCtrl *mock.MockController, opts ...Option) *Proxy {
+	p := &Proxy{
+		store:     store,
+		hub:       hub,
+		mockCtrl:  mockCtrl,
+		transport: newTransport(),
+		// Defaulted rather than left nil, for the reason above: a test proxy
+		// built by hand must deliver into a no-op, not panic on the request path.
+		delivery:     webhook.Discard{},
 		explainSlots: make(chan struct{}, explainBudget),
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 func newTransport() *http.Transport {
@@ -754,8 +779,25 @@ func (p *Proxy) processAndStoreTraffic(
 
 	capture.SanitizeTraffic(&traffic)
 
-	p.store.AddTraffic(projectID, traffic)
+	// The store decides whether an alert exists — HasBreakingChanges ||
+	// HasWarnings — and hands back the one it raised. Restating that condition
+	// here is what would let the delivered set and the stored set drift apart.
+	alert := p.store.AddTraffic(projectID, traffic)
 	p.hub.Publish(projectID, "traffic", traffic)
+
+	if alert != nil {
+		/* Deliveries go to breaking changes *and* warnings, which is the store's
+		   condition rather than the SSE one below. The two are not the same thing
+		   and should not be: the "alert" frame is an interrupt that raises a
+		   toast, deliberately narrower; a webhook is a record, like the alert log
+		   the dashboard renders. Delivering breaking-only would mean an operator
+		   sees a WARNING on screen that was never sent anywhere, with nothing
+		   saying why.
+
+		   One non-blocking send. Nothing on this path dials, and nothing on the
+		   proxied request's clock waits on the deliverer. */
+		p.delivery.Enqueue(projectID, *alert)
+	}
 
 	if contractDiff != nil && contractDiff.HasBreakingChanges {
 		alertData := map[string]interface{}{
