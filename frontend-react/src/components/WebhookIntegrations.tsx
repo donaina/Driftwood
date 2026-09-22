@@ -40,6 +40,12 @@ type Channel = {
   name: string;
   description: string;
   setupSteps: string[];
+  /* Whether this channel's delivery is signed with a secret. True for `generic`
+     alone: Slack, Teams and Discord authenticate by a token inside the URL, and
+     all three ignore headers they do not recognise — so a secret field on those
+     cards would be a control whose value changes nothing at the receiver, which
+     is the class of lie the rest of this file was rewritten to remove. */
+  signs?: boolean;
 };
 
 /* Four channels, and each one is an HTTP POST to a URL the operator supplies —
@@ -85,10 +91,12 @@ const CHANNELS: Channel[] = [
     id: 'generic',
     name: 'Generic webhook',
     description: 'POST the alert as JSON to an endpoint you run.',
+    signs: true,
     setupSteps: [
       'Run an endpoint that accepts a JSON POST and answers 2xx.',
       'Copy its URL.',
       'Paste the URL below and save.',
+      'Optional: set a signing secret below so your endpoint can prove the request came from Driftwood.',
     ],
   },
 ];
@@ -127,8 +135,13 @@ type DeliveryRecord = {
   completed_at: string;
 };
 
-/** What the operator has typed, before it is saved. */
-type Draft = { url: string; enabled: boolean };
+/* What the operator has typed, before it is saved.
+
+   `secret` is always empty on load, even when one is stored: no route returns a
+   secret, so there is nothing to seed the box with. Empty therefore means "leave
+   what is stored alone" and never "clear it" — which is why save() omits the key
+   rather than sending "". Clearing is its own explicit action. */
+type Draft = { url: string; enabled: boolean; secret: string };
 
 const BASE = '/_driftwood/api/webhooks';
 
@@ -208,7 +221,11 @@ const WebhookIntegrations: React.FC = () => {
         Object.fromEntries(
           CHANNELS.map((channel) => [
             channel.id,
-            { url: byKind[channel.id]?.url ?? '', enabled: byKind[channel.id]?.enabled ?? false },
+            {
+              url: byKind[channel.id]?.url ?? '',
+              enabled: byKind[channel.id]?.enabled ?? false,
+              secret: '',
+            },
           ])
         )
       );
@@ -234,18 +251,25 @@ const WebhookIntegrations: React.FC = () => {
   };
 
   const save = async (channel: Channel) => {
-    const draft = drafts[channel.id] ?? { url: '', enabled: false };
+    const draft = drafts[channel.id] ?? { url: '', enabled: false, secret: '' };
     setSaving(channel.id);
     clearActionError(channel.id);
     try {
+      // The secret key is omitted unless something was typed. The route reads an
+      // absent key as "leave it" and "" as "clear it", so sending the empty
+      // box's value would erase a stored secret every time someone re-saved a
+      // URL — the exact bug the route's pointer fields exist to prevent.
+      const body: Record<string, unknown> = {
+        kind: channel.id,
+        url: draft.url.trim(),
+        enabled: draft.enabled,
+      };
+      if (draft.secret.trim() !== '') body.secret = draft.secret.trim();
+
       const res = await fetch(BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kind: channel.id,
-          url: draft.url.trim(),
-          enabled: draft.enabled,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(await failure(res));
 
@@ -255,22 +279,61 @@ const WebhookIntegrations: React.FC = () => {
 
       setConfigs(byKind);
       // Re-seed this card from what was stored, so the field shows the URL the
-      // server kept rather than the one that was typed into it.
+      // server kept rather than the one that was typed into it. The secret box
+      // empties, because it was just stored and nothing reads it back out.
       setDraft(channel.id, {
         url: byKind[channel.id]?.url ?? '',
         enabled: byKind[channel.id]?.enabled ?? false,
+        secret: '',
       });
 
       const saved = byKind[channel.id];
+      const signing = body.secret !== undefined ? ' The new signing secret is stored.' : '';
       toast(
         `${channel.name} saved`,
         saved?.enabled
-          ? `Driftwood will post alerts to ${saved.url}`
-          : 'The URL is saved, but the channel is off — no alerts will be sent to it.'
+          ? `Driftwood will post alerts to ${saved.url}.${signing}`
+          : `The URL is saved, but the channel is off — no alerts will be sent to it.${signing}`
       );
     } catch (err) {
       console.error(err);
       setActionError((prev) => ({ ...prev, [channel.id]: `Could not save ${channel.name}: ${err}` }));
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  /* Clearing a stored secret is its own action rather than "save with the box
+     empty", because the box is empty on load and every save would then be a
+     request to clear it. It sends only the kind and the empty secret, so the
+     route's overlay leaves the URL and the enabled flag exactly as they were. */
+  const removeSecret = async (channel: Channel) => {
+    setSaving(channel.id);
+    clearActionError(channel.id);
+    try {
+      const res = await fetch(BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: channel.id, secret: '' }),
+      });
+      if (!res.ok) throw new Error(await failure(res));
+
+      const list: WebhookView[] = await res.json();
+      const byKind: Record<string, WebhookView> = {};
+      for (const cfg of list) byKind[cfg.kind] = cfg;
+      setConfigs(byKind);
+      setDraft(channel.id, {
+        url: byKind[channel.id]?.url ?? '',
+        enabled: byKind[channel.id]?.enabled ?? false,
+        secret: '',
+      });
+      toast(`${channel.name} secret removed`, 'Requests to this channel are no longer signed.');
+    } catch (err) {
+      console.error(err);
+      setActionError((prev) => ({
+        ...prev,
+        [channel.id]: `Could not remove the ${channel.name} secret: ${err}`,
+      }));
     } finally {
       setSaving(null);
     }
@@ -342,7 +405,7 @@ const WebhookIntegrations: React.FC = () => {
 
       {CHANNELS.map((channel) => {
         const cfg = configs[channel.id];
-        const draft = drafts[channel.id] ?? { url: '', enabled: false };
+        const draft = drafts[channel.id] ?? { url: '', enabled: false, secret: '' };
         const result = tests[channel.id];
         const err = actionError[channel.id];
 
@@ -350,8 +413,13 @@ const WebhookIntegrations: React.FC = () => {
            the box. Unsaved edits therefore make it meaningless, and a Test that
            quietly exercised the previous URL would be a fifth control reporting
            work it did not do. */
+        /* A typed secret counts as dirty: Test sends using the *stored* config, so
+           an unsaved secret would mean the operator tests their receiver against
+           an unsigned request and concludes their verification code is broken. */
         const dirty =
-          draft.url.trim() !== (cfg?.url ?? '') || draft.enabled !== (cfg?.enabled ?? false);
+          draft.url.trim() !== (cfg?.url ?? '') ||
+          draft.enabled !== (cfg?.enabled ?? false) ||
+          draft.secret.trim() !== '';
         const saved = (cfg?.url ?? '') !== '';
         const testDisabled = saving !== null || testing !== null || dirty || !saved;
         const testTitle = !saved
@@ -431,6 +499,47 @@ const WebhookIntegrations: React.FC = () => {
                   one of their own, so no setting could have delivered them. A
                   sentence in the slot is the honest version of a control that
                   cannot be honoured yet. */}
+              {/* Only where something reads it. Slack, Teams and Discord
+                  authenticate by a token inside the URL they issued and ignore
+                  unknown headers, so a secret box on those cards would store a
+                  value that changed nothing at the receiver. */}
+              {channel.signs && (
+                <Field label="Signing secret">
+                  <Input
+                    type="password"
+                    autoComplete="off"
+                    value={draft.secret}
+                    placeholder={cfg?.has_secret ? 'A secret is set — type a new one to replace it' : 'Optional'}
+                    onChange={(e) => setDraft(channel.id, { ...draft, secret: e.target.value })}
+                  />
+                  <p className="text-sm text-text-muted mt-2">
+                    With a secret set, Driftwood signs the body it sends:{' '}
+                    <code className="font-mono">X-Driftwood-Signature: sha256=&lt;hex&gt;</code>, an
+                    HMAC of <code className="font-mono">&lt;timestamp&gt;.&lt;body&gt;</code> — the
+                    timestamp is inside the signature, so your endpoint can reject a replayed
+                    request by refusing anything outside its own window. It arrives in{' '}
+                    <code className="font-mono">X-Driftwood-Timestamp</code>, in unix seconds.
+                    {cfg?.has_secret ? (
+                      <>
+                        {' '}
+                        Leaving this empty keeps the secret already stored.{' '}
+                        <button
+                          type="button"
+                          className="underline text-accent-primary"
+                          disabled={saving === channel.id}
+                          onClick={() => removeSecret(channel)}
+                        >
+                          Remove it
+                        </button>
+                        .
+                      </>
+                    ) : (
+                      ' Leave it empty to send unsigned.'
+                    )}
+                  </p>
+                </Field>
+              )}
+
               <Field label="Alert Types">
                 <p className="text-sm text-text-muted">
                   Every alert this project raises is delivered here — breaking changes and

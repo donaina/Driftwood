@@ -24,6 +24,9 @@ package webhook
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -622,6 +625,9 @@ func (d *Deliverer) post(ctx context.Context, cfg types.WebhookConfig, contentTy
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", "Driftwood")
+	if cfg.Kind == types.WebhookGeneric {
+		sign(req, cfg.Secret, body, time.Now())
+	}
 
 	client := d.client
 	if cfg.AllowPrivate {
@@ -643,6 +649,40 @@ func (d *Deliverer) post(ctx context.Context, cfg types.WebhookConfig, contentTy
 		retryAfter: retryAfterOf(resp, time.Now()),
 		reply:      truncate(capture.RedactValue(strings.TrimSpace(string(raw))), maxReplyBytes),
 	}
+}
+
+// sign adds the generic kind's authentication headers. No secret, no headers:
+// an unsigned generic webhook is the operator's choice, and inventing a
+// signature from nothing would be worse than sending none.
+//
+// Only generic is signed. Slack, Teams and Discord authenticate by a token
+// inside the URL they gave the operator, and all three ignore headers they do
+// not recognise — so a secret offered on those cards would be a control whose
+// effect nothing reads, which is the class of thing this whole feature exists to
+// stop shipping. They are not signed, not signed-and-ignored.
+//
+// The timestamp is *inside* the signed string, not merely sent beside it.
+// Signing the body alone makes every captured request valid forever: a receiver
+// that checks only the signature cannot tell a replay from a first send, and
+// this endpoint is an ingest into the operator's own systems. Binding the
+// timestamp lets a receiver reject anything outside its own window. It is the
+// construction Stripe and GitHub use, chosen for that reason and not for
+// familiarity.
+//
+// The header carries the algorithm name so a receiver can tell which of several
+// possible schemes it is looking at, and so a future one can be added without
+// silently changing what an existing `sha256=` value means.
+func sign(req *http.Request, secret string, body []byte, now time.Time) {
+	if secret == "" {
+		return
+	}
+
+	timestamp := strconv.FormatInt(now.Unix(), 10)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp + "." + string(body)))
+
+	req.Header.Set("X-Driftwood-Timestamp", timestamp)
+	req.Header.Set("X-Driftwood-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 }
 
 // retryable reports whether another attempt could plausibly succeed.

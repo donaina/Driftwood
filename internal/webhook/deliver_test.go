@@ -3,12 +3,16 @@ package webhook
 import (
 	"bufio"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1270,5 +1274,232 @@ func TestAnEmptyLogMarshalsToAList(t *testing.T) {
 	d.Enqueue(projectID, sampleAlert())
 	if got := d.Recent(projectID, 0); len(got) != 0 {
 		t.Errorf("a project with no channel configured filed %d records: %+v", len(got), got)
+	}
+}
+
+/* Signing, for the generic kind only.
+
+   The receiver in these tests always derives the expected value itself and
+   compares. A test that asserted a literal hex string would pin the
+   implementation's output without checking that a receiver can reproduce it,
+   which is the only property that matters here — and it would have to be
+   rewritten the moment the construction changed for a good reason. */
+
+// signedRequest is what a receiver reads off the wire for a signature test.
+type signedRequest struct {
+	signature string
+	timestamp string
+	body      []byte
+}
+
+// signingReceiver answers 200 and reports the signature headers it was sent.
+// The body is read in full because the signature covers exactly those bytes.
+func signingReceiver(t *testing.T) (*httptest.Server, chan signedRequest) {
+	t.Helper()
+
+	received := make(chan signedRequest, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("reading the body: %v", err)
+		}
+		received <- signedRequest{
+			signature: r.Header.Get("X-Driftwood-Signature"),
+			timestamp: r.Header.Get("X-Driftwood-Timestamp"),
+			body:      body,
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, received
+}
+
+// take waits for the receiver to be called. A timeout rather than a bare
+// receive, so a delivery that never happens fails the test instead of hanging
+// it until the package deadline.
+func take(t *testing.T, received chan signedRequest) signedRequest {
+	t.Helper()
+	select {
+	case got := <-received:
+		return got
+	case <-time.After(3 * time.Second):
+		t.Fatal("the receiver was never called")
+		return signedRequest{}
+	}
+}
+
+// expectedSignature recomputes what the receiver should have received, from the
+// secret it shares and the bytes it actually read. Independent of the
+// implementation under test — it re-derives rather than reusing.
+func expectedSignature(t *testing.T, secret string, got signedRequest) string {
+	t.Helper()
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(got.timestamp + "." + string(got.body)))
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+// TestGenericDeliveryCarriesAVerifiableSignature is the property the feature
+// promises: an operator's endpoint can prove the body came from Driftwood and
+// has not been altered.
+func TestGenericDeliveryCarriesAVerifiableSignature(t *testing.T) {
+	const secret = "whsec_2f8a1c9d"
+
+	receiver, received := signingReceiver(t)
+	cfg := configFor(types.WebhookGeneric, receiver.URL)
+	cfg.Secret = secret
+	d, projectID := newDeliverer(t, cfg)
+
+	d.Enqueue(projectID, sampleAlert())
+	got := take(t, received)
+
+	if got.timestamp == "" {
+		t.Fatal("no X-Driftwood-Timestamp header")
+	}
+	if _, err := strconv.ParseInt(got.timestamp, 10, 64); err != nil {
+		t.Errorf("X-Driftwood-Timestamp = %q, want unix seconds: %v", got.timestamp, err)
+	}
+	if want := expectedSignature(t, secret, got); got.signature != want {
+		t.Errorf("X-Driftwood-Signature = %q, want %q", got.signature, want)
+	}
+
+	// The receiver answering and the record being filed are two different
+	// events, and the receiver's is the earlier one: the record is written after
+	// the response has been read. Waiting on the receiver alone races it.
+	waitFor(t, "the delivery to be recorded", func() bool { return len(d.Recent(projectID, 0)) == 1 })
+	if rec := onlyRecord(t, d, projectID); rec.Status != StatusDelivered {
+		t.Errorf("status = %q, want %q", rec.Status, StatusDelivered)
+	}
+
+	// The timestamp is bound into the signed string, and this is the assertion
+	// that stops the protection being quietly dropped. Signing the body alone
+	// verifies just as well against a receiver that only compares the header, so
+	// without this the suite would stay green through a change that made every
+	// captured request valid forever.
+	bodyOnly := hmac.New(sha256.New, []byte(secret))
+	bodyOnly.Write(got.body)
+	if got.signature == "sha256="+hex.EncodeToString(bodyOnly.Sum(nil)) {
+		t.Error("the signature matches a body-only HMAC: the timestamp is not bound into it, so a captured request can be replayed indefinitely")
+	}
+}
+
+// TestTheSignatureCoversTheBodyItWasSentWith alters nothing but asserts the
+// obvious converse of the test above — that the bytes the receiver read are the
+// bytes that were signed. A signature over a re-marshalled body would verify
+// against a different string than the one delivered.
+func TestTheSignatureCoversTheBodyItWasSentWith(t *testing.T) {
+	const secret = "whsec_2f8a1c9d"
+
+	receiver, received := signingReceiver(t)
+	cfg := configFor(types.WebhookGeneric, receiver.URL)
+	cfg.Secret = secret
+	d, projectID := newDeliverer(t, cfg)
+
+	d.Enqueue(projectID, sampleAlert())
+	got := take(t, received)
+
+	// The generic kind posts the canonical payload verbatim, so it must parse —
+	// and its `event` field is what distinguishes a real alert from a test send.
+	var payload map[string]interface{}
+	if err := json.Unmarshal(got.body, &payload); err != nil {
+		t.Fatalf("the signed body is not JSON: %v", err)
+	}
+	if payload["event"] != EventContractDrift {
+		t.Errorf("event = %v, want %v", payload["event"], EventContractDrift)
+	}
+	if got.signature != expectedSignature(t, secret, got) {
+		t.Error("the signature does not cover the delivered bytes")
+	}
+}
+
+// TestNoSecretSendsNoSignatureHeaders pins that an unsigned generic webhook is
+// the operator's choice rather than a defect. Nothing is invented in the
+// absence of a secret.
+func TestNoSecretSendsNoSignatureHeaders(t *testing.T) {
+	receiver, received := signingReceiver(t)
+	d, projectID := newDeliverer(t, configFor(types.WebhookGeneric, receiver.URL))
+
+	d.Enqueue(projectID, sampleAlert())
+	got := take(t, received)
+
+	if got.signature != "" {
+		t.Errorf("X-Driftwood-Signature = %q with no secret configured, want no header", got.signature)
+	}
+	if got.timestamp != "" {
+		t.Errorf("X-Driftwood-Timestamp = %q with no secret configured, want no header", got.timestamp)
+	}
+	if len(got.body) == 0 {
+		t.Error("the body was empty: the delivery did not go out unsigned, it did not go out")
+	}
+}
+
+// TestOnlyTheGenericKindIsSigned pins the decision that the secret field is
+// offered where it is read and nowhere else.
+//
+// Slack, Teams and Discord authenticate by a token inside the URL, and all three
+// ignore headers they do not know. Signing them would therefore be a no-op that
+// reads as a security feature — and, worse, a card in the dashboard offering a
+// secret field whose value changes nothing about what the receiver does. A
+// secret set on one of those configs must not produce a signature.
+func TestOnlyTheGenericKindIsSigned(t *testing.T) {
+	for _, kind := range []string{types.WebhookSlack, types.WebhookTeams, types.WebhookDiscord} {
+		t.Run(kind, func(t *testing.T) {
+			receiver, received := signingReceiver(t)
+			cfg := configFor(kind, receiver.URL)
+			// Set directly rather than through the route: the route would take
+			// it, which is the point — an operator who hand-edits the document
+			// can put a secret on a Slack config, and this is what happens.
+			cfg.Secret = "whsec_should_be_ignored"
+			d, projectID := newDeliverer(t, cfg)
+
+			d.Enqueue(projectID, sampleAlert())
+			got := take(t, received)
+
+			if got.signature != "" || got.timestamp != "" {
+				t.Errorf("%s was signed (signature %q, timestamp %q); only %s carries a signature",
+					kind, got.signature, got.timestamp, types.WebhookGeneric)
+			}
+			if len(got.body) == 0 {
+				t.Errorf("%s delivered an empty body", kind)
+			}
+		})
+	}
+}
+
+// TestTheTestSendIsSignedToo covers the path an operator actually uses to check
+// their receiver. Test reports what the endpoint did, so if it went out unsigned
+// the operator would wire up verification against a request that never carried a
+// signature — and conclude their own code was broken.
+func TestTheTestSendIsSignedToo(t *testing.T) {
+	const secret = "whsec_2f8a1c9d"
+
+	receiver, received := signingReceiver(t)
+	cfg := configFor(types.WebhookGeneric, receiver.URL)
+	cfg.Secret = secret
+	d, projectID := newDeliverer(t, cfg)
+
+	result, err := d.Test(context.Background(), projectID, types.WebhookGeneric)
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Test reported failure: %+v", result)
+	}
+
+	got := take(t, received)
+	if got.timestamp == "" {
+		t.Fatal("the test send carried no X-Driftwood-Timestamp")
+	}
+	if want := expectedSignature(t, secret, got); got.signature != want {
+		t.Errorf("X-Driftwood-Signature = %q, want %q", got.signature, want)
+	}
+
+	// And it announces itself as a test to the human reading the channel, which
+	// is the whole reason EventTest exists.
+	var payload map[string]interface{}
+	if err := json.Unmarshal(got.body, &payload); err != nil {
+		t.Fatalf("the signed body is not JSON: %v", err)
+	}
+	if payload["event"] != EventTest {
+		t.Errorf("event = %v, want %v", payload["event"], EventTest)
 	}
 }
