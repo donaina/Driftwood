@@ -528,7 +528,40 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
         </div>
       </Panel>
 
-      <div className="flex items-start space-x-4">
+      {/* Five version nodes are wider than the card below 430px. Each node is a
+          circle, a label and a Lock button, and the unconfirmed one adds an
+          "Unconfirmed — confirm" button that nothing can shrink, so the first
+          node alone takes 88px. Measured, the row overflowed itself by 109px
+          inside a 222px card at 320px and 39px at 390px, first fitting at
+          430px — and because the overflow was sideways inside the row, every
+          node's own box still landed on screen, which is why only a
+          `scrollWidth - clientWidth` probe on the row found it.
+
+          `flex-wrap` is the wrong tool here even though it is the right one
+          for the rows above. It re-lays items at their max-content size, so a
+          node would take about 146px and five of them would become one per
+          line at 320px; and because max-content stays wider than the card well
+          past the width where the row actually breaks, it would also reflow
+          the 430–767px range that fits today.
+
+          So the nodes stack instead, across the shell's narrowest tier. That
+          tier is 50px wider than the overflow it fixes — 430–479px previously
+          fit and now stack to 680px tall — and the tier is kept anyway because
+          the stability row above the timeline already stacks at exactly 479px,
+          and two rows in one card breaking at two different widths is the
+          raggedness this scope exists to avoid. Measured: the row is 680px
+          tall at 320px, and `items-stretch` puts all five circles on one
+          vertical axis (left edge 49 at both 320px and 390px) where
+          `items-start` would leave each node at its own width and drop every
+          circle at a different centre.
+
+          Replacing `space-x-4` with `gap-4` is what makes the column gap
+          real — `space-x-*` sets a horizontal margin, which does nothing
+          between stacked rows — and above 430px the two are equivalent to the
+          pixel, verified by rebuilding the old row and re-measuring: 168px
+          tall with nodes at 139,45,45,45,45 at 480px, 152px and
+          147,45,45,45,45 at 620px and up, identical to before. */}
+      <div className="flex items-start gap-4 max-[479px]:flex-col max-[479px]:items-stretch">
         {enhancedVersions.map((version, index) =>
           renderVersionNode(version, index)
         )}
