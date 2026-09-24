@@ -1,8 +1,16 @@
 package openapi
 
 import (
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/donaina/driftwood/internal/netguard"
 	"github.com/donaina/driftwood/pkg/types"
 )
 
@@ -513,4 +521,167 @@ func (m *mockStore) SaveBaselineWithSchema(projectID, method, path, samplePayloa
 	return &types.ContractBaseline{
 		Method: method, Path: path, SamplePayload: samplePayload, Source: source,
 	}, nil
+}
+
+/* The fetch path, which until now had no test at all: LoadFromURL was a bare
+   http.Get, so nothing here could have failed for a reason the compiler would
+   have caught. These are the properties that request did not have. */
+
+const fetchSpec = `{"openapi":"3.0.0","info":{"title":"Fetched","version":"1.0.0"},"paths":{}}`
+
+// TestLoadFromURLAcceptsTheOperatorsOwnURL is the baseline: the ordinary case
+// still works, so the rest of these are not passing because everything fails.
+func TestLoadFromURLAcceptsTheOperatorsOwnURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(fetchSpec))
+	}))
+	defer srv.Close()
+
+	spec, err := LoadFromURL(srv.URL + "/openapi.json")
+	if err != nil {
+		t.Fatalf("LoadFromURL: %v", err)
+	}
+	if spec.Info.Title != "Fetched" {
+		t.Errorf("title = %q, want %q", spec.Info.Title, "Fetched")
+	}
+}
+
+// TestLoadFromURLHasADeadline is the regression for the bare http.Get. A server
+// that accepts the connection and then says nothing used to hold the command
+// open forever; the only thing that ends it now is the client's own deadline.
+func TestLoadFromURLHasADeadline(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release // never answers until the test is over
+	}))
+	defer func() { close(release); srv.Close() }()
+
+	old := specFetchTimeout
+	specFetchTimeout = 200 * time.Millisecond
+	defer func() { specFetchTimeout = old }()
+
+	start := time.Now()
+	if _, err := LoadFromURL(srv.URL); err == nil {
+		t.Fatal("LoadFromURL returned no error from a server that never answers")
+	}
+	// Generous against a loaded machine, and still four orders of magnitude
+	// short of waiting out a request that has no deadline at all.
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("took %v to give up on an unanswering server", elapsed)
+	}
+}
+
+// TestLoadFromURLFollowsASameHostRedirect keeps the ordinary http-to-https
+// upgrade working, which is why this policy is narrower here than the webhook
+// deliverer's outright refusal.
+func TestLoadFromURLFollowsASameHostRedirect(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/spec.json" {
+			http.Redirect(w, r, "/moved/openapi.json", http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte(fetchSpec))
+	}))
+	defer srv.Close()
+
+	spec, err := LoadFromURL(srv.URL + "/spec.json")
+	if err != nil {
+		t.Fatalf("LoadFromURL: %v", err)
+	}
+	if spec.Info.Title != "Fetched" {
+		t.Errorf("title = %q; the same-host redirect was not followed", spec.Info.Title)
+	}
+}
+
+// TestLoadFromURLRefusesAnotherHostsRedirect is the SSRF case: the operator
+// named one host, and a redirect must not turn that into a request to a host
+// nobody named. Asserted by the second server's own request count, because a
+// refusal that still connects is not a refusal.
+func TestLoadFromURLRefusesAnotherHostsRedirect(t *testing.T) {
+	var hits int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		_, _ = w.Write([]byte(fetchSpec))
+	}))
+	defer elsewhere.Close()
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+"/openapi.json", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	_, err := LoadFromURL(origin.URL)
+	if err == nil {
+		t.Fatal("LoadFromURL followed a redirect to a host the operator did not name")
+	}
+	if n := atomic.LoadInt32(&hits); n != 0 {
+		t.Errorf("the redirect target received %d request(s); a refused redirect must not connect", n)
+	}
+	if !strings.Contains(err.Error(), "which is not") {
+		t.Errorf("error = %v, want it to name the host it refused to follow to", err)
+	}
+}
+
+// TestLoadFromURLReportsANonOKStatus is the 404-shaped case. The body of an
+// error page used to reach the JSON parser and come back as "invalid character
+// '<' looking for beginning of value", which describes the symptom.
+func TestLoadFromURLReportsANonOKStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "<html>not found</html>", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	_, err := LoadFromURL(srv.URL + "/openapi.json")
+	if err == nil {
+		t.Fatal("LoadFromURL accepted a 404 as a spec")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("error = %v, want it to report the status the server answered with", err)
+	}
+	if strings.Contains(err.Error(), "invalid character") {
+		t.Errorf("error = %v, want the cause (the status) and not the parse symptom", err)
+	}
+}
+
+// TestLoadFromURLBoundsTheResponseSize pins the cap. The body is streamed
+// rather than allocated so the test costs a transfer, not a second 32 MiB.
+func TestLoadFromURLBoundsTheResponseSize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.CopyN(w, neverEnding('x'), maxSpecBytes+1)
+	}))
+	defer srv.Close()
+
+	_, err := LoadFromURL(srv.URL)
+	if err == nil {
+		t.Fatal("LoadFromURL accepted a response larger than maxSpecBytes")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("error = %v, want it to say the response exceeded the limit", err)
+	}
+}
+
+// TestLoadFromURLRefusesAnUnusableURL keeps the URL judgement on this path, so
+// a spec URL is held to the same shape as every other target the product dials.
+func TestLoadFromURLRefusesAnUnusableURL(t *testing.T) {
+	for _, raw := range []string{"", "   ", "ftp://example.com/spec.json", "https:///spec.json"} {
+		if _, err := LoadFromURL(raw); err == nil {
+			t.Errorf("LoadFromURL(%q) was accepted", raw)
+		} else if !errors.Is(err, netguard.ErrInvalidTarget) {
+			t.Errorf("LoadFromURL(%q) error = %v, want it to wrap ErrInvalidTarget", raw, err)
+		}
+	}
+}
+
+type repeatReader byte
+
+func neverEnding(b byte) io.Reader { return repeatReader(b) }
+
+func (r repeatReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = byte(r)
+	}
+	return len(p), nil
 }
