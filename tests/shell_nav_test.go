@@ -148,3 +148,73 @@ func TestEveryNavItemHasADestination(t *testing.T) {
 		t.Errorf("web/index.html has `id=\"nav-%s\"` but no destination for it: it is neither a reactViews key nor paired with `id=\"view-%s\"`, so switchTab logs \"navigation ignored\" and leaves the previous view on screen", name, name)
 	}
 }
+
+// projectScopedRoute matches the routes that answer for one project at a time.
+//
+// Install-level routes are deliberately absent — /api/config, /api/setup-state,
+// /api/projects and /api/mock/* answer the same thing whichever project is
+// active, so a component that reads only those has nothing to re-read.
+var projectScopedRoute = regexp.MustCompile(`/_driftwood/api/(histories|baselines|traffic|alerts|export|webhooks)`)
+
+// TestProjectScopedViewsHearAboutProjectChanges checks the one signal that makes
+// a React view re-read when the active project moves.
+//
+// A React view fetches on mount and only on mount: `mountView` reuses a
+// container's existing root and calls `render` on it, so React reconciles the
+// same component instance and the mount effect never runs a second time. Neither
+// side of that is visible from the other — the shell looks like it is remounting
+// the view, and the component looks like it fetches on mount — so a view that
+// reads project-scoped data and does not listen for `driftwood:project-changed`
+// goes on rendering the previous project's rows under the new project's name.
+//
+// That is not hypothetical. Version History and Alert Delivery both shipped
+// that way, and Alert Delivery is the worse of the two because its cards carry a
+// Save button: the operator could switch to a client, still see the previous
+// client's webhook URL in the box, and write it onto the new one.
+//
+// The set of views under test is derived rather than listed. Any component that
+// names a project-scoped route is reading project state, so it is exactly the
+// set that has to answer the announcement — and the guard against an empty set
+// below is what stops this test from quietly asserting nothing if the matcher
+// ever drifts away from the routes.
+func TestProjectScopedViewsHearAboutProjectChanges(t *testing.T) {
+	const marker = "driftwood:project-changed"
+
+	src := shellSource(t)
+	if !strings.Contains(src, "announceProjectChange") || !strings.Contains(src, marker) {
+		t.Errorf("web/index.html does not announce a project change (no %q dispatched from announceProjectChange), so no React view can hear one", marker)
+	}
+
+	dir := filepath.Join("..", "frontend-react", "src", "components")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", dir, err)
+	}
+
+	var scoped []string
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".tsx") {
+			continue
+		}
+		source, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		/* Both halves are required, because naming a route is not reading one:
+		   EndpointHistory.tsx mentions `/_driftwood/api/histories` in the doc
+		   comment that explains its wire type and fetches nothing at all, being
+		   a presenter that takes its rows as props. Without this a component
+		   would be told off for a comment. */
+		if !projectScopedRoute.Match(source) || !strings.Contains(string(source), "fetch(") {
+			continue
+		}
+		scoped = append(scoped, entry.Name())
+		if !strings.Contains(string(source), marker) {
+			t.Errorf("%s reads a project-scoped route but never listens for %q, so switching project leaves it rendering the previous project's data", entry.Name(), marker)
+		}
+	}
+
+	if len(scoped) == 0 {
+		t.Fatal("no component reads a project-scoped route — projectScopedRoute has drifted from the routes the views actually call, and this test is asserting nothing")
+	}
+}
