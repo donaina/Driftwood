@@ -45,6 +45,23 @@ const HistoryView: React.FC = () => {
     }
   };
 
+  /* The shell announces a project switch rather than remounting this view.
+     mountView re-renders an existing root, so React keeps this component
+     instance and the effect above runs exactly once per page load — which meant
+     /api/histories was read once and never again, leaving the endpoint list
+     showing the previous project's contracts after a switch.
+
+     `loadHistories` is referenced from the first render's closure and only ever
+     calls the state setters above, which are stable, so the empty dependency
+     list is correct here rather than merely convenient. */
+  useEffect(() => {
+    const onProject = () => {
+      void loadHistories();
+    };
+    window.addEventListener('driftwood:project-changed', onProject);
+    return () => window.removeEventListener('driftwood:project-changed', onProject);
+  }, []);
+
   const handleToggleVersionSelection = (endpointKey: string, version: number) => {
     setSelectedVersionsMap((prevMap) => {
       const newMap = new Map(prevMap);

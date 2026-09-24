@@ -189,6 +189,7 @@ const WebhookIntegrations: React.FC = () => {
   const [configs, setConfigs] = useState<Record<string, WebhookView>>({});
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [records, setRecords] = useState<DeliveryRecord[]>([]);
+  const [recordsError, setRecordsError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, TestResult>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -230,6 +231,7 @@ const WebhookIntegrations: React.FC = () => {
         )
       );
       setRecords(log);
+      setRecordsError(null);
     } catch (err) {
       console.error(err);
       setError(`Could not load alert delivery settings: ${err}`);
@@ -238,9 +240,56 @@ const WebhookIntegrations: React.FC = () => {
     }
   }, []);
 
+  /* Records on their own, and deliberately without touching `loading`: a
+     delivery arriving must not put the whole view back into its skeleton. The
+     cards above are unaffected by a new record, and blanking them every time an
+     alert fires would make this view unreadable on exactly the busy project
+     where it matters most. */
+  const loadRecords = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/deliveries`);
+      if (!res.ok) throw new Error(await failure(res));
+      setRecords(await res.json());
+      setRecordsError(null);
+    } catch (err) {
+      console.error(err);
+      /* Not the page-level `error`, which replaces the view: a failed re-read
+         of the log must not hide the config cards, which loaded fine and are
+         what the operator came here to edit. It is not swallowed either — the
+         panel says so, and the records area stops claiming the log is empty. */
+      setRecordsError(`Could not re-read delivery records: ${err}`);
+    }
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  /* The shell owns the page's single EventSource and re-announces the two
+     things this view cannot otherwise see.
+
+     - A project switch. Every route below is project-scoped, and this component
+       is not remounted when the active project changes — mountView re-renders
+       an existing root, so the effect above runs exactly once per page load.
+       Without this the cards would keep showing the previous project's URL
+       under the new project's name, and Save would write it there.
+     - A delivery reaching a terminal state. The deliverer publishes
+       `webhook_delivery` for this panel, which the empty state already tells the
+       operator fills in as traffic passes through the proxy. */
+  useEffect(() => {
+    const onProject = () => {
+      void load();
+    };
+    const onDelivery = () => {
+      void loadRecords();
+    };
+    window.addEventListener('driftwood:project-changed', onProject);
+    window.addEventListener('driftwood:delivery', onDelivery);
+    return () => {
+      window.removeEventListener('driftwood:project-changed', onProject);
+      window.removeEventListener('driftwood:delivery', onDelivery);
+    };
+  }, [load, loadRecords]);
 
   const setDraft = (kind: string, next: Draft) => {
     setDrafts((prev) => ({ ...prev, [kind]: next }));
@@ -594,7 +643,15 @@ const WebhookIntegrations: React.FC = () => {
         );
       })}
 
-      {records.length === 0 ? (
+      {/* A failed re-read replaces the empty state rather than sitting beside
+          it. "Nothing delivered yet" is a claim about the log, and after a
+          failed read we do not know whether the log is empty — the one thing we
+          must not do is answer a question we could not ask. */}
+      {recordsError ? (
+        <Panel tone="error" className="text-sm text-accent-breaking" role="alert">
+          {recordsError}
+        </Panel>
+      ) : records.length === 0 ? (
         <EmptyState
           title="Nothing delivered yet"
           body={

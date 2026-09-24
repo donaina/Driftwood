@@ -755,6 +755,19 @@
             loadProjects().then(switched => {
               if (switched) adoptProjectChange();
             });
+          } else if (msg.type === 'webhook_delivery') {
+            /* Published by the deliverer the moment a delivery reaches a
+               terminal state. Until this branch existed the event had no
+               consumer anywhere in the product, so the Alert Delivery records
+               panel only ever updated on a manual Refresh — while its empty
+               state told the operator the list "fills in as requests pass
+               through" the proxy.
+
+               The view re-reads the log rather than splicing this frame in:
+               the panel renders a count and an ordering that the route owns,
+               and a client that reassembled them from frames would be a second
+               implementation of the same list. */
+            window.dispatchEvent(new CustomEvent('driftwood:delivery'));
           }
         } catch (err) {
           console.error('SSE Error:', err);
@@ -1017,6 +1030,29 @@
       projectEpoch++;
       reconnectSSE();
       reloadCurrentView();
+      announceProjectChange();
+    }
+
+    /* The one shell→React channel in the product, and deliberately one line wide.
+
+       React views fetch on mount and only on mount. `mountView` reuses a
+       container's existing root and calls `render` on it, so React reconciles
+       the same component instance and a `useEffect(…, [])` never runs again.
+       reloadCurrentView used to claim the opposite — "React views fetch on
+       mount, so remounting is what makes them read the new project" — and it was
+       wrong the whole time. Switching projects left Version History and Alert
+       Delivery rendering the previous project's rows under the new project's
+       name, which is the exact failure Phase 4 exists to prevent, and Alert
+       Delivery made it worse than cosmetic: its cards carry a Save button, so
+       the operator could have written one client's webhook URL onto another.
+
+       So the shell announces the change instead, and a view that reads
+       project-scoped data re-runs its own loader when it hears it. Nothing else
+       crosses this boundary. The alternative — reaching into each view's state
+       from here — is how a shell and an island end up holding two copies of one
+       answer. */
+    function announceProjectChange() {
+      window.dispatchEvent(new CustomEvent('driftwood:project-changed'));
     }
 
     /* The stream is scoped when it is opened, so a subscription to the old
@@ -1041,11 +1077,17 @@
       // project's, so the settings field is stale until this runs.
       loadConfig();
 
-      /* React views fetch on mount, so remounting is what makes them read the
-         new project. The active nav item is the record of which view is
-         showing — switchTab sets it and nothing else does. If no view is
-         marked active the wizard is up, and its own loaders run on the way
-         out, so there is nothing to do. */
+      /* The active nav item is the record of which view is showing — switchTab
+         sets it and nothing else does. If no view is marked active the wizard
+         is up, and its own loaders run on the way out, so there is nothing to
+         do.
+
+         Calling switchTab here does NOT remount a React view, so it does not
+         make one re-read: mountView re-renders an existing root and React keeps
+         the same component instance. The React views are told separately, by
+         announceProjectChange in adoptProjectChange — see the note there. This
+         call is here to put the right view back on screen, and it is what makes
+         the vanilla panels reload. */
       const nav = document.querySelector('.nav-item.active');
       if (nav && nav.id.startsWith('nav-')) switchTab(nav.id.slice(4));
     }
