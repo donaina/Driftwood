@@ -2226,143 +2226,18 @@ function initGuidedTour() {
 }
 // Guided tour will be initialized in the setup wizard logic
 
-// Interactive Integration Guides functionality
-document.addEventListener('DOMContentLoaded', function() {
-  const integrations = [
-    {
-      id: 'express-basic',
-      title: 'Express.js Basic Setup',
-      framework: 'Express',
-      description: 'Basic Driftwood integration for Express.js applications',
-      installation: 'npm install @donaina/driftwood-proxy',
-      codeSnippet: `const { createProxyMiddleware } = require('@donaina/driftwood-proxy');
-\n\nconst app = express();
-\n// Driftwood middleware - place before your routes\napp.use('/_driftwood', createProxyMiddleware({ target: 'http://localhost:8787' }));
-\n\n// Your existing routes\napp.get('/api/users', (req, res) => {\n  res.json({ id: 1, name: 'John Doe' });
-});`,
-      placement: 'Place the middleware before defining your API routes',
-      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
-    },
-    {
-      id: 'fastapi-basic',
-      title: 'FastAPI Basic Setup',
-      framework: 'FastAPI',
-      description: 'Basic Driftwood integration for FastAPI applications',
-      installation: 'pip install driftwood-proxy',
-      codeSnippet: `from fastapi import FastAPI\nfrom driftwood_proxy import DriftwoodMiddleware\n\napp = FastAPI()\n\n# Add Driftwood middleware\napp.add_middleware(\n    DriftwoodMiddleware,\n    upstream_host = "http://localhost:8000",\n    driftwood_host = "http://localhost:8787"\n)\n\n@app.get("/api/users")\nasync def get_users():\n    return [{"id": 1, "name": "John Doe"}]`,
-      placement: 'Add the middleware immediately after creating the FastAPI app',
-      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
-    },
-    {
-      id: 'nestjs-basic',
-      title: 'NestJS Basic Setup',
-      framework: 'NestJS',
-      description: 'Basic Driftwood integration for NestJS applications',
-      installation: 'npm install @donaina/driftwood-nestjs',
-      codeSnippet: `import { Module } from '@nestjs/common';\nimport { DriftwoodModule } from '@donaina/driftwood-nestjs';\n\n@Module({\n  imports: [\n    DriftwoodModule.forRoot({\n      upstream: 'http://localhost:3000',\n      driftwoodUrl: 'http://localhost:8787'\n    })\n  ],\n})\nexport class AppModule {}`,
-      placement: 'Add DriftwoodModule to your root application module',
-      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
-    },
-    {
-      id: 'django-basic',
-      title: 'Django Basic Setup',
-      framework: 'Django',
-      description: 'Basic Driftwood integration for Django applications',
-      installation: 'pip install driftwood-django',
-      codeSnippet: `# settings.py\nMIDDLEWARE = [\n    'driftwood_django.middleware.DriftwoodMiddleware',\n    # ... your other middleware\n]\n\nDRIFTWOOD_SETTINGS = {\n    'UPSTREAM_URL': 'http://localhost:8000',\n    'DRIFTWOOD_URL': 'http://localhost:8787',\n}`,
-      placement: 'Add DriftwoodMiddleware to your MIDDLEWARE setting and configure DRIFTWOOD_SETTINGS',
-      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
-    },
-    {
-      id: 'rails-basic',
-      title: 'Ruby on Rails Basic Setup',
-      framework: 'Rails',
-      description: 'Basic Driftwood integration for Ruby on Rails applications',
-      installation: 'gem install driftwood-rails',
-      codeSnippet: `# Gemfile\ngem 'driftwood-rails'\n\n# config/initializers/driftwood.rb\nRails.application.config.middleware.insert_before 0, Driftwood::Rails::Middleware,\n  upstream_url: 'http://localhost:3000',\n  driftwood_url: 'http://localhost:8787'`,
-      placement: 'Add the gem to your Gemfile and create an initializer file',
-      verification: 'Visit http://your-domain/_driftwood to see the Driftwood dashboard'
-    }
-  ];
-
-  const integrationsGrid = document.getElementById('integrations-grid');
-  const filterButtons = document.querySelectorAll('.integrations-filter-btn');
-
-  function renderIntegrations(filter = 'all') {
-    // This container is not in the document: the view is React-backed
-        // (integrations-react-root) and this vanilla renderer is superseded. Unguarded, it threw
-        // a TypeError on every page load — one of the four uncaught exceptions.
-        if (!integrationsGrid) return;
-        integrationsGrid.innerHTML = '';
-
-    const filteredIntegrations = filter === 'all'
-      ? integrations
-      : integrations.filter(i => i.framework.toLowerCase() === filter);
-
-    filteredIntegrations.forEach(integration => {
-      const card = document.createElement('div');
-      card.className = 'integration-card';
-      card.innerHTML = `
-        <div class="integration-card-header">
-          <div class="integration-card-title">
-            <div class="integration-card-badge">${integration.framework}</div>
-            <div>${integration.title}</div>
-          </div>
-        </div>
-        <div class="integration-card-body">
-          <p class="integration-card-description">${integration.description}</p>
-
-          <div class="integration-card-details">
-            <div class="integration-detail-item">
-              <span class="integration-detail-label">Installation:</span>
-              <span class="integration-detail-value">${integration.installation}</span>
-            </div>
-            <div class="integration-detail-item">
-              <span class="integration-detail-label">Placement:</span>
-              <span class="integration-detail-value">${integration.placement}</span>
-            </div>
-          </div>
-
-          <div class="integration-code-box">
-            <div class="integration-code-title">Code Example:</div>
-            <pre>${integration.codeSnippet}</pre>
-          </div>
-
-          <div class="integration-verification">
-            <span class="integration-detail-label">Verification:</span>
-            <span class="integration-detail-value">${integration.verification}</span>
-          </div>
-        </div>
-      `;
-      integrationsGrid.appendChild(card);
-    });
-  }
-
-  function showAllIntegrations() {
-    renderIntegrations('all');
-
-    // Update active button
-    filterButtons.forEach(btn => btn.classList.remove('active'));
-    document.querySelector('[data-filter="all"]').classList.add('active');
-  }
-
-  // Filter button event listeners
-  filterButtons.forEach(button => {
-    button.addEventListener('click', function() {
-      const filter = this.getAttribute('data-filter');
-
-      // Update active button
-      filterButtons.forEach(btn => btn.classList.remove('active'));
-      this.classList.add('active');
-
-      // Render filtered integrations
-      renderIntegrations(filter);
-    });
-  });
-
-  // Initial render
-  renderIntegrations();
-});
+/* The vanilla Integration Guides renderer lived here — its own `integrations`
+   array of five frameworks, renderIntegrations, showAllIntegrations and the
+   filter-button listeners, about 135 lines. It was unreachable by construction:
+   it wrote into #integrations-grid, and that element is not in the document
+   (the view is React-backed and mounts into integrations-react-root), so its
+   guard returned on every page load. It was also a second copy of a view that
+   IntegrationsLibrary.tsx implements — and a worse one: its five cards named
+   five packages that do not exist, none of which the React copy named, which is
+   how one view came to tell two different stories about how to install this.
+   Deleted rather than kept against a return, for the same reason the vanilla
+   thresholds form and the vanilla history renderer were deleted. One copy
+   cannot drift from itself. */
 
 // Add navigation to integration library
 window.showIntegrationsLibrary = function() {
