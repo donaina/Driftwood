@@ -15,6 +15,56 @@ The backend team changes a database column type or schema payload without notify
 
 ---
 
+## Try it in two minutes
+
+You do not need an API of your own, an account, or an API key. Driftwood ships a mock
+endpoint with a baseline already seeded for it, so a fresh clone can watch a real
+breaking change run through the real diff engine.
+
+You need **Go 1.25 or newer** and **Node 20.19 or newer** (22 recommended) to build.
+The Go side has no external dependencies, so `go build` needs no module downloads.
+
+```bash
+git clone https://github.com/donaina/Driftwood.git
+cd Driftwood
+make build     # installs frontend deps, builds the dashboard, then the binary
+./drift --target http://localhost:3000
+```
+
+That target does not have to exist — the demo endpoint is served by Driftwood itself
+and is intercepted before any dial, so nothing is ever sent to it. Naming one is what
+tells Driftwood the setup is finished, so it skips the first-run wizard and connects
+its live update stream. Started with no `--target` at all, Driftwood assumes
+`http://localhost:3000` anyway, but still shows the wizard — and until you dismiss it,
+the alert counter stays at zero and no toast appears, because the stream that drives
+them has not opened yet.
+
+Open **http://localhost:8787/_driftwood/** and use the **Contract Drift Simulator**
+panel in the left sidebar:
+
+| Click | What happens |
+| --- | --- |
+| **Normal Baseline** | The healthy response. Status `MATCH`, no alert. |
+| **Type Mismatch** | `id` changes from `99812` to `"usr_99812"`. Status `BREAKING`, alert on `$.id`. |
+| **Missing Field** | `email` disappears. Status `BREAKING`, alert on `$.email`. |
+| **Null Violation** | `email` becomes `null`. Status `BREAKING`. |
+| **Added Field** | A new key appears. Status `MATCH` — additive changes are tracked but never alerted on. |
+
+Each button changes the mock endpoint's shape and then calls it, so the response is
+diffed against the seeded baseline exactly as your own traffic would be. The breaking
+ones raise a real alert: the counter at the top of the page increments, a toast
+appears, and the record lands in **Contract Alerts** — click the counter to open that
+view. Nothing here is staged for the demo; it is the same diff path a real request
+takes.
+
+One thing that surprises people: the **Trigger Test Payload** button in the header
+re-sends the *current* mode rather than changing it, so pressing it repeatedly shows
+you the same response. Use the sidebar buttons to switch modes.
+
+To point Driftwood at an API of your own instead, see [Quick Start](#quick-start).
+
+---
+
 ## Features
 
 - **Real-Time Traffic Sniffer**: Intercepts HTTP/JSON requests and responses without modifying payload data.
@@ -29,7 +79,7 @@ The backend team changes a database column type or schema payload without notify
 - **TypeScript Type Exporter**: Generates `.d.ts` interface definitions directly from your baseline schemas.
 - **JavaScript & Node.js Native Support**: Installable via `npx` / `npm`, with a module that starts and stops the proxy from a Node process.
 - **Embedded Web Dashboard**: Native single-binary web interface at `http://localhost:8787/_driftwood/` with real-time SSE updates.
-- **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Missing Field`, `Null Violation`) that drive the mock endpoint through a real breaking change, so you can watch an alert arrive end to end.
+- **Built-in Contract Simulator**: 1-click test triggers (`Type Mismatch`, `Missing Field`, `Null Violation`) that drive the mock endpoint through a real breaking change, so you can watch an alert arrive end to end — see [Try it in two minutes](#try-it-in-two-minutes).
 - **Persistent Contract Storage**: Saved baseline contracts persist across restarts in `~/.driftwood/baselines.json`.
 
 ---
