@@ -1,5 +1,20 @@
 import React, { useMemo } from 'react';
-import { Button, DownloadIcon, LockIcon, Panel, PanelTitle } from './ui';
+import { Button, LockIcon, Panel, PanelTitle } from './ui';
+import VersionComparison from './VersionComparison';
+
+/* One node of an inferred or declared schema, tagged the way pkg/types/types.go
+   serialises JSONSchemaNode. It is recursive, and `sample_value` is deliberately
+   `unknown`: the store strips per-field sample values before persisting, so
+   anything this side reads out of it would be a value the API does not send. */
+export interface JSONSchemaNode {
+  type: string;
+  nullable?: boolean;
+  properties?: Record<string, JSONSchemaNode>;
+  item_schema?: JSONSchemaNode;
+  sample_value?: unknown;
+  required_keys?: string[];
+  format?: string;
+}
 
 /* The wire type, spelled the way `/_driftwood/api/histories` actually
    serialises it. pkg/types/types.go tags EndpointHistory and ContractBaseline
@@ -17,6 +32,14 @@ export interface HistoryItem {
     version: number;
     created_at: string;
     sample_payload: string;
+    /* The shape this version captured. It is on every version the API sends —
+       TestHistoriesCarryEachVersionsSchema pins that — and it is what
+       `/_driftwood/api/histories/diff` compares, which is why the comparison
+       panel can exist at all. Declared rather than ignored because a wire type
+       that describes only the fields one screen happens to read is how the
+       PascalCase bug above survived: nothing in this file could tell a field
+       that was missing from a field that was never there. */
+    schema?: JSONSchemaNode;
     /* Where this version came from: 'auto' when Driftwood captured it from live
        traffic, 'manual' when a human accepted or confirmed it, 'openapi' when it
        came from an imported spec. Absent on baselines written before the field
@@ -126,7 +149,6 @@ interface EndpointHistoryProps {
   selectedVersionsMap: Map<string, number[]>;
   onToggleVersionSelection: (endpointKey: string, version: number) => void;
   onClearVersionSelection: (endpointKey: string) => void;
-  onExportTimeline: (format: string, endpointKey: string) => void;
   onToggleLock: (history: HistoryItem, version: number, lock: boolean) => void;
   onConfirm: (history: HistoryItem, version: number) => void;
 }
@@ -168,7 +190,6 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
   selectedVersionsMap,
   onToggleVersionSelection,
   onClearVersionSelection,
-  onExportTimeline,
   onToggleLock,
   onConfirm,
 }) => {
@@ -180,9 +201,10 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
-    // Nothing here is invented. The backend does not yet report what changed
-    // between two versions, so changeType and stabilityScore stay undefined and
-    // the node renders an em-dash rather than a number.
+    // Nothing here is invented. A node has no per-version change type, because
+    // the diff is between two versions somebody picks rather than something
+    // computed for every node on the way past — so changeType and stabilityScore
+    // stay undefined and the node renders its state symbol rather than a number.
     //
     // This previously drew both from Math.random(): a changeType picked from a
     // three-element array and a stability score of 0.5 + random() * 0.5, which
@@ -192,8 +214,11 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
     // render.
     return sortedVersions.map((version, index) => {
       // The first version has nothing before it to differ from, so its
-      // description is a fact rather than a guess. Everything after it is
-      // genuinely unknown, and says so.
+      // description is a fact rather than a guess. Everything after it says
+      // where the answer is, which used to be "Change details not captured yet"
+      // — true when the only diff engine lived in the proxy and the dashboard
+      // had no route to it, and a lie once the comparison panel below started
+      // reading the same one.
       const isFirst = index === 0;
 
       return {
@@ -201,7 +226,7 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
         changeType: undefined,
         changeDescription: isFirst
           ? 'Initial version'
-          : 'Change details not captured yet',
+          : 'Select two versions to compare them',
         stabilityScore: undefined,
       };
     });
@@ -511,15 +536,14 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
           <PanelTitle className="min-w-0">
             Contract Evolution Timeline
           </PanelTitle>
+          {/* PNG and SVG sat here and drew a download icon each, and pressing
+              either one raised a toast saying export was planned for a future
+              update. Two buttons that announce their own uselessness are the
+              same lie as the paragraph this view used to carry about the
+              backend, in a smaller box. Export is deferred, so the buttons are
+              gone until it exists — the timeline is the thing on screen, and a
+              screenshot of it is what a person does today. */}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => onExportTimeline('png', endpointKey)}>
-              <DownloadIcon />
-              PNG
-            </Button>
-            <Button size="sm" onClick={() => onExportTimeline('svg', endpointKey)}>
-              <DownloadIcon />
-              SVG
-            </Button>
             <Button size="sm" onClick={() => onClearVersionSelection(endpointKey)}
             >
               Clear Selection
@@ -567,20 +591,21 @@ const EndpointHistory: React.FC<EndpointHistoryProps> = ({
         )}
       </div>
 
+      {/* One click into a two-click action used to say nothing at all. The node
+          carries `cursor-help` and a tooltip about the version, and the only
+          thing that reveals a node is a selection target is clicking one and
+          finding out — which is how a working feature goes on reading as a
+          broken one. */}
+      {selectedVersions.length === 1 && (
+        <p className="mt-6 text-sm text-text-muted">
+          v{selectedVersions[0]} selected — select a second version to compare
+          them.
+        </p>
+      )}
+
       {selectedVersions.length === 2 && (
         <div className="mt-6">
-          <Panel pad="sm">
-            <PanelTitle className="mb-2">
-              Version Comparison
-            </PanelTitle>
-            <p className="text-text-muted">
-              Comparing versions {selectedVersions[0]} and {selectedVersions[1]}
-            </p>
-            <p className="mt-2 text-xs text-text-muted">
-              Detailed diff view would be shown here in a full implementation.
-              This would require enhanced backend API to provide version-to-version diff data.
-            </p>
-          </Panel>
+          <VersionComparison history={history} selected={selectedVersions} />
         </div>
       )}
     </Panel>

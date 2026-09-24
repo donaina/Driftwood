@@ -91,14 +91,19 @@ copied back into the product as though it were a description of it.
 
 - Timeline of baseline versions, each with its change description and a
   shape-and-colour status node (the §4 alphabet, not colour alone) — shipped
-- Selecting two versions renders a **Version Comparison** panel — shipped
+- Selecting two versions renders a **Version Comparison** panel — **shipped
+  2026-09-24.** Until then the panel said the feature "would require enhanced backend API",
+  which had stopped being true the moment the proxy grew `diff.CompareSchemas`: every version
+  in `/api/histories` already carried its schema. It now reads
+  `GET /_driftwood/api/histories/diff` and lists the deltas, from that same engine rather than
+  a second one written for the dashboard — two implementations would be two answers to the one
+  question this product exists to answer.
 - Contract-stability sparkline across observed requests — shipped
-- **PNG/SVG export — NOT shipped.** Both buttons are on screen, and `handleExportTimeline`
-  (`HistoryView.tsx`) is a placeholder that toasts *"Export for X is planned for a future
-  update."* It does not claim a file was written, which is what separates this from the
-  deleted thresholds form — but the buttons themselves promise an artifact that does not
-  exist, and they are the one soft spot in an otherwise honest view. Either wire them or take
-  them off the screen.
+- **PNG/SVG export — NOT shipped, and off the screen as of 2026-09-24.** The two buttons and
+  `handleExportTimeline` are gone. The toast did not claim a file was written, which is what
+  separated this from the deleted thresholds form — but the buttons themselves promised an
+  artifact that does not exist, and a control whose only effect is a message about the future
+  is the same claim as the paragraph the Version Comparison panel used to carry.
 
 **Features:**
 - Timeline view showing baseline versions and when changes occurred
