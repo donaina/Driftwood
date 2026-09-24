@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/donaina/driftwood/internal/netguard"
 	"github.com/donaina/driftwood/pkg/types"
 )
 
@@ -126,15 +129,99 @@ func readFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-func LoadFromURL(url string) (*OpenAPISpec, error) {
-	resp, err := http.Get(url)
+// These bound the one outbound request this package makes. The request used to
+// be a bare http.Get, which has no timeout at all — a server that accepts the
+// connection and then says nothing holds `drift import` open until the operator
+// gives up — and an unbounded io.ReadAll, so the response body, not the spec,
+// decided how much memory the command used.
+const (
+	// Generous by an order of magnitude: the largest OpenAPI documents in the
+	// wild are a few megabytes, and this is a limit on what a hostile or broken
+	// server can do to this process rather than a judgement about specs.
+	maxSpecBytes = 32 << 20
+	// Go's default policy follows ten hops. Five is already more than a spec URL
+	// legitimately needs, and every hop has to stay on the origin host anyway.
+	maxSpecRedirects = 5
+)
+
+// specFetchTimeout is a var rather than a const so a test can shrink it. There
+// is no clock abstraction anywhere in this repo — the same reason
+// webhook.backoffSchedule is a var — and without a seam the only way to test
+// that this request has a deadline at all is to wait thirty seconds for one
+// that does not. The deadline is the point: the request this replaced was a
+// bare http.Get, which has none.
+var specFetchTimeout = 30 * time.Second
+
+// sameHostRedirects refuses a redirect that leaves the host the operator named.
+//
+// Go's default policy follows up to ten redirects to anywhere, which turns one
+// operator-named URL into a request to a host nobody named. That is the same
+// opening the webhook deliverer closes by refusing redirects outright, but this
+// caller is different in a way that changes the right answer: a spec URL that
+// upgrades http:// to https:// on the same host is ordinary and works, and the
+// operator is sitting in front of the error if we refuse it.
+//
+// So the rule is narrower here rather than absent: the URL may redirect to
+// itself, not to somebody else. The origin host is the one ParseAndValidate
+// already judged, so staying on it means no hop reaches a host that was never
+// checked.
+func sameHostRedirects(origin string) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxSpecRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxSpecRedirects)
+		}
+		if req.URL.Host != origin {
+			return fmt.Errorf("redirects to %q, which is not %q — fetch that URL directly if you meant it", req.URL.Host, origin)
+		}
+		return nil
+	}
+}
+
+// LoadFromURL fetches an OpenAPI document over the network.
+//
+// This is an operator command, not a request that arrived over the wire: the
+// address came from a flag the operator typed on their own machine, so
+// allowPrivate is true and ParseAndValidate judges the URL's shape rather than
+// its reachability. That is the same reading of the same rule that lets
+// `--target` point at http://localhost:3000 — see netguard.IsBlockedHost.
+func LoadFromURL(raw string) (*OpenAPISpec, error) {
+	parsed, err := netguard.ParseAndValidate(raw, true)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{
+		Timeout: specFetchTimeout,
+		Transport: &http.Transport{
+			DialContext:           netguard.DialContext(&net.Dialer{Timeout: 5 * time.Second}, true),
+			TLSHandshakeTimeout:   5 * time.Second,
+			ResponseHeaderTimeout: specFetchTimeout,
+			IdleConnTimeout:       30 * time.Second,
+		},
+		CheckRedirect: sameHostRedirects(parsed.Host),
+	}
+
+	resp, err := client.Get(parsed.String())
 	if err != nil {
 		return nil, fmt.Errorf("fetch URL: %w", err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+
+	/* A 404 or an error page otherwise reaches LoadFromBytes and comes back as
+	   "invalid character '<' looking for beginning of value", which describes
+	   the symptom and not the cause. */
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch URL: %s answered %s", parsed.Host, resp.Status)
+	}
+
+	// One byte past the cap, so a body exactly at the limit is accepted and one
+	// over it is reported rather than silently truncated into a parse error.
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSpecBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if len(data) > maxSpecBytes {
+		return nil, fmt.Errorf("fetch URL: response from %s exceeds %d bytes", parsed.Host, maxSpecBytes)
 	}
 	return LoadFromBytes(data)
 }
