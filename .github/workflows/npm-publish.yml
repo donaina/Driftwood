@@ -16,14 +16,24 @@ jobs:
         with:
           node-version: '22.x'
           registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: |
+            frontend-react/package-lock.json
+            site/package-lock.json
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
 
-      - name: Run Go tests
-        run: go test ./...
+      # The gate, not a subset of it. This step used to be `go test ./...` — no
+      # -race, no vet, no gofmt, and nothing at all about the frontend, so a
+      # publish could go out with an unformatted tree or a dashboard that does
+      # not build. `npm publish` runs prepack as well, which rebuilds both apps
+      # and asserts their entry files exist; this runs first so a broken tree
+      # fails before anything reaches the registry.
+      - name: Verify
+        run: make verify
 
       - name: Publish to NPM
         run: npm publish --access public

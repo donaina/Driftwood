@@ -7,7 +7,7 @@
     "drift": "bin/drift.js"
   },
   "scripts": {
-    "prepack": "npm --prefix frontend-react ci && npm --prefix frontend-react run build && chmod +x bin/drift.js bin/install.js",
+    "prepack": "node ./bin/prepack.js",
     "postinstall": "node ./bin/install.js",
     "start": "node ./bin/drift.js",
     "test": "go test ./..."
@@ -25,13 +25,22 @@
     "cmd",
     "internal",
     "pkg",
-    "site",
+    "tests",
     "web",
+    "site",
+    "frontend-react",
+    "ai",
+    "docs",
     "index.js",
     "index.d.ts",
     "go.mod",
+    "Makefile",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "!**/node_modules",
+    "!frontend-react/dist",
+    "!ai/dist",
+    "!bin/drift-bin*"
   ],
   "keywords": [
     "driftwood",
