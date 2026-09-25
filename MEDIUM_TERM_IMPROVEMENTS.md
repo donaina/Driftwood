@@ -292,47 +292,64 @@ operator would feel first:
   is the one place severity hues appear here, and correctly: a failed delivery *is* a
   broken thing. `DESIGN.md`'s ban on decorative severity colour is unchanged.
 
-### 7. Custom Alert Thresholds — NOT BUILT (the last unrouted component)
+### 7. Custom Alert Thresholds — SHIPPED 2026-09-25
 **Goal:** Allow teams to define what constitutes breaking vs non-breaking changes for their context.
 
-**Status (2026-09-23).** Nothing behind this exists, and §6 shipping did not change that — it
-changed the *reason* this is unrouted, which is worth stating because it used to be shared.
-The shell's doctrine comment at `web/index.html:1528-1542` now records the split: webhooks is
-routed because a backend exists, and thresholds "stays out of this table until that changes,
-for its own reason rather than by association."
+**Status (2026-09-25).** Shipped, and the goal as worded did not survive contact with the engine.
+A project now has an **alert floor per delta kind**: the least severe difference of that kind that
+raises an alert. `GET`/`POST /_driftwood/api/thresholds` read and write it, it is persisted per
+project in `baselines.json` (`storeVersion` 4), and — the part that makes it real —
+`store.AddTraffic` reads it to decide whether an alert exists at all. Before this, that decision was
+the literal `HasBreakingChanges || HasWarnings` and the screen configured five severities that
+nothing read.
 
-The shell's settings form was
-deleted; `saveThresholdConfig` showed "Custom alert thresholds have been saved."
-over an empty function body, and the thresholds it collected were read by
-nothing, in either the shell or the Go diff engine. There is no threshold
-support anywhere in the Go source. `switchTab` deliberately does not route to
-thresholds and `CustomAlertThresholds.tsx` collects severities that no code
-reads, so a nav entry would put a screen in front of the user whose buttons lie.
+**What the original proposal got wrong, and why:**
 
-The component itself was **not** deleted — it ships in the bundle, unrouted, and
-still toasts "Thresholds Saved / Custom alert thresholds have been saved." over a
-no-op. It is **kept on purpose**, as the one screen left waiting on a backend that
-does not exist; §6's component waited the same way and stopped waiting when its
-backend arrived. The feature list below is the original proposal, not a
-description of the product.
+- **"Define what constitutes breaking vs non-breaking"** is not something a config can do. Severity
+  is a measurement: `BREAKING` means a promise the baseline made was broken. A setting able to
+  relabel a delta would let the dashboard show `MATCH` beside a `BREAKING` one, and would make the
+  README's severity table describe something other than what the engine does. A floor decides what
+  *reaches* you, never what a change *is*.
+- **Five rows became seven.** The engine emits seven delta kinds and the old five did not partition
+  them: "Added/Removed Fields" configured the same kind as "Required → Optional Fields" above it,
+  and **"Header changes" configured no kind at all** — headers are recorded on traffic and never
+  diffed, and none of the seven kinds is a header. That row is gone rather than backed, because
+  backing it means writing a header comparison and an eighth kind, which is a feature and not a
+  backend for a row.
+- **The three preset names survive; their meanings moved.** "Strict" used to mean "treat every
+  change as breaking", which asks a config to overwrite a measurement. It now means the lowest
+  floor (alert on everything), and "Lenient" the highest (alert only on breaks). The preset is
+  *derived* from the floors rather than stored beside them, so a name cannot disagree with what it
+  describes.
 
 **Features:**
-- Configure severity levels per change type:
+- Configure severity levels per change type — **shipped**, one row per engine kind:
   - Type changes (int → string)
-  - Required → optional fields
-  - Added/removed fields
+  - Removed fields
+  - Added fields
+  - Nullability changes
+  - Array item type changes
+  - Format changes
   - Status code changes
-  - Header changes
-- Per-endpoint overrides
-- Baseline comparison mode (strict vs lenient)
-- Preset configurations: "Strict", "Recommended", "Lenient"
+- Per-endpoint overrides — **not built.** The floor is per project. A per-endpoint floor is
+  defensible but it is a second dimension on a config with no UI for it, and the store has no
+  per-endpoint config of any kind today.
+- Baseline comparison mode (strict vs lenient) — **shipped** as the presets.
+- Preset configurations: "Strict", "Recommended", "Lenient" — **shipped**, and served with their
+  floors so the dashboard never expands a preset name itself.
 
 **Implementation:**
-- New `/settings` → "Thresholds" section
-- Table-based configuration with mono font for JSON paths
-- Toggle switches using accent-primary (see the note in §6)
-- Reset to defaults button
-- Explanation tooltips for each option
+- `GET`/`POST /_driftwood/api/thresholds`, not `/settings` — the settings route is the install-level
+  proxy config, and a floor is one project's.
+- Table-based configuration, one row per kind, in the engine's own kind order.
+- Preset cards, plus a "Custom" card that is **not** a button: custom is what the floors amount to
+  when they are not one preset applied uniformly, which is a reading and not a choice.
+- Save reports the real outcome, on a per-panel error line rather than by replacing the view.
+
+**What the floor deliberately does not reach.** The proxy's live `alert` frame — the one that raises
+a toast — still fires on `HasBreakingChanges` alone. A floor lowered to `INFO` widens the alert log
+and what webhooks deliver; it does not make informational changes interrupt anybody. The two were
+already separate conditions and this keeps them that way, with the README saying so.
 
 ### 8. Multi-Tenant View (Agency Mode) — PARTIAL, and not multi-tenant
 **Goal:** Enable agencies/freelancers to monitor multiple client APIs from one dashboard.
@@ -379,7 +396,7 @@ All proposed improvements should follow the existing Driftwood design system:
 
 ## Implementation Approach
 
-These improvements can be implemented incrementally, with each as its own PR following the established pattern. **Read each item's Status block before starting it** — most have shipped in part or in full, and only one (§7) still has no backend at all.
+These improvements can be implemented incrementally, with each as its own PR following the established pattern. **Read each item's Status block before starting it** — most have shipped in part or in full, and the three that have not (§2's mock-simulator loader, §3's export buttons, §5) are each waiting on machinery that does not exist rather than on wiring.
 
 1. **Setup Wizard** - Shipped as a view, not a route. See §1.
 2. **Scenario Library** - Shipped as a catalogue. The mock-simulator integration (the "Load Scenario" loader) did not ship and is not a stale-branch fix; it needs a shell↔React bridge that does not exist. See §2.
@@ -387,7 +404,7 @@ These improvements can be implemented incrementally, with each as its own PR fol
 4. **Integration Guides** - Shipped. See §4.
 5. **Export & Reporting** - Not built; the remaining half of Phase 5, and it reuses §6's deliverer rather than growing a second outbound path. See §5.
 6. **Webhook Integrations** - **Shipped**: SSRF guard extraction, persisted per-project config, a real outbound POST with retry, delivery records, a synchronous test route, a routed Alert Delivery view, and HMAC signing for the generic kind. See §6 for what was deliberately left out.
-7. **Custom Alert Thresholds** - Not built; the last item with no backend. Its `CustomAlertThresholds.tsx` is still unrouted for the reason recorded in the shell, and the shell's doctrine comment now distinguishes the two cases. See §7.
+7. **Custom Alert Thresholds** - **Shipped**: a per-kind alert floor persisted per project, `GET`/`POST /_driftwood/api/thresholds`, read by `store.AddTraffic` to decide whether an alert exists, and a routed Alert Thresholds view. The five rows became seven — one per delta kind — because "Header changes" configured no kind the engine emits. See §7.
 8. **Multi-Tenant View** - Project switching + per-project state isolation (partial; see §8)
 
 Each should include:

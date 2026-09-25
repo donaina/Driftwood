@@ -779,26 +779,40 @@ func (p *Proxy) processAndStoreTraffic(
 
 	capture.SanitizeTraffic(&traffic)
 
-	// The store decides whether an alert exists — HasBreakingChanges ||
-	// HasWarnings — and hands back the one it raised. Restating that condition
-	// here is what would let the delivered set and the stored set drift apart.
+	// The store decides whether an alert exists — its per-kind floor, which the
+	// dashboard configures and AddTraffic reads — and hands back the one it
+	// raised. Restating that condition here is what would let the delivered set
+	// and the stored set drift apart, and it is why the floor is not consulted on
+	// this side at all.
 	alert := p.store.AddTraffic(projectID, traffic)
 	p.hub.Publish(projectID, "traffic", traffic)
 
 	if alert != nil {
-		/* Deliveries go to breaking changes *and* warnings, which is the store's
-		   condition rather than the SSE one below. The two are not the same thing
-		   and should not be: the "alert" frame is an interrupt that raises a
-		   toast, deliberately narrower; a webhook is a record, like the alert log
-		   the dashboard renders. Delivering breaking-only would mean an operator
-		   sees a WARNING on screen that was never sent anywhere, with nothing
-		   saying why.
+		/* Deliveries go to whatever crossed the project's floor, which is the
+		   store's condition rather than the SSE one below. The two are not the
+		   same thing and should not be: the "alert" frame is an interrupt that
+		   raises a toast, deliberately narrower; a webhook is a record, like the
+		   alert log the dashboard renders. Delivering only the breaks would mean
+		   an operator sees a WARNING on screen that was never sent anywhere, with
+		   nothing saying why.
+
+		   The floor is the reason this reads `alert != nil` and never re-derives
+		   the condition. An install can lower its floor to INFO; this branch
+		   follows that without knowing what it is.
 
 		   One non-blocking send. Nothing on this path dials, and nothing on the
 		   proxied request's clock waits on the deliverer. */
 		p.delivery.Enqueue(projectID, *alert)
 	}
 
+	/* Breaking changes only, and deliberately not the configured floor.
+
+	   The floor answers "what should be recorded and sent", and a project that
+	   lowers it to INFO gets informational changes in its alert log and its
+	   webhooks. This frame is a different question: it interrupts the dashboard
+	   mid-request to raise a toast, and only a broken promise earns that. An
+	   operator who set a low floor asked for a record, not to be tapped on the
+	   shoulder every time a response gains a field. */
 	if contractDiff != nil && contractDiff.HasBreakingChanges {
 		alertData := map[string]interface{}{
 			"traffic_id":      traffic.ID,

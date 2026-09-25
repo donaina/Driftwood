@@ -912,13 +912,14 @@ func TestAlertDeliveryDoesNotWaitOnTheReceiver(t *testing.T) {
 /*
 A warning is delivered, not only a break.
 
-	The store raises an alert for HasBreakingChanges || HasWarnings, and the shell
-	says so in its own words — "Only BREAKING and WARNING alerts are ever stored".
-	The SSE "alert" frame is deliberately narrower, breaking only, because it is an
-	interrupt channel. A webhook is a record channel, like the alert log, so
-	delivering breaking-only would mean an operator sees a WARNING on screen that
-	was never sent anywhere, with nothing saying why. This pins that decision where
-	a later narrowing would have to break it.
+	The store raises an alert for whatever crosses the project's alert floor —
+	BREAKING or WARNING at the default, and anything at all if the dashboard
+	lowers it. The SSE "alert" frame is deliberately narrower, breaking only,
+	because it is an interrupt channel rather than a record one. A webhook is a
+	record channel, like the alert log, so delivering breaking-only would mean an
+	operator sees a WARNING on screen that was never sent anywhere, with nothing
+	saying why. This pins that decision where a later narrowing would have to
+	break it.
 */
 func TestAWarningOnlyChangeIsDelivered(t *testing.T) {
 	isolateHome(t)
