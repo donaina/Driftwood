@@ -154,7 +154,12 @@ func TestEveryNavItemHasADestination(t *testing.T) {
 // Install-level routes are deliberately absent — /api/config, /api/setup-state,
 // /api/projects and /api/mock/* answer the same thing whichever project is
 // active, so a component that reads only those has nothing to re-read.
-var projectScopedRoute = regexp.MustCompile(`/_driftwood/api/(histories|baselines|traffic|alerts|export|webhooks)`)
+//
+// Thresholds was added here in the same change that introduced its route. It is
+// per project — a floor belongs to one client's contract — so a component that
+// reads it is reading project state by definition, and leaving it out of this
+// pattern would have been the matcher quietly deciding the new view was exempt.
+var projectScopedRoute = regexp.MustCompile(`/_driftwood/api/(histories|baselines|traffic|alerts|export|webhooks|thresholds)`)
 
 // TestProjectScopedViewsHearAboutProjectChanges checks the one signal that makes
 // a React view re-read when the active project moves.

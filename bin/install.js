@@ -95,6 +95,10 @@ async function downloadChecksums(version) {
   });
 }
 
+/* Returns true only when a runnable binary is on disk afterwards. It used to
+   return nothing that anyone read, so the no-Go path printed an explanation and
+   then exited 0 — `npm install -g` reported success having installed nothing,
+   and the first `drift` said "spawn go ENOENT". The caller now acts on this. */
 async function install() {
   const binary = getBinaryName();
   if (!binary) {
@@ -107,7 +111,7 @@ async function install() {
 
   if (fs.existsSync(localBinaryPath)) {
     console.log('[driftwood] Prebuilt binary already exists at:', localBinaryPath);
-    return;
+    return true;
   }
 
   const downloadUrl = `https://github.com/${REPO}/releases/download/v${VERSION}/${binary.remoteName}`;
@@ -135,9 +139,10 @@ async function install() {
       fs.chmodSync(localBinaryPath, 0o755);
     }
     console.log('[driftwood] Prebuilt binary installed successfully!');
+    return true;
   } catch (err) {
     console.warn(`[driftwood] Could not download prebuilt binary (${err.message}). Attempting fallback to local Go build...`);
-    tryBuildFromSource();
+    return tryBuildFromSource();
   }
 }
 
@@ -152,8 +157,9 @@ function hasGoToolchain() {
 
 function tryBuildFromSource() {
   if (!hasGoToolchain()) {
-    console.log('[driftwood] No Go toolchain found, so the binary cannot be built here.');
-    console.log('[driftwood] Install Go 1.25 or newer (https://go.dev/dl/) and reinstall, or download a release binary.');
+    console.error('[driftwood] Step "build from source" cannot start: neither a prebuilt binary nor a Go toolchain is available.');
+    console.error('[driftwood] Install Go 1.25 or newer (https://go.dev/dl/) and reinstall, or install a release binary from:');
+    console.error(`[driftwood]   https://github.com/${REPO}/releases`);
     return false;
   }
 
@@ -171,9 +177,12 @@ function tryBuildFromSource() {
     // first and only then report the build. Collapsing both into one "Go is not
     // installed" message hid the real cause — a missing web/dist, which
     // //go:embed makes fatal, was reported as a missing Go installation.
-    console.error('[driftwood] go build failed. The output above is from the Go toolchain.');
-    console.error('[driftwood] The dashboard must be built before the binary that embeds it:');
+    console.error('[driftwood] Step "build from source" failed: `go build ./cmd/drift` exited non-zero.');
+    console.error('[driftwood] The output above is from the Go toolchain.');
+    console.error('[driftwood] The dashboard and the site are both embedded, so both must be built first.');
+    console.error('[driftwood] In a checkout, `make build` does it; by hand, it is:');
     console.error('[driftwood]   npm --prefix frontend-react ci && npm --prefix frontend-react run build');
+    console.error('[driftwood]   npm --prefix site ci && npm --prefix site run build');
     return false;
   }
 
@@ -184,4 +193,19 @@ function tryBuildFromSource() {
   return true;
 }
 
-install();
+/* A postinstall that fails has to fail. npm reads this process's exit code, so
+   exiting 0 here is what made `npm install -g @donaina/driftwood` print success
+   on a machine where no binary was installed and no Go toolchain existed. The
+   rejection handler is not decoration either: an async function called like this
+   would otherwise report the failure as an unhandled rejection. */
+install()
+  .then((ok) => {
+    if (!ok) {
+      console.error('[driftwood] Installation finished without a runnable binary. Nothing was installed.');
+      process.exit(1);
+    }
+  })
+  .catch((err) => {
+    console.error(`[driftwood] Installation failed: ${err && err.message ? err.message : err}`);
+    process.exit(1);
+  });

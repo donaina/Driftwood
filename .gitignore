@@ -74,6 +74,12 @@ ai/dist/
 # internal/storage/storage_test.go.bak{,2}), and untracked copies kept reaching
 # the npm tarball — the package ships whole directories, so anything sitting in
 # one is published, and npm's `files` array overrides .npmignore.
+#
+# Still true of the directories package.json's `files` names, now that it names
+# them with `!**/node_modules` rather than shipping them raw: the exclusions are
+# a short list of prefixes, not a filter, so a stray file inside cmd/ or site/
+# is published whatever its extension. Ignoring it here is what keeps it off the
+# tarball, since `files` overrides this file and not the other way round.
 *.bak
 *.bak[0-9]
 *.backup

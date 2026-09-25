@@ -30,7 +30,13 @@ import (
 // does not know, and rewrite the document without it on the next baseline save —
 // silently dropping a configured URL and its signing secret. Refusing to read a
 // version this build does not write is loud; that is not.
-const storeVersion = 3
+//
+// v4 added per-project alert thresholds, and the bump is for exactly that
+// reason again: a v3 build would drop a configured floor the same silent way,
+// and a dropped floor is worse than a dropped URL. It does not stop alerts; it
+// quietly changes which changes alert, and the operator has nothing on screen
+// that says the setting went away.
+const storeVersion = 4
 
 // minReadableVersion is the oldest document this build will open.
 //
@@ -101,6 +107,21 @@ type persistedState struct {
 	   until the feature is used; omitempty keeps those documents byte-identical
 	   to what v2 wrote apart from the version. */
 	Webhooks map[string]map[string]types.WebhookConfig `json:"webhooks,omitempty"`
+
+	/* What raises an alert, per project: projectID -> the floor in effect.
+
+	   One config per project rather than per kind, unlike Webhooks above, because
+	   the floors are saved by one form and read by one predicate. Four
+	   independently saveable cards need four configs; a seven-row table with one
+	   Save button needs one, and splitting it would let the rows disagree about
+	   which of them the last save covered.
+
+	   Absent for a project that has never opened the screen, which is every
+	   project until the feature is used. Absent is not "nothing alerts": the zero
+	   ThresholdConfig is the default floor, so those installs keep the behaviour
+	   they had before this key existed. omitempty keeps their documents
+	   byte-identical to what v3 wrote apart from the version. */
+	Thresholds map[string]types.ThresholdConfig `json:"thresholds,omitempty"`
 }
 
 type Store struct {
@@ -138,6 +159,17 @@ type Store struct {
 	   but accepted contracts. It also keeps this version bump a config-only
 	   migration. */
 	webhooks map[string]map[string]types.WebhookConfig
+
+	/* projectID -> the alert floor in effect for it.
+
+	   A missing key is not an error and not an empty setting: the zero
+	   ThresholdConfig is the default floor, so a read for a project that has never
+	   been configured answers the behaviour actually in force. This is also why
+	   ensureProjectLocked does not seed an entry per project the way it does for
+	   the maps above — a seeded zero entry would be written to disk for every
+	   project, turning "never configured" into a stored config that happens to
+	   equal the default. */
+	thresholds map[string]types.ThresholdConfig
 
 	/* Alerts are keyed by traffic ID rather than by project.
 
@@ -206,6 +238,76 @@ type Store struct {
 	   a baseline save persists, and doing it there would rebuild the snapshot once
 	   per proxied request. */
 	routingGen atomic.Uint64
+
+	/* What the file looked like the last time this process read or wrote it.
+
+	   Two processes on one store is the situation this exists for. `drift import`
+	   writes the same document the proxy writes; the proxy's next save serialises
+	   its own view; the import is gone, the file is still well-formed, and
+	   nothing reports it. Going through the running instance's API is the fix —
+	   see instance.go — and this is the backstop for the times that does not
+	   happen: an older build, a hand edit, an instance whose hint file the
+	   importer never saw.
+
+	   A warning rather than a merge. Which side wins is not decidable from the
+	   bytes: both documents are complete and neither records that the other
+	   exists, so a merge would silently choose, and silently choosing is the
+	   failure being fixed rather than a fix for it.
+
+	   Touched only from loadFromFile, which runs once before the store is shared,
+	   and from persistLocked, which every caller holds writeMx for. There is no
+	   concurrent access to guard. */
+	stamp    fileStamp
+	stampSet bool
+}
+
+// fileStamp is the pair that says whether a file is the one we last saw.
+//
+// Size as well as time because both are coarse in the ways that matter: a write
+// landing inside the filesystem's timestamp granularity is invisible to the time
+// alone, and every write here goes through a rename, so a same-size replacement
+// is a real possibility rather than a theoretical one.
+type fileStamp struct {
+	modTime time.Time
+	size    int64
+}
+
+func stampOf(path string) (fileStamp, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fileStamp{}, false
+	}
+	return fileStamp{modTime: fi.ModTime(), size: fi.Size()}, true
+}
+
+// noteForeignWriteLocked warns when the file has changed underneath this
+// process.
+//
+// It does not move the stamp. One foreign write warning once is a property of
+// rememberStampLocked running after the save that answers it — and a write that
+// fails leaves the file exactly as the other writer left it, so warning again
+// on the next attempt is the right answer rather than a repeat.
+//
+// The warning names the file, what happened, and what this save is about to do
+// to it. A message that only said "the store changed" would leave the operator
+// to work out whether their import had survived, which is the question they
+// have and the one this answers.
+func (s *Store) noteForeignWriteLocked() {
+	current, ok := stampOf(s.persistPath)
+	if !ok || !s.stampSet || current == s.stamp {
+		return
+	}
+	log.Printf("[Driftwood] %s changed on disk since this process last read or wrote it, so something else wrote it while this one was running — another Driftwood process, or an editor. This save replaces the file with this process's view, which does not include those changes. Anything added by the other writer is now lost. Run one instance at a time, or make the change through the running one.", s.persistPath)
+}
+
+// rememberStampLocked records the file as this process last saw it. The caller
+// must hold writeMx, or be the single-threaded load that runs before the store
+// is shared.
+func (s *Store) rememberStampLocked() {
+	if stamp, ok := stampOf(s.persistPath); ok {
+		s.stamp = stamp
+		s.stampSet = true
+	}
 }
 
 // markRoutingChangedLocked records that where requests go has changed. The
@@ -235,8 +337,7 @@ func (s *Store) RoutingGeneration() uint64 {
 // happen is the v1 behaviour, which was to discard this error with `_ =` and
 // start empty without mentioning it.
 func NewStore(targetURL, proxyPort string) (*Store, error) {
-	homeDir, _ := os.UserHomeDir()
-	persistDir := filepath.Join(homeDir, ".driftwood")
+	persistDir := PersistentDir()
 	_ = os.MkdirAll(persistDir, 0700)
 
 	now := time.Now()
@@ -266,6 +367,7 @@ func NewStore(targetURL, proxyPort string) (*Store, error) {
 			},
 		},
 		webhooks:     make(map[string]map[string]types.WebhookConfig),
+		thresholds:   make(map[string]types.ThresholdConfig),
 		projectOrder: []string{defaultProjectID},
 		active:       defaultProjectID,
 		config: types.ProxyConfig{
@@ -665,6 +767,69 @@ func (s *Store) DeleteWebhook(projectID, kind string) error {
 	return s.persistLocked()
 }
 
+// thresholdsForLocked returns the alert floor in effect for a project. The
+// caller must hold s.mu.
+//
+// A project with no stored config reads as the zero ThresholdConfig, whose
+// FloorFor answers DefaultFloor for every kind — the behaviour this store had
+// before the floor was configurable. That is the whole reason there is no
+// existence check here: the missing case and the configured-to-default case are
+// the same answer, so distinguishing them would only give the predicate a
+// branch that cannot change what it returns.
+func (s *Store) thresholdsForLocked(projectID string) types.ThresholdConfig {
+	return s.thresholds[projectID]
+}
+
+// GetThresholds returns the floor in effect for a project, which is the stored
+// config when there is one and the default when there is not.
+//
+// It answers with the config rather than with a (config, ok) pair for the reason
+// above: the dashboard renders the floors in force, and "no config saved" is not
+// a state it can draw differently from "a config equal to the default", because
+// the two raise the same alerts.
+func (s *Store) GetThresholds(projectID string) types.ThresholdConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.thresholdsForLocked(projectID)
+}
+
+// SetThresholds records a project's alert floor and writes it to disk.
+//
+// Validation is here as well as at the route because this is the function that
+// writes the document: a caller that skipped the route would otherwise be able
+// to store a floor for a kind nothing emits, which is a setting with no effect
+// and the shape of lie this feature exists to remove.
+func (s *Store) SetThresholds(projectID string, floors map[types.DiffKind]types.DiffSeverity) (types.ThresholdConfig, error) {
+	if err := types.ValidateFloors(floors); err != nil {
+		return types.ThresholdConfig{}, err
+	}
+
+	s.writeMx.Lock()
+	defer s.writeMx.Unlock()
+
+	s.mu.Lock()
+	if _, ok := s.projects[projectID]; !ok {
+		s.mu.Unlock()
+		return types.ThresholdConfig{}, fmt.Errorf("%w: %q", ErrNoSuchProject, projectID)
+	}
+
+	/* Copied rather than stored by reference. The caller's map is the request
+	   body's, and a map is a reference type: holding it would let a later
+	   mutation of the decoded value change what the store reports and what the
+	   next save writes, without going through this method or its lock. */
+	stored := make(map[types.DiffKind]types.DiffSeverity, len(floors))
+	for kind, floor := range floors {
+		stored[kind] = floor
+	}
+
+	cfg := types.ThresholdConfig{Floors: stored, UpdatedAt: time.Now()}
+	s.thresholds[projectID] = cfg
+	s.mu.Unlock()
+
+	return cfg, s.persistLocked()
+}
+
 // Routing returns what the proxy needs to resolve a request: which project is
 // active, and every project's target.
 //
@@ -977,6 +1142,18 @@ func hasConfirmedVersion(h *types.EndpointHistory) bool {
 // — HasBreakingChanges || HasWarnings — which is the store's, and a second copy
 // of a predicate is how the two come to disagree about which alerts exist.
 //
+// That condition is now the project's configured floor, read here and nowhere
+// else. It is still the store's to answer, and the proxy still does not restate
+// it: the caller is handed the alert or handed nothing.
+//
+// Note what the floor does *not* reach. The proxy publishes its live "alert"
+// frame — the interrupt that raises a toast — on HasBreakingChanges alone, which
+// the proxy's own comment argues should stay the narrower signal. A floor of
+// INFO therefore widens the alert log and what gets delivered, and leaves the
+// live interrupt exactly where it was. That is deliberate: the floor answers
+// "what should be recorded and sent", and an informational change is worth
+// filing without being worth interrupting somebody mid-request for.
+//
 // The returned alert is a value copy. The pointer that lives in s.alerts is
 // mutated by UpdateAlertAIExplanation when the sidecar answers, and a caller
 // holding the real thing would race with that; GetAlerts dereferences for the
@@ -1003,7 +1180,7 @@ func (s *Store) AddTraffic(projectID string, t types.CapturedTraffic) *types.Ale
 
 	var raised *types.Alert
 
-	if t.Diff != nil && (t.Diff.HasBreakingChanges || t.Diff.HasWarnings) {
+	if s.thresholdsForLocked(projectID).Crosses(t.Diff) {
 		alert := &types.Alert{
 			TrafficID:      t.ID,
 			Endpoint:       fmt.Sprintf("%s %s", t.Method, t.Path),
@@ -1574,18 +1751,53 @@ func (s *Store) stateForPersistLocked() *persistedState {
 		}
 	}
 
+	/* The same shape and the same reasoning as Webhooks above, with one
+	   difference: the floors inside each project are emitted in DiffKinds order
+	   rather than left to the encoder. The encoder sorts keys, so either way
+	   writes identical bytes — but only iterating the known kinds can drop a kind
+	   a later build stops supporting, which is the property the webhooks loop
+	   exists for and would otherwise be missing here.
+
+	   An entry is written whenever a project has one, including when its floor
+	   map is empty. An empty map is not "nothing saved": it is the default floor
+	   for every kind, which is what FloorFor answers, and writing it is what keeps
+	   a saved timestamp from vanishing across a restart. */
+	thresholds := make(map[string]types.ThresholdConfig, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		if _, ok := s.projects[id]; !ok {
+			continue
+		}
+		cfg, ok := s.thresholds[id]
+		if !ok {
+			continue
+		}
+		out := make(map[types.DiffKind]types.DiffSeverity, len(types.DiffKinds))
+		for _, kind := range types.DiffKinds {
+			if floor, ok := cfg.Floors[kind]; ok {
+				out[kind] = floor
+			}
+		}
+		thresholds[id] = types.ThresholdConfig{Floors: out, UpdatedAt: cfg.UpdatedAt}
+	}
+
 	return &persistedState{
-		Version:   storeVersion,
-		Active:    active,
-		Projects:  projects,
-		Histories: histories,
-		Webhooks:  webhooks,
+		Version:    storeVersion,
+		Active:     active,
+		Projects:   projects,
+		Histories:  histories,
+		Webhooks:   webhooks,
+		Thresholds: thresholds,
 	}
 }
 
 // persistLocked writes the current state. The caller must hold writeMx; it takes
 // mu itself for the snapshot, so a caller must not be holding mu already.
 func (s *Store) persistLocked() error {
+	// Before the snapshot, not after the write: the point is to report a file
+	// that is about to be replaced, and a warning that arrived once the
+	// replacement was done would be a report rather than a warning.
+	s.noteForeignWriteLocked()
+
 	s.mu.Lock()
 	data, err := json.MarshalIndent(s.stateForPersistLocked(), "", "  ")
 	s.mu.Unlock()
@@ -1596,6 +1808,7 @@ func (s *Store) persistLocked() error {
 	if err := atomicWriteFile(s.persistPath, data, 0600); err != nil {
 		return fmt.Errorf("write store: %w", err)
 	}
+	s.rememberStampLocked()
 	return nil
 }
 
@@ -1721,9 +1934,29 @@ func (s *Store) loadFromFile() error {
 		s.webhooks[id] = configs
 	}
 
+	/* Thresholds arrive the same way, and for the same reason: a v3 document has
+	   no "thresholds" key at all, so this is the path that makes a pre-threshold
+	   install read as "no floor configured" rather than as nil — which would
+	   panic on the first write.
+
+	   Unlike the two above, there is no per-project seeding to a zero value. A
+	   project with no entry and a project with an entry holding no floors both
+	   answer DefaultFloor from FloorFor, so a seeded entry would only put a config
+	   in the document that says nothing. */
+	s.thresholds = make(map[string]types.ThresholdConfig, len(s.projectOrder))
+	for _, id := range s.projectOrder {
+		if cfg, ok := state.Thresholds[id]; ok {
+			s.thresholds[id] = cfg
+		}
+	}
+
+	// The load path's half of the stamp. Set here rather than at the top of the
+	// function because the branches above can move the file aside, and a stamp
+	// taken before that would describe a file this store is no longer reading.
 	if converted {
 		return s.keepV1CopyThenRewrite(data)
 	}
+	s.rememberStampLocked()
 	return nil
 }
 
