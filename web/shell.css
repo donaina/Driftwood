@@ -1430,45 +1430,15 @@
   opacity: 1;
   }
 
-  /* Share Button Styles */
-  .share-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  color: var(--text-main);
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: background-color 0.15s ease, border-color 0.15s ease,
-              color 0.15s ease, transform 0.1s ease;
-  }
-
-  .share-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-info);
-  }
-
-  .share-btn:active {
-  transform: translateY(1px);
-  }
-
-  /* Empty State Enhancements */
-  .empty-state-enhanced {
-  text-align: center;
-  padding: 3rem;
-  }
-
-  .empty-state-enhanced h3 {
-  color: var(--text-main);
-  margin-bottom: 1rem;
-  }
-
-  .empty-state-enhanced p {
-  color: var(--text-muted);
-  margin-bottom: 1.5rem;
-  }
+  /* A .share-btn block (four rules) and an .empty-state-enhanced block (three)
+     lived here. Neither was referenced by anything in the product: no share
+     button was ever rendered by the shell or by a React view, and the enhanced
+     empty state was superseded by EmptyState in ui.tsx, which every view now
+     uses. The plain .empty-state above is still live and is a different class —
+     it draws the traffic view's "No API traffic detected yet".
+     Dropped rather than kept against a return: each was a second way to draw
+     something the component library already draws once.
+   */
 
   /* Setup Wizard Styles */
   .setup-wizard {
@@ -1604,135 +1574,24 @@
   margin-top: 0.5rem;
   }
 
-  /* Integration Guides Styles */
-  .integration-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  }
+  /* The Integration Guides' own rules lived here — .integration-card and its
+     header, title, badge, body and description, .integration-detail-item with
+     its label and value, .integration-code-box, .integration-verification,
+     .integrations-filters and .integrations-filter-btn, about 130 lines.
 
-  .integration-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-  }
+     They styled the vanilla renderer in web/index.html, which was unreachable
+     by construction: it wrote into #integrations-grid, and that element is not
+     in the document — the view is React-backed and mounts into
+     integrations-react-root. That renderer has now been deleted, and this is
+     the only place any of these class names appeared. IntegrationsLibrary.tsx
+     is built from the same primitives as every other view, which is what stops
+     a second look arriving with the second copy of the markup.
 
-  .integration-card-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  }
-
-  .integration-card-badge {
-  background: var(--accent-info);
-  color: var(--on-accent);
-  border-radius: var(--radius-xs);
-  padding: 0.25rem 0.5rem;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  }
-
-  .integration-card-body {
-  padding: 0 1rem 1rem;
-  }
-
-  .integration-card-description {
-  color: var(--text-muted);
-  margin-bottom: 1rem;
-  line-height: 1.5;
-  }
-
-  .integration-card-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  }
-
-  .integration-detail-item {
-  display: flex;
-  flex-direction: column;
-  }
-
-  .integration-detail-label {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.25rem;
-  }
-
-  .integration-detail-value {
-  font-size: var(--text-base);
-  color: var(--text-main);
-  font-family: var(--font-mono);
-  background: var(--bg-hover);
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-xs);
-  }
-
-  .integration-code-box {
-  margin: 1.5rem 0;
-  }
-
-  .integration-code-title {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.5rem;
-  }
-
-  .integration-code-box pre {
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 1rem;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  overflow-x: auto;
-  color: var(--text-main);
-  }
-
-  .integration-verification {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border-color);
-  }
-
-  .integrations-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-  }
-
-  .integrations-filter-btn {
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  padding: 0.4rem 0.8rem;
-  border-radius: var(--radius-xs);
-  font-size: var(--text-base);
-  cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease,
-              color 0.15s ease, transform 0.1s ease;
-  }
-
-  .integrations-filter-btn:hover {
-  background: var(--bg-card);
-  color: var(--text-main);
-  }
-
-  .integrations-filter-btn.active {
-  background: var(--accent-info);
-  color: var(--on-accent);
-  border-color: var(--accent-info);
-  }
+     The badge was the one rule here worth noticing on the way out: it was drawn
+     in --accent-info, a severity hue, to label a framework name. The rewrite
+     uses a neutral border and text-muted, because healthy/amber/red mean
+     contract state and nothing else.
+   */
 
   /* -----------------------------------------------------------------
      Shared form rules for the shell's settings views. These used to be
@@ -1782,14 +1641,12 @@
   /* ---------------------------------------------------------------------
      Press states.
 
-     Grouped rather than attached to each :hover so the four interactive
+     Grouped rather than attached to each :hover so the three interactive
      controls can't drift apart. 1px, not 2: enough to feel like the
      control moved under the cursor, small enough not to read as a jump.
      --------------------------------------------------------------------- */
   .btn:active,
   .demo-btn:active,
-  .share-btn:active,
-  .integrations-filter-btn:active,
   .nav-item:active {
     transform: translateY(1px);
   }
@@ -2323,8 +2180,7 @@
      the next row, so the ring hugs the box instead. */
   .btn:focus-visible,
   .nav-item:focus-visible,
-  .demo-btn:focus-visible,
-  .integrations-filter-btn:focus-visible {
+  .demo-btn:focus-visible {
     outline-offset: 1px;
   }
 
