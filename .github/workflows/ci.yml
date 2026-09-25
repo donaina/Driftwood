@@ -20,11 +20,24 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Build
-        run: go build ./...
+      # Without Node, this workflow could never build either Vite app, so it
+      # could never have caught a release that shipped an unbuilt dashboard or
+      # a site that was still the committed placeholder. The steps it used to
+      # run — go build, go vet, go test -race — are the Go half of `make
+      # verify`, which is the gate this project actually defines.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend-react/package-lock.json
+            site/package-lock.json
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test (race)
-        run: go test ./... -race
+      # One step, and it is the same command a developer runs. `make verify` is
+      # gofmt, vet, the race tests, both Vite builds, and the assertions that
+      # each build produced exactly one stylesheet carrying the shared tokens —
+      # the check that would have caught the black-page incident, which CI had
+      # no way to see when it ran only Go.
+      - name: Verify
+        run: make verify

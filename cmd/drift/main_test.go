@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -69,78 +70,103 @@ func TestSeedDemoBaselines_DoesNotOverwriteAnExistingContract(t *testing.T) {
 	}
 }
 
-// Without -project an import must land exactly where it landed before projects
-// existed. This is the case that keeps the flag additive.
-func TestResolveImportProjectDefaultsToActive(t *testing.T) {
-	store := newTestStore(t)
-	first := store.ActiveProject()
+// The four ResolveImportProject cases moved to internal/storage with the
+// function itself, when the import route needed the same answer the CLI gives.
 
-	got, err := resolveImportProject(store, "")
+// A hint file naming an address nothing answers on must not be mistaken for a
+// running instance.
+//
+// This is the state a killed instance leaves — the shutdown goroutine that
+// clears the hint never ran — and it is the state a machine reaches most often,
+// since Ctrl-C on a wedged process is not a graceful shutdown. Reading the hint
+// as fact would send every import to a dead address and fail, so the caller has
+// to confirm it.
+func TestLiveInstanceIgnoresAHintNothingAnswers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	// A port with nothing on it: bound to learn a free one, then released. The
+	// alternative is a hard-coded port that is somebody else's on another machine.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("resolveImportProject(\"\"): %v", err)
+		t.Fatalf("reserving a port: %v", err)
 	}
-	if got != first {
-		t.Errorf("an unflagged import resolved to %q, want the active project %q", got, first)
+	dead := "http://" + ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatalf("releasing the port: %v", err)
 	}
 
-	// And it follows the active project rather than being pinned to the
-	// default, which is the difference between "the active project" and "the
-	// project that happened to be active when this code was written".
-	second, err := store.CreateProject("Second")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	if err := store.SetActiveProject(second.ID); err != nil {
-		t.Fatalf("SetActiveProject: %v", err)
+	if err := storage.WriteInstance(storage.InstanceInfo{ControlURL: dead, PID: os.Getpid()}); err != nil {
+		t.Fatalf("WriteInstance: %v", err)
 	}
 
-	got, err = resolveImportProject(store, "")
-	if err != nil {
-		t.Fatalf("resolveImportProject(\"\"): %v", err)
-	}
-	if got != second.ID {
-		t.Errorf("an unflagged import resolved to %q after switching, want %q", got, second.ID)
+	if url, ok := liveInstance(); ok {
+		t.Errorf("liveInstance() = %q, want no instance: the hint names %s and nothing is listening there", url, dead)
 	}
 }
 
-func TestResolveImportProjectHonoursAnExplicitProject(t *testing.T) {
-	store := newTestStore(t)
-	other, err := store.CreateProject("Acme")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
+// And a hint is only accepted from something that identifies itself as
+// Driftwood.
+//
+// The port is reusable and the hint outlives the process, so the address it
+// names can easily be answering as something else by the time an import reads
+// it — a dev server, or an unrelated instance of a different program. A bare
+// 200 is not enough: handing a spec to a stranger, or reading the import route
+// of an older build as if it were this one's, is the failure this check exists
+// to prevent.
+func TestLiveInstanceRejectsSomethingElseOnThePort(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	stranger := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"app":"something-else"}`)
+	}))
+	defer stranger.Close()
+
+	if err := storage.WriteInstance(storage.InstanceInfo{ControlURL: stranger.URL, PID: os.Getpid()}); err != nil {
+		t.Fatalf("WriteInstance: %v", err)
 	}
 
-	got, err := resolveImportProject(store, other.ID)
-	if err != nil {
-		t.Fatalf("resolveImportProject(%q): %v", other.ID, err)
-	}
-	if got != other.ID {
-		t.Errorf("resolved to %q, want %q", got, other.ID)
+	if url, ok := liveInstance(); ok {
+		t.Errorf("liveInstance() = %q, want no instance: %s answers, but not as Driftwood", url, stranger.URL)
 	}
 }
 
-// A named project that does not exist is refused. Creating it instead would
-// file a client's contracts under a project the user never made and nothing is
-// pointed at, and the import would report success.
-func TestResolveImportProjectRefusesAnUnknownProject(t *testing.T) {
-	store := newTestStore(t)
-	before, _ := store.ListProjects()
+func TestLiveInstanceFindsARunningInstance(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 
-	got, err := resolveImportProject(store, "acme")
-	if err == nil {
-		t.Fatalf("resolved %q to %q, want an error", "acme", got)
+	var asked string
+	real := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"app":"driftwood","active_project":"default"}`)
+	}))
+	defer real.Close()
+
+	if err := storage.WriteInstance(storage.InstanceInfo{ControlURL: real.URL, PID: os.Getpid()}); err != nil {
+		t.Fatalf("WriteInstance: %v", err)
 	}
 
-	// The error has to name what does exist, or the user's only recourse is to
-	// guess at the ids.
-	active := store.ActiveProject()
-	if !strings.Contains(err.Error(), active) {
-		t.Errorf("the error does not name the project that does exist (%q): %v", active, err)
+	url, ok := liveInstance()
+	if !ok {
+		t.Fatalf("liveInstance() found nothing at %s", real.URL)
 	}
+	if url != real.URL {
+		t.Errorf("liveInstance() = %q, want %q", url, real.URL)
+	}
+	// The probe has to be the control route, not "/": a target answering 200 at
+	// its root would otherwise pass for an instance.
+	if asked != proxy.ControlPrefix+"/api/instance" {
+		t.Errorf("probed %q, want %q", asked, proxy.ControlPrefix+"/api/instance")
+	}
+}
 
-	after, _ := store.ListProjects()
-	if len(after) != len(before) {
-		t.Errorf("a refused import changed the project list: %d -> %d", len(before), len(after))
+// No hint at all is the ordinary case on a machine where nothing has run, and
+// it must not be reported as a running instance.
+func TestLiveInstanceWithNoHint(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	if url, ok := liveInstance(); ok {
+		t.Errorf("liveInstance() = %q with no hint written, want no instance", url)
 	}
 }
 
