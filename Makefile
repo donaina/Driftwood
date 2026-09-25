@@ -41,6 +41,12 @@ dashboard: deps
 	$(NPM) run build
 	@test -f web/dist/assets/driftwood.css || { \
 		echo "dashboard: web/dist/assets/driftwood.css was not produced"; exit 1; }
+	@test -f web/dist/favicon.svg || { \
+		echo "dashboard: web/dist/favicon.svg was not produced, and the shell"; \
+		echo "           declares it. A declared icon that does not load sends"; \
+		echo "           the browser back to /favicon.ico at the origin root,"; \
+		echo "           which is the proxy — see the link tag in web/index.html."; \
+		exit 1; }
 
 # --------------------------------------------------------------------- go
 
