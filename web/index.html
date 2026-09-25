@@ -1355,7 +1355,16 @@
     function renderAlerts() {
       const container = document.getElementById('alerts-container');
       if (alertsHistory.length === 0) {
-        container.innerHTML = `<div class="note">No contract violations detected. Your frontend contract is healthy!</div>`;
+        /* "No violations detected" is what was measured. "Your contract is
+           healthy" is an inference from it, and the inference needs something
+           to have been compared — on an install that has compared nothing, the
+           two sentences are the same claim with different amounts of evidence
+           behind them. The rated count is what tells them apart, and it is the
+           same count the vitals strip refuses to score when it is zero. */
+        const rated = trafficHistory.filter(t => RATED_STATUSES.includes(t.contract_status)).length;
+        container.innerHTML = rated === 0
+          ? `<div class="note">No contract violations detected — and nothing has been compared against a contract yet, so this is not yet evidence that the API is holding. Send a request through the proxy, or lock a baseline.</div>`
+          : `<div class="note">No contract violations detected. Your frontend contract is healthy!</div>`;
         return;
       }
 
@@ -1705,15 +1714,36 @@
       setInterval(updateVitals, 5000);
     }
 
+    /* The statuses that are a verdict about the contract. The other two the
+       proxy emits are not: NO_BASELINE means there was no contract to compare
+       the response against, and BASELINE_SET means this response is what the
+       contract was made from. Neither says the contract held or broke, so
+       neither belongs in a rate about whether it held.
+
+       They were both in it — the denominator was every row and the numerator
+       was the MATCHes — which made two wrong numbers out of no measurement.
+       An install pointed at an API and called twice before its first baseline
+       read 0%, in Fault Red, having compared nothing to anything; and an
+       install that had seen no traffic at all read 100%, because the empty
+       case was hard-coded to 1. Opposite claims, same absence of evidence
+       behind both.
+
+       The History view's stability panel measures the same thing and already
+       excludes NO_BASELINE and renders "—" rather than a number when nothing
+       has been rated. This is that rule, applied to the vitals. */
+    const RATED_STATUSES = ['MATCH', 'WARNING', 'BREAKING'];
+
     function updateVitals() {
       const now = Date.now();
       const recent = trafficHistory.filter(t => now - new Date(t.timestamp).getTime() < 60000);
       const errCount = trafficHistory.filter(t => t.status_code >= 400).length;
-      const matchCount = trafficHistory.filter(t => !t.contract_status || t.contract_status === 'MATCH').length;
+      const rated = trafficHistory.filter(t => RATED_STATUSES.includes(t.contract_status));
+      const matchCount = rated.filter(t => t.contract_status === 'MATCH').length;
 
       const reqRate = recent.length;
       const errRate = trafficHistory.length ? errCount / trafficHistory.length : 0;
-      const health = trafficHistory.length ? matchCount / trafficHistory.length : 1;
+      // null, not 1. Nothing rated is not a perfect score, it is no score.
+      const health = rated.length ? matchCount / rated.length : null;
 
       const reqEl = document.getElementById('request-rate');
       if (reqEl) reqEl.textContent = reqRate + '/min';
@@ -1722,7 +1752,7 @@
       if (errEl) errEl.textContent = (errRate * 100).toFixed(1) + '%';
 
       const healthEl = document.getElementById('contract-health');
-      if (healthEl) healthEl.textContent = Math.round(health * 100) + '%';
+      if (healthEl) healthEl.textContent = health === null ? '-' : Math.round(health * 100) + '%';
 
       const reqSpark = document.getElementById('request-sparkline');
       if (reqSpark) {
@@ -1738,9 +1768,17 @@
 
       const ring = document.getElementById('contract-ring');
       if (ring) {
-        ring.style.setProperty('--ring-deg', (health * 360) + 'deg');
-        ring.style.setProperty('--ring-color',
-          health === 1 ? 'var(--accent-healthy)' : health >= 0.9 ? 'var(--accent-warning)' : 'var(--accent-breaking)');
+        /* An unmeasured gauge draws no arc — the number beside it is what says
+           there is no score, and leaving the arc where the last update put it
+           would leave a stale score on screen instead. The colour is written
+           only when there is a score to colour: the background is a conic
+           gradient whose first stop is --ring-deg, so at 0deg the whole ring is
+           the track and a colour set here would be a value nothing renders. */
+        ring.style.setProperty('--ring-deg', (health === null ? 0 : health * 360) + 'deg');
+        if (health !== null) {
+          ring.style.setProperty('--ring-color',
+            health === 1 ? 'var(--accent-healthy)' : health >= 0.9 ? 'var(--accent-warning)' : 'var(--accent-breaking)');
+        }
       }
     }
 
