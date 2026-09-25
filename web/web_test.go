@@ -170,6 +170,53 @@ func TestServeIndex_RejectsTraversal(t *testing.T) {
 
 // trimLeadingSlash exists because fs.ValidPath rejects a leading slash, so the
 // URL's own slash has to go before the path can be validated at all.
+// The shell has to declare its own icon, and the href has to be relative.
+//
+// Both halves are about one request. With no icon in the document a browser
+// asks for /favicon.ico at the ORIGIN root, and the origin root is the proxy —
+// so every dashboard page load reaches the target as a request nobody made,
+// and Driftwood records it. It appears in Live Network Traffic under a name the
+// API does not serve, it counts toward the error rate when the API answers 404,
+// and when the answer looks like JSON it is baselined and can raise a contract
+// alert against a phantom endpoint. The dashboard would be writing traffic into
+// the log whose whole claim is that it holds requests Driftwood sniffed.
+//
+// A root-absolute href is not a fix: /favicon.svg is a path on the API, so it
+// asks the user's server for Driftwood's icon — the same phantom under a new
+// name. Everything the shell loads is relative for the reason the StripPrefix
+// comment in internal/server/server.go gives: the page is served from under
+// /_driftwood/, and every other path belongs to the API.
+//
+// The file the href names is asserted by the `dashboard` target in the Makefile
+// rather than here, because whether the build produced it is not a question
+// this package can answer without one.
+func TestShellDeclaresItsOwnIcon(t *testing.T) {
+	withoutDisk(t)
+
+	page := get("/").Body.String()
+	const marker = `<link rel="icon"`
+	i := strings.Index(page, marker)
+	if i < 0 {
+		t.Fatal("the shell declares no icon, so a browser will ask the API's root for /favicon.ico and the proxy will record it as traffic")
+	}
+	end := strings.Index(page[i:], ">")
+	if end < 0 {
+		t.Fatalf("unterminated link tag at offset %d", i)
+	}
+
+	tag := page[i : i+end+1]
+	href := ""
+	if _, rest, ok := strings.Cut(tag, `href="`); ok {
+		href, _, _ = strings.Cut(rest, `"`)
+	}
+	if href == "" {
+		t.Fatalf("the icon link has no href: %s", tag)
+	}
+	if strings.HasPrefix(href, "/") {
+		t.Errorf("icon href = %q is root-absolute, so it names a path on the API rather than on Driftwood", href)
+	}
+}
+
 func TestTrimLeadingSlash(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"/a", "a"}, {"//a", "a"}, {"a", "a"}, {"/", ""}, {"", ""},

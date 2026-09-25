@@ -6,6 +6,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Driftwood - Real-Time API Contract Drift Sniffer</title>
 
+  <!-- Declared, and the declaration is load-bearing rather than decoration.
+
+       With no icon in the document, a browser asks for /favicon.ico at the
+       ORIGIN root — and the origin root is the proxy. Every dashboard page load
+       therefore arrives at the target as a request the user did not make, and
+       Driftwood records it as this is what the dashboard is for: it appears in
+       Live Network Traffic under a name the API does not serve, it counts
+       toward the error rate when the API 404s it, and being auto-baselined it
+       can raise a contract alert against a phantom endpoint.
+
+       The path is relative and sits beside the bundle for the same reason
+       driftwood.css does: both are built into web/dist and served from under
+       /_driftwood/, so a root-absolute href would point at the API instead of
+       at Driftwood. -->
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+
   <!-- Resolve the theme BEFORE the stylesheet is parsed.
 
        This has to be an inline script here rather than anything in the bundle:
