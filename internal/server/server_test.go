@@ -19,6 +19,7 @@ import (
 	"github.com/donaina/driftwood/internal/storage"
 	"github.com/donaina/driftwood/internal/webhook"
 	"github.com/donaina/driftwood/pkg/types"
+	"github.com/donaina/driftwood/web"
 )
 
 // These tests exist because Router's dispatch table had none, and that is the
@@ -739,10 +740,22 @@ func TestDashboardServedUnderNamespace(t *testing.T) {
 // dashboard would 404 its own stylesheet while still returning 200.
 func TestDashboardAssetsResolveUnderNamespace(t *testing.T) {
 	t.Chdir("../..")
-	// frontend-react/dist is gitignored, so on a fresh clone there is nothing to
-	// serve. The dispatch assertion below still holds and still matters; only the
-	// 200 depends on a built bundle.
-	_, statErr := os.Stat(filepath.Join("frontend-react", "dist"))
+	// Whether there is a bundle to serve is not a question this test gets to
+	// answer by looking at a directory: web.AssetsBuilt is the predicate the
+	// product itself uses, and it falls back to the embedded copy. A hand-rolled
+	// check disagrees with it the moment the two drift.
+	//
+	// This used to stat frontend-react/dist, which Vite stopped writing into when
+	// the build moved to web/dist so that web/web.go could embed it
+	// (frontend-react/vite.config.ts:9-14). That left the check answering a
+	// different question from the one it was asked: on a machine that still had
+	// the old stale dist it took the "built" branch and passed, and on a fresh
+	// clone it took the "unbuilt" branch and failed even under `make verify`,
+	// which builds the dashboard before it runs the tests.
+	//
+	// The dispatch assertion below still holds and still matters; only the 200
+	// depends on a built bundle.
+	built := web.AssetsBuilt()
 	h := newHarness(t)
 
 	for _, path := range []string{"/assets/driftwood.css", "/thresholds.js"} {
@@ -752,14 +765,24 @@ func TestDashboardAssetsResolveUnderNamespace(t *testing.T) {
 		if got := h.hitCount(); got != before {
 			t.Errorf("GET %s: asset was proxied to the backend", path)
 		}
-		if statErr != nil {
+		if !built {
 			if resp.StatusCode == http.StatusOK {
-				t.Errorf("GET %s: no dist/, yet status = 200", path)
+				t.Errorf("GET %s: returned 200 with no bundle built; run `make dashboard` — the asset URLs answer with index.html rather than failing, which is why this is asserted rather than assumed", path)
 			}
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("GET %s: status = %d, want 200", path, resp.StatusCode)
+			continue
+		}
+		// 200 is not evidence that the asset resolved. A path that misses on
+		// disk falls through to the page, so the answer is index.html: 200,
+		// text/html, and nothing in it admitting the asset is absent. Asserting
+		// the status alone passed with the namespace prefix deliberately left
+		// on — the exact failure this test is named for — because the page it
+		// served instead was a perfectly good 200 as well.
+		if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
+			t.Errorf("GET %s: answered %q, the dashboard page, so the path did not resolve to a file", path, ct)
 		}
 	}
 }
