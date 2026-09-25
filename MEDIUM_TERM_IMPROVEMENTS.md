@@ -99,8 +99,8 @@ copied back into the product as though it were a description of it.
   a second one written for the dashboard — two implementations would be two answers to the one
   question this product exists to answer.
 - Contract-stability sparkline across observed requests — shipped
-- **PNG/SVG export — NOT shipped, and off the screen as of 2026-09-24.** The two buttons and
-  `handleExportTimeline` are gone. The toast did not claim a file was written, which is what
+- **PNG/SVG export — NOT shipped.** The two buttons and `handleExportTimeline` are gone,
+  deleted here rather than left on screen. The toast did not claim a file was written, which is what
   separated this from the deleted thresholds form — but the buttons themselves promised an
   artifact that does not exist, and a control whose only effect is a message about the future
   is the same claim as the paragraph the Version Comparison panel used to carry.
@@ -125,20 +125,25 @@ copied back into the product as though it were a description of it.
 the `nav-integrations` entry — all five frameworks (Express, FastAPI, NestJS, Django, Rails), each
 with a code snippet and numbered setup steps.
 
-**"Shipped" was the wrong verdict, and this block is why.** The heading says SHIPPED and the
-component does render, so it looked earned. What it renders is not true: every card's
-first setup step installs a package that does not exist — `npm install -g @donaina/driftwood`
-(`IntegrationsLibrary.tsx:44`, `:86`), `pip install driftwood-proxy` (`:66`, `:103`),
-`gem install driftwood-proxy` (`:119`) — and every code block is framework boilerplate with no
-Driftwood code in it. A second, older copy with five *different* invented names
-(`@donaina/driftwood-proxy`, `driftwood-django`, `driftwood-rails`) is still in `web/index.html`
-at `:2271-2365`; it is unreachable, because its renderer bails at `:2322` on
-`if (!integrationsGrid) return;` and nothing in the document has that id.
+**"Shipped" was the wrong verdict on its own, and that is what this block corrects.** The heading
+said SHIPPED and the component did render, so it looked earned. What it rendered was not true:
+every card's first setup step installed a package that does not exist — `npm install -g
+@donaina/driftwood` on two cards, `pip install driftwood-proxy` on two more, `gem install
+driftwood-proxy` on the last — and every code block was framework boilerplate with no Driftwood
+code in it. A second, older copy carried five *different* invented names
+(`@donaina/driftwood-proxy`, `driftwood-django`, `driftwood-rails`) and was unreachable by
+construction: its renderer bailed on an element id the document never had.
 
-Driftwood is a reverse proxy, so the honest guide is *point your client's base URL at it* — true
-for every framework, needing no per-language package. A branch rewriting the component around that
-exists as **#77 (`fix/true-integration-guides`), open and unmerged at the time of writing**; until
-it lands, this section describes shipped code that names packages the registry does not have.
+**Corrected 2026-09-25.** Driftwood is a reverse proxy, so the guide is now what the product
+actually is — *point your client's base URL at it*, which is true for every framework and needs no
+per-language package. The five invented install lines and the five boilerplate blocks are gone,
+and the component says so where a reader would look for an install command. The unreachable second
+copy went with its renderer, and roughly 130 lines of `.integration-*` CSS went with them rather
+than being left beside the live version. The filter row is derived from the cards below it instead
+of hand-listed beside them, so it cannot offer a framework that has no card; the old `EmptyState`
+was unreachable for the opposite reason — the filter ids were the card ids to the letter — and it
+is deleted rather than left as a branch no input can reach, as is the header's "Show All", which
+the filter row's own "All Frameworks" button already did one line below.
 
 Deviations from the proposal:
 
@@ -146,12 +151,15 @@ Deviations from the proposal:
   so the button would have been a control reporting an action it did not take.
 - **No copy button.** "Ready-to-copy" means the snippet is a selectable `<pre>`, not one
   click. Worth adding, and it is real work rather than the fake it would have been before.
-- **No framework logos** — the card carries the framework's first letter in a tinted square.
-- **One live palette breach**, to fold into the next UI pass: that square is
-  `bg-accent-info/20` + `text-accent-info` (`IntegrationsLibrary.tsx:183-184`), which spends
-  a contract-state role on chrome — the same mistake §1, §6 and §7 made in prose. It wants
-  `accent-primary`. `EndpointHistory.tsx:301` does it too, on the pin button's pressed state.
-  (This reference was `:269`; the line moved when the timeline row was reworked.)
+- **No framework logos** — the card carries the framework's first letter in a square that is now
+  neutral by construction (`bg-bg-hover`, `text-text-muted`). This was the palette breach the
+  section used to carry: the square spent `accent-info`, a severity hue, on chrome — the same
+  mistake §1, §6 and §7 made in prose. Fixed 2026-09-25, with the reason left in the markup
+  beside it.
+- **One palette breach remains, and it is not in this section.** `EndpointHistory.tsx:301`
+  draws the pin button's pressed state in `accent-info`, on the same reasoning and with the same
+  problem. (`:269` before the timeline row was reworked.) It wants `accent-primary`, or a
+  neutral, and it is a one-line change for whoever next touches that view.
 
 **Features:**
 - Framework-specific guides (Express, FastAPI, NestJS, Django, Rails, etc.)
@@ -430,8 +438,8 @@ These improvements can be implemented incrementally, with each as its own PR fol
 
 1. **Setup Wizard** - Shipped as a view, not a route. See §1.
 2. **Scenario Library** - Shipped as a catalogue. The mock-simulator integration (the "Load Scenario" loader) did not ship and is not a stale-branch fix; it needs a shell↔React bridge that does not exist. See §2.
-3. **Contract Evolution Timeline** - Shipped in the History view, including a real Version Comparison; the PNG/SVG export is not built and its buttons are off the screen. See §3.
-4. **Integration Guides** - Shipped. See §4.
+3. **Contract Evolution Timeline** - Shipped in the History view, including a real Version Comparison; the PNG/SVG export is not built, and the two buttons that pretended otherwise are deleted rather than left doing nothing. See §3.
+4. **Integration Guides** - Shipped, and true since 2026-09-25: the invented install lines are gone and the guide is the base-URL change the product actually asks for. See §4.
 5. **Export & Reporting** - Not built; the remaining half of Phase 5, and it reuses §6's deliverer rather than growing a second outbound path. See §5.
 6. **Webhook Integrations** - **Shipped**: SSRF guard extraction, persisted per-project config, a real outbound POST with retry, delivery records, a synchronous test route, a routed Alert Delivery view, and HMAC signing for the generic kind. See §6 for what was deliberately left out.
 7. **Custom Alert Thresholds** - **Shipped**: a per-kind alert floor persisted per project, `GET`/`POST /_driftwood/api/thresholds`, read by `store.AddTraffic` to decide whether an alert exists, and a routed Alert Thresholds view. The five rows became seven — one per delta kind — because "Header changes" configured no kind the engine emits. See §7.
@@ -448,12 +456,13 @@ Checked against the tree on 2026-09-25, not carried over from an earlier note. E
 none is urgent; they are recorded so the next reader does not have to re-derive them, and so a
 claim that *used* to be on this list but is no longer true does not get repeated:
 
-- **`.integration-*` (`web/shell.css:1608-1731`) is dead CSS, and the earlier note that called it
-  live was wrong.** These rules — `.integration-card`, `-code-box`, `-detail-*`, `-verification`,
-  `.integrations-filter-btn` — are referenced from exactly one place: the unreachable renderer in
-  `web/index.html:2316-2360`. The shipped `IntegrationsLibrary.tsx` is Tailwind and uses none of
-  them, so nothing on screen takes these rules. `.integrations-filter-btn.active` (`:1731`) also
-  spends `--accent-info` on chrome, which `DESIGN.md` reserves. Both go with §4's rewrite; see #77.
+- **`.integration-*` was dead CSS, and the earlier note that called it live was wrong.** These
+  rules — `.integration-card`, `-code-box`, `-detail-*`, `-verification`,
+  `.integrations-filter-btn` — were referenced from exactly one place: the unreachable renderer in
+  `web/index.html`. The shipped `IntegrationsLibrary.tsx` is Tailwind and used none of them, so
+  nothing on screen ever took these rules. `.integrations-filter-btn.active` also spent
+  `--accent-info` on chrome, which `DESIGN.md` reserves. About 130 lines, all now deleted with
+  §4's rewrite; `web/shell.css:1577` records what was there and why it went.
 - **`.share-btn` (`web/shell.css:1434-1453`, `:1791`) and `.empty-state-enhanced`
   (`:1458-1473`) have zero references tree-wide** — not in the shell, not in any React component.
   The non-enhanced `.empty-state` (`:682-710`) *is* live and is a different rule.
