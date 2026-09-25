@@ -19,7 +19,7 @@ PORT   ?= 8787
 GO_DIRS := cmd internal pkg site web tests
 
 .PHONY: all build dashboard deps test vet fmt fmt-check serve verify clean \
-        site site-deps ai-deps ai-build ai-serve
+        site site-deps ai-deps ai-build ai-serve pack-check
 
 all: build
 
@@ -109,11 +109,24 @@ site: site-deps
 
 # ------------------------------------------------------------------ gate
 
+# What npm would actually publish, read back and checked.
+#
+# Nothing else here can see it. The file list is npm's, and the two defects this
+# exists to catch passed gofmt, vet, the race tests and both Vite builds without
+# a word: `files` named the `site` directory, so 2130 files and 26 MB went to
+# the registry, and a checkout that had built a binary would have published it.
+#
+# It runs after `dashboard` and `site` because it asserts their output is in the
+# tarball. `--ignore-scripts` is inside the script, with the reason: `npm pack
+# --json` is unparseable while `prepack` writes its build log to stdout.
+pack-check:
+	@node ./bin/check-pack.js
+
 # The whole local gate. `dashboard` runs before `test` so the assertions below
 # see a real build, and so a broken frontend build fails here rather than in a
 # release. `site` is in here for the same reason: it is shipped code, and a site
 # that builds to an unstyled page still exits 0.
-verify: fmt-check vet dashboard site test
+verify: fmt-check vet dashboard site pack-check test
 	@test -f web/dist/assets/driftwood.css || { \
 		echo "verify: web/dist/assets/driftwood.css is missing"; exit 1; }
 	@n=$$(find web/dist -name '*.css' | wc -l | tr -d ' '); \

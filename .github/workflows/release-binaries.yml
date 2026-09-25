@@ -58,6 +58,13 @@ jobs:
           test -f site/dist/index.html
           test -f site/dist/try.html
 
+      # The list has to equal the names bin/install.js constructs, and nothing
+      # checked that. windows/arm64 was the gap: getBinaryName() maps win32+arm64
+      # to drift-windows-arm64.exe, so a Windows on ARM machine asked for an
+      # asset this step never built, got a 404, and fell back to a Go toolchain
+      # it may not have. The five originals were all reachable; this one was
+      # reachable and absent, which a dry run cannot see because it never
+      # resolves an asset URL.
       - name: Build cross-platform binaries
         run: |
           mkdir -p dist
@@ -66,6 +73,7 @@ jobs:
           GOOS=darwin GOARCH=amd64 go build -o dist/drift-darwin-amd64 ./cmd/drift
           GOOS=darwin GOARCH=arm64 go build -o dist/drift-darwin-arm64 ./cmd/drift
           GOOS=windows GOARCH=amd64 go build -o dist/drift-windows-amd64.exe ./cmd/drift
+          GOOS=windows GOARCH=arm64 go build -o dist/drift-windows-arm64.exe ./cmd/drift
 
       - name: Generate SHA256 checksums
         run: |
