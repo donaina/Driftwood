@@ -98,14 +98,27 @@ a field that is nothing but noise cannot be reported as a broken contract.
 | `WARNING` | A property the baseline did not require is gone; `integer` widened to `number`; a value stopped matching any known format. | Marks the request `WARNING` and files it in the Alerts view. Nothing is broadcast — only `BREAKING` raises a live alert. |
 | `INFO` | The response gained something: a new property, or a value that now matches a known format. Also a `null` that started returning a value, and a `number` that narrowed to whole numbers. | Counted as healthy — the request still reads `MATCH`. |
 
+What raises an alert is configurable, per project, in **Alert Thresholds**: each kind of change has a
+floor, the least severe difference of that kind worth telling you about. The table above describes
+the default, which alerts on `BREAKING` and `WARNING` and ignores `INFO`. A lower floor files
+informational changes in the Alerts view and delivers them to your webhooks; a higher one leaves only
+`BREAKING` alerting.
+
+A floor cannot change what a change *is*. Severity is measured from the diff, so no setting moves a
+delta between the rows above — the dashboard can never show `MATCH` beside a `BREAKING` delta. The
+live alert frame is fixed for the same reason: only `BREAKING` interrupts the dashboard, whatever
+the floor says, because the floor answers "what should be recorded and sent" rather than "what
+should stop what you are doing".
+
 Whether a removed property is `BREAKING` or `WARNING` depends on what the baseline promised. A
 contract imported from an OpenAPI document uses that document's `required` list, so a property
 outside it is reported as a warning rather than as a broken promise. A baseline inferred from
 traffic has a weaker claim to make: one response cannot distinguish a field the API always sends
 from one it happened to send that day, so every key observed is treated as required.
 
-An additive change keeps every promise the baseline made, so it is tracked and shown but never
-alerted on.
+An additive change keeps every promise the baseline made, so it is never a broken contract. At the
+default floor it is tracked and shown but not alerted on — and only a floor lowered on purpose
+makes it an alert.
 
 ---
 

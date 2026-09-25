@@ -157,6 +157,10 @@
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M14.25 1.75 7 9"/><path d="M14.25 1.75 9.75 14.25 7 9 1.75 6.25 14.25 1.75Z"/></svg>
           <span class="nav-label">Alert Delivery</span>
         </button>
+        <button type="button" class="nav-item" id="nav-thresholds" title="Alert Thresholds">
+          <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12"/><path d="M2 8h8"/><path d="M2 12h4"/></svg>
+          <span class="nav-label">Alert Thresholds</span>
+        </button>
         <button type="button" class="nav-item" id="nav-settings" title="Proxy Settings">
           <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h2.75M8.75 5h4.75M2.5 11h4.75M10.75 11h2.75"/><circle cx="6.75" cy="5" r="1.55"/><circle cx="9.25" cy="11" r="1.55"/></svg>
           <span class="nav-label">Proxy Settings</span>
@@ -642,6 +646,7 @@
       on('nav-history', () => switchTab('history'));
       on('nav-alerts', () => switchTab('alerts'));
       on('nav-webhooks', () => switchTab('webhooks'));
+      on('nav-thresholds', () => switchTab('thresholds'));
       on('nav-settings', () => switchTab('settings'));
       on('nav-scenario', () => switchTab('scenario'));
       on('nav-integrations', () => switchTab('integrations'));
@@ -1330,9 +1335,16 @@
         const status = (a.contract_status || '').toUpperCase();
 
         /* BREAKING is the base .delta-item; the other two are its named
-           variants. Only BREAKING and WARNING alerts are ever stored, but an
-           unrecognised status gets the quiet treatment rather than being
-           dressed as the loudest one. */
+           variants, and an unrecognised status gets the quiet treatment rather
+           than being dressed as the loudest one.
+
+           This used to say "Only BREAKING and WARNING alerts are ever stored",
+           which was true until the alert floor became configurable. A project
+           that lowers its floor gets alerts whose traffic still reads MATCH —
+           the contract held, and the change crossed the floor anyway. Those
+           land on the `info` variant by falling through, which is the right
+           treatment for them and the reason this is a fallthrough rather than a
+           table. */
         const tone = status === 'BREAKING' ? '' : status === 'WARNING' ? ' warning' : ' info';
 
         /* The explanation is keyed `ai_explanation` on the wire — types.Alert
@@ -1573,20 +1585,21 @@
        the browser. Routing to either would have put a nav entry in front of a
        screen whose buttons lie.
 
-       They are no longer the same case. Webhooks has a backend now — config
-       persisted per project, a real outbound POST, delivery records, retry with
-       backoff, and a test route that reports what the receiver did — so it is
-       routed, and its component was rewritten to match. Thresholds still has
-       nothing: the severities it collects are read by neither the shell nor the
-       Go diff engine, and there is no route to save them to. It stays out of
-       this table until that changes, for its own reason rather than by
-       association. */
+       Neither is absent any more, and this table is the whole list again.
+       Webhooks has a backend — config persisted per project, a real outbound
+       POST, delivery records, retry with backoff, and a test route that reports
+       what the receiver did. Thresholds has one too: GET and POST
+       /api/thresholds, and a floor per delta kind that store.AddTraffic reads to
+       decide whether an alert exists at all. That last part is what made it
+       routable — the screen is not collecting severities into a void any more,
+       it is configuring the predicate. */
     function switchTab(tabName) {
       const reactViews = {
         'history': 'showHistoryLibrary',
         'scenario': 'showScenarioLibrary',
         'integrations': 'showIntegrationsLibrary',
-        'webhooks': 'showWebhookLibrary'
+        'webhooks': 'showWebhookLibrary',
+        'thresholds': 'showThresholdsLibrary'
       };
 
       const navEl = document.getElementById(`nav-${tabName}`);
@@ -1622,8 +1635,9 @@
        showed "Custom alert thresholds have been saved." over an empty function
        body, and the thresholds it collected were read by nothing, in either the
        shell or the Go diff engine. CustomAlertThresholds.tsx is the real
-       implementation and mounts into the same root, so this was a second,
-       dead copy of a destination that is not routed yet. */
+       implementation and mounts into the same root, so this was a second, dead
+       copy — of a view that is routed now, and whose floors are read by
+       store.AddTraffic. */
 
     function showToast(title, msg) {
       const container = document.getElementById('toast-container');
@@ -2391,7 +2405,13 @@ window.showThresholdsLibrary = function() {
     window.mountThresholds(document.getElementById('thresholds-react-root'));
   }
 
-  // No nav entry: hidden until wired, same as integrations above.
+  /* This used to end with "No nav entry: hidden until wired, same as
+     integrations above" — true when it was written, since neither had a backend
+     and neither was in reactViews. Both are routed now, so the note would be a
+     comment describing a state the code is no longer in.
+
+     Like showWebhookLibrary and unlike its own earlier version, it touches no
+     nav state: switchTab owns the highlight and calls this after setting it. */
 };
 
 

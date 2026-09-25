@@ -1159,8 +1159,17 @@ func TestAlertEvictionDropsTheOldest(t *testing.T) {
 			Path:           path,
 			StatusCode:     200,
 			ContractStatus: "BREAKING",
+			/* The delta is not decoration. AddTraffic decides whether an alert
+			   exists from the deltas, because a per-kind floor cannot be answered
+			   from the two booleans — and a diff that sets HasBreakingChanges while
+			   naming no change is a value no producer emits: every one in this
+			   repository derives the flag from its deltas or sets it beside one.
+			   projects_test.go's alertingTraffic carries one for the same reason. */
 			Diff: &types.ContractDiff{
 				HasBreakingChanges: true,
+				Deltas: []types.DiffDelta{
+					{JSONPath: "$.id", Kind: types.KindRemovedField, Severity: types.SeverityBreaking},
+				},
 			},
 		}
 	}
