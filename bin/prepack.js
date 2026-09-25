@@ -101,7 +101,7 @@ for (const app of APPS) {
    anyway — npm sets the executable bit from the `bin` field on install — but a
    binary built from a checkout should be runnable in that checkout. */
 if (process.platform !== 'win32') {
-  for (const f of ['drift.js', 'install.js', 'prepack.js']) {
+  for (const f of ['drift.js', 'install.js', 'prepack.js', 'check-pack.js']) {
     try {
       fs.chmodSync(path.join(__dirname, f), 0o755);
     } catch (err) {

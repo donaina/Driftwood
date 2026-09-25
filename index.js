@@ -11,6 +11,7 @@ class Driftwood {
     this.port = options.port || 8787;
     this.target = options.target || 'http://localhost:3000';
     this.process = null;
+    this.viaGoRun = false;
   }
 
   start() {
@@ -25,8 +26,21 @@ class Driftwood {
         }
         this.process = spawn(prebuiltBinPath, args, { stdio: 'pipe' });
       } else {
-        const mainGoPath = path.join(__dirname, 'cmd', 'drift', 'main.go');
-        this.process = spawn('go', ['run', mainGoPath, ...args], { stdio: 'pipe' });
+        /* By package path, from the module root — the same two things
+           bin/drift.js does for the same line, and this was the third copy that
+           did neither. `go run cmd/drift/main.go` compiles that one file, so a
+           sibling added to package main is silently left out; and an absolute
+           path here made Go resolve the imports against the *caller's* module,
+           so start() rejected with "go.mod file not found in current directory
+           or any parent directory" and never reached the dashboard at all. */
+        this.viaGoRun = true;
+        this.process = spawn('go', ['run', './cmd/drift', ...args], {
+          stdio: 'pipe',
+          cwd: __dirname,
+          /* Its own process group, so stop() can signal the server rather than
+             only the wrapper holding it. */
+          detached: process.platform !== 'win32',
+        });
       }
 
       // The server announces itself through Go's log package, which writes to
@@ -70,10 +84,29 @@ class Driftwood {
   }
 
   stop() {
-    if (this.process) {
+    if (!this.process) return;
+
+    /* `go run` compiles the server and execs it as a child, so killing the
+       wrapper leaves the server running, reparented to init and still holding
+       the port. That is what it did: after stop(), the dashboard answered on a
+       port its caller had been told was released, and the process outlived the
+       Node process that started it. Killing the group takes both. */
+    if (this.viaGoRun) {
+      const { pid } = this.process;
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      } else {
+        try {
+          process.kill(-pid, 'SIGTERM');
+        } catch (err) {
+          this.process.kill();
+        }
+      }
+    } else {
       this.process.kill();
-      this.process = null;
     }
+
+    this.process = null;
   }
 }
 
