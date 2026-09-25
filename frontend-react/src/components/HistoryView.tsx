@@ -7,7 +7,6 @@ import {
   RefreshIcon,
   SkeletonRows,
   ViewHeader,
-  toast,
 } from './ui';
 
 /* This used to redeclare the wire type locally, as `History` with PascalCase
@@ -162,15 +161,10 @@ const HistoryView: React.FC = () => {
     }
   };
 
-  const handleExportTimeline = (format: string, endpointKey: string) => {
-    // Placeholder for export functionality
-    toast(
-      `Export ${format.toUpperCase()}`,
-      `Export for ${endpointKey} is planned for a future update.`
-    );
-    // In a full implementation, this would use html2canvas or similar library
-    // to convert the timeline view to the requested format
-  };
+  /* handleExportTimeline used to live here and did nothing but toast that
+     export was planned. It was reachable from two buttons that promised a PNG
+     and an SVG, and both are gone — see the note in EndpointHistory where they
+     were. There is no caller left, so there is no handler. */
 
   const refresh = (
     <Button variant="primary" onClick={loadHistories}>
@@ -238,7 +232,6 @@ const HistoryView: React.FC = () => {
               selectedVersionsMap={selectedVersionsMap}
               onToggleVersionSelection={handleToggleVersionSelection}
               onClearVersionSelection={handleClearVersionSelection}
-              onExportTimeline={handleExportTimeline}
               onToggleLock={handleToggleLock}
               onConfirm={handleConfirm}
             />

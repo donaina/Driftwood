@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/donaina/driftwood/internal/contract"
+	"github.com/donaina/driftwood/internal/diff"
 	"github.com/donaina/driftwood/internal/events"
 	"github.com/donaina/driftwood/internal/mock"
 	"github.com/donaina/driftwood/internal/proxy"
@@ -170,6 +171,8 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleAlerts(w, r)
 		case proxy.ControlPrefix + "/api/histories":
 			s.handleHistories(w, r)
+		case proxy.ControlPrefix + "/api/histories/diff":
+			s.handleHistoryDiff(w, r)
 		case proxy.ControlPrefix + "/api/export/typescript":
 			s.handleExportTypeScript(w, r)
 		case proxy.ControlPrefix + "/api/mock/mode":
@@ -650,6 +653,99 @@ func (s *Server) handleHistories(w http.ResponseWriter, r *http.Request) {
 	histories := s.store.GetAllHistories(projectID)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(histories)
+}
+
+/*
+handleHistoryDiff reports what changed between two versions of one endpoint's
+contract.
+
+	Both halves of this already existed. Every version in /api/histories carries
+	its own schema, and diff.CompareSchemas is the function the proxy itself uses
+	to compare a live response against a baseline. What was missing was a way to
+	ask for one version against another, so the dashboard's Version Comparison
+	panel — the one place a user selects two versions and is owed an answer —
+	said the feature "would require enhanced backend API" and showed nothing.
+
+	The comparison is deliberately that same function and not a second
+	implementation written for the dashboard. The product's one claim is that it
+	tells you when an endpoint's contract moved; two implementations would be two
+	answers to that question, and a dashboard that disagreed with the sniffer
+	would be worse than one that showed nothing.
+
+	Direction is the caller's, and it is load-bearing. The proxy only ever
+	compares a baseline against what just arrived, so REMOVED_FIELD means "the
+	contract promised this and the response did not have it" — a reading that
+	only holds when the baseline is the `from` side. A caller comparing v3 to v1
+	gets those two kinds the other way round, which is a true answer to the
+	question it asked. The dashboard passes the older version as `from` for
+	exactly this reason; this route does not reorder anything, because a read
+	should answer the question it was given.
+*/
+func (s *Server) handleHistoryDiff(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projectID, err := s.projectFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	q := r.URL.Query()
+	method, path := q.Get("method"), q.Get("path")
+
+	// A version that is not a number and a version that does not exist are
+	// different mistakes and get different answers: the first is a malformed
+	// question (400), the second a well-formed one about something that is not
+	// there (404). Reporting both as "not found" would tell a caller with a typo
+	// in their query that the endpoint was missing.
+	from, err := strconv.Atoi(q.Get("from"))
+	if err != nil {
+		http.Error(w, "from must be a version number", http.StatusBadRequest)
+		return
+	}
+	to, err := strconv.Atoi(q.Get("to"))
+	if err != nil {
+		http.Error(w, "to must be a version number", http.StatusBadRequest)
+		return
+	}
+
+	hist, ok := s.store.GetHistory(projectID, method, path)
+	if !ok {
+		http.Error(w, "endpoint not found", http.StatusNotFound)
+		return
+	}
+	fromSchema, ok := versionSchema(hist, from)
+	if !ok {
+		http.Error(w, fmt.Sprintf("no version %d of %s %s", from, method, path), http.StatusNotFound)
+		return
+	}
+	toSchema, ok := versionSchema(hist, to)
+	if !ok {
+		http.Error(w, fmt.Sprintf("no version %d of %s %s", to, method, path), http.StatusNotFound)
+		return
+	}
+
+	result := diff.CompareSchemas(fromSchema, toSchema)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+// versionSchema finds one version's schema by number.
+//
+// By number rather than by index: a version's number is what a client holds and
+// what the dashboard prints, and the two agree today only because versions are
+// appended in order. Reading the slice by index would make a request for v3
+// silently mean "whatever is third", which is the same value until the day it
+// is not.
+func versionSchema(h *types.EndpointHistory, version int) (*types.JSONSchemaNode, bool) {
+	for _, v := range h.Versions {
+		if v.Version == version {
+			return v.Schema, true
+		}
+	}
+	return nil, false
 }
 
 func (s *Server) handleExportTypeScript(w http.ResponseWriter, r *http.Request) {

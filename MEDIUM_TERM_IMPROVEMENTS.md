@@ -91,21 +91,19 @@ copied back into the product as though it were a description of it.
 
 - Timeline of baseline versions, each with its change description and a
   shape-and-colour status node (the §4 alphabet, not colour alone) — shipped
-- Selecting two versions renders a **Version Comparison** panel — shipped
+- Selecting two versions renders a **Version Comparison** panel — **shipped
+  2026-09-24.** Until then the panel said the feature "would require enhanced backend API",
+  which had stopped being true the moment the proxy grew `diff.CompareSchemas`: every version
+  in `/api/histories` already carried its schema. It now reads
+  `GET /_driftwood/api/histories/diff` and lists the deltas, from that same engine rather than
+  a second one written for the dashboard — two implementations would be two answers to the one
+  question this product exists to answer.
 - Contract-stability sparkline across observed requests — shipped
-- **PNG/SVG export — NOT shipped.** Both buttons are on screen, and `handleExportTimeline`
-  (`HistoryView.tsx`) is a placeholder that toasts *"Export for X is planned for a future
-  update."* It does not claim a file was written, which is what separates this from the
-  deleted thresholds form — but the buttons themselves promise an artifact that does not
-  exist, and they are the one soft spot in an otherwise honest view. Either wire them or take
-  them off the screen.
-
-  Still on screen as of 2026-09-25: `HistoryView.tsx:165` is the placeholder, and
-  `EndpointHistory.tsx:515-521` is the pair of buttons. The answer chosen is the second: the
-  buttons come off, because export is §5 and §5 is not built. That is on **#78
-  (`fix/real-version-comparison`), open and unmerged at the time of writing** — the same branch
-  that replaces the Version Comparison panel's *"This would require enhanced backend API"* excuse
-  with a real diff, which is the other soft spot in this view.
+- **PNG/SVG export — NOT shipped.** The two buttons and `handleExportTimeline` are gone,
+  deleted here rather than left on screen. The toast did not claim a file was written, which is what
+  separated this from the deleted thresholds form — but the buttons themselves promised an
+  artifact that does not exist, and a control whose only effect is a message about the future
+  is the same claim as the paragraph the Version Comparison panel used to carry.
 
 **Features:**
 - Timeline view showing baseline versions and when changes occurred
@@ -440,7 +438,7 @@ These improvements can be implemented incrementally, with each as its own PR fol
 
 1. **Setup Wizard** - Shipped as a view, not a route. See §1.
 2. **Scenario Library** - Shipped as a catalogue. The mock-simulator integration (the "Load Scenario" loader) did not ship and is not a stale-branch fix; it needs a shell↔React bridge that does not exist. See §2.
-3. **Contract Evolution Timeline** - Shipped in the History view, except the PNG/SVG export. See §3.
+3. **Contract Evolution Timeline** - Shipped in the History view, including a real Version Comparison; the PNG/SVG export is not built, and the two buttons that pretended otherwise are deleted rather than left doing nothing. See §3.
 4. **Integration Guides** - Shipped, and true since 2026-09-25: the invented install lines are gone and the guide is the base-URL change the product actually asks for. See §4.
 5. **Export & Reporting** - Not built; the remaining half of Phase 5, and it reuses §6's deliverer rather than growing a second outbound path. See §5.
 6. **Webhook Integrations** - **Shipped**: SSRF guard extraction, persisted per-project config, a real outbound POST with retry, delivery records, a synchronous test route, a routed Alert Delivery view, and HMAC signing for the generic kind. See §6 for what was deliberately left out.
