@@ -81,8 +81,8 @@ func (s *Server) Router() http.HandlerFunc {
 	// The dashboard is served with the reserved namespace stripped, because
 	// web/index.html references its assets "./"-relative and web.ServeIndex looks
 	// them up on disk by URL path. Stripping turns "/_driftwood/assets/x.css" into
-	// "/assets/x.css", which resolves under frontend-react/dist. Without it the
-	// lookup would be for "_driftwood/assets/x.css" and every asset would 404.
+	// "/assets/x.css", which resolves under web/dist. Without it the lookup would
+	// be for "_driftwood/assets/x.css" and every asset would 404.
 	dashboard := http.StripPrefix(proxy.ControlPrefix, http.HandlerFunc(web.ServeIndex))
 
 	return func(w http.ResponseWriter, r *http.Request) {
