@@ -100,6 +100,13 @@ copied back into the product as though it were a description of it.
   exist, and they are the one soft spot in an otherwise honest view. Either wire them or take
   them off the screen.
 
+  Still on screen as of 2026-09-25: `HistoryView.tsx:165` is the placeholder, and
+  `EndpointHistory.tsx:515-521` is the pair of buttons. The answer chosen is the second: the
+  buttons come off, because export is §5 and §5 is not built. That is on **#78
+  (`fix/real-version-comparison`), open and unmerged at the time of writing** — the same branch
+  that replaces the Version Comparison panel's *"This would require enhanced backend API"* excuse
+  with a real diff, which is the other soft spot in this view.
+
 **Features:**
 - Timeline view showing baseline versions and when changes occurred
 - Hover-over tooltips showing what changed in each version
@@ -116,9 +123,26 @@ copied back into the product as though it were a description of it.
 ### 4. Interactive Integration Guides — SHIPPED
 **Goal:** Provide copy-paste ready integration examples for popular frameworks.
 
-**Status (2026-09-21).** Shipped, as `IntegrationsLibrary.tsx` mounted by the
-`nav-integrations` entry — all five frameworks (Express, FastAPI, NestJS, Django, Rails), each
-with a code snippet and numbered setup steps. Deviations from the proposal:
+**Status (2026-09-21; corrected 2026-09-25).** Shipped, as `IntegrationsLibrary.tsx` mounted by
+the `nav-integrations` entry — all five frameworks (Express, FastAPI, NestJS, Django, Rails), each
+with a code snippet and numbered setup steps.
+
+**"Shipped" was the wrong verdict, and this block is why.** The heading says SHIPPED and the
+component does render, so it looked earned. What it renders is not true: every card's
+first setup step installs a package that does not exist — `npm install -g @donaina/driftwood`
+(`IntegrationsLibrary.tsx:44`, `:86`), `pip install driftwood-proxy` (`:66`, `:103`),
+`gem install driftwood-proxy` (`:119`) — and every code block is framework boilerplate with no
+Driftwood code in it. A second, older copy with five *different* invented names
+(`@donaina/driftwood-proxy`, `driftwood-django`, `driftwood-rails`) is still in `web/index.html`
+at `:2271-2365`; it is unreachable, because its renderer bails at `:2322` on
+`if (!integrationsGrid) return;` and nothing in the document has that id.
+
+Driftwood is a reverse proxy, so the honest guide is *point your client's base URL at it* — true
+for every framework, needing no per-language package. A branch rewriting the component around that
+exists as **#77 (`fix/true-integration-guides`), open and unmerged at the time of writing**; until
+it lands, this section describes shipped code that names packages the registry does not have.
+
+Deviations from the proposal:
 
 - **"Try in Sandbox" — not built**, and correctly so: there is no sandbox to run anything in,
   so the button would have been a control reporting an action it did not take.
@@ -128,7 +152,8 @@ with a code snippet and numbered setup steps. Deviations from the proposal:
 - **One live palette breach**, to fold into the next UI pass: that square is
   `bg-accent-info/20` + `text-accent-info` (`IntegrationsLibrary.tsx:183-184`), which spends
   a contract-state role on chrome — the same mistake §1, §6 and §7 made in prose. It wants
-  `accent-primary`. `EndpointHistory.tsx:269` does it too, on the pin button's pressed state.
+  `accent-primary`. `EndpointHistory.tsx:301` does it too, on the pin button's pressed state.
+  (This reference was `:269`; the line moved when the timeline row was reworked.)
 
 **Features:**
 - Framework-specific guides (Express, FastAPI, NestJS, Django, Rails, etc.)
@@ -235,9 +260,16 @@ security code, deliberately reviewable alone.
   Card. A wrong envelope is a 400 at delivery time — which the Test button surfaces in
   seconds — but it is the one shipped-uncertain thing here and should not be described as
   verified until someone sends to a real tenant.
-- **`openapi.LoadFromURL`** (`internal/openapi/openapi.go:129`) remains an unnetted
-  outbound GET: no timeout, no SSRF check, unbounded `io.ReadAll`. Moving the guards made
-  it a two-line fix; it was flagged in #67, #69 and #70 and is still not done.
+- **`openapi.LoadFromURL` no longer belongs on this list.** This bullet used to say it was the
+  last unnetted outbound GET — no timeout, no SSRF check, unbounded `io.ReadAll` — and that was
+  true when it was written. It was closed in `0d09ae5` ("net the OpenAPI spec fetch, and give it
+  a deadline"), which routes the URL through `netguard.ParseAndValidate` and dials it through
+  `netguard.DialContext` with a 5s timeout, caps the body at `maxSpecBytes` (32 MB) and the
+  redirect chain at `maxSpecRedirects` (5, each hop required to stay on the origin host). The
+  line reference had also drifted: `LoadFromURL` is now at `internal/openapi/openapi.go:216`, and
+  the file around it is `LoadSpec`/`LooksLikeURL`, added when the import route needed the same
+  loader as the command line. Recorded rather than deleted, because a reader who remembers the
+  complaint should be able to see it answered.
 - **Nothing is scheduled and there is no scheduler.** Zero `time.Ticker` in the repo. The
   deliverer's retry uses `time.NewTimer` precisely so the ticker arrives with schedules or
   not at all.
@@ -414,19 +446,26 @@ Each should include:
 
 ### Verified debris
 
-Checked against the tree on 2026-09-23, not carried over from an earlier note. Each is real and
+Checked against the tree on 2026-09-25, not carried over from an earlier note. Each is real and
 none is urgent; they are recorded so the next reader does not have to re-derive them, and so a
 claim that *used* to be on this list but is no longer true does not get repeated:
 
-- `ViewHeader`'s `lead` prop (`frontend-react/src/components/ui.tsx:289`) is declared, rendered
-  at `:307`, and passed by **no caller anywhere in the tree**. Either a view wants it or it
-  should go.
+- **`.integration-*` (`web/shell.css:1608-1731`) is dead CSS, and the earlier note that called it
+  live was wrong.** These rules — `.integration-card`, `-code-box`, `-detail-*`, `-verification`,
+  `.integrations-filter-btn` — are referenced from exactly one place: the unreachable renderer in
+  `web/index.html:2316-2360`. The shipped `IntegrationsLibrary.tsx` is Tailwind and uses none of
+  them, so nothing on screen takes these rules. `.integrations-filter-btn.active` (`:1731`) also
+  spends `--accent-info` on chrome, which `DESIGN.md` reserves. Both go with §4's rewrite; see #77.
+- **`.share-btn` (`web/shell.css:1434-1453`, `:1791`) and `.empty-state-enhanced`
+  (`:1458-1473`) have zero references tree-wide** — not in the shell, not in any React component.
+  The non-enhanced `.empty-state` (`:682-710`) *is* live and is a different rule.
 - Three earlier entries were checked and **are no longer true**, so they are struck rather than
-  inherited: the "12 root planning artifacts" are gone (the root holds only `README`,
-  `CONTRIBUTING`, `DESIGN` and this file); the port-18791 process holding a deleted
-  `bin/drift-bin` is gone; and the CSS previously described as dead for the deleted Export view
-  (`web/shell.css:1632-1725`) is live Integration Guides styling that §4 ships against.
+  inherited. `ViewHeader`'s `lead` prop (`frontend-react/src/components/ui.tsx:289`, rendered at
+  `:307`) used to have no caller anywhere; §7's view now passes one
+  (`CustomAlertThresholds.tsx:272`). The "12 root planning artifacts" are gone — the root holds
+  only `README`, `CONTRIBUTING`, `DESIGN` and this file. And the port-18791 process holding a
+  deleted `bin/drift-bin` is gone.
 - `frontend-react/dist/` is a stale local build, but it is **gitignored**
-  (`frontend-react/.gitignore:11`), so it is not repository debris and does not belong on a
+  (`frontend-react/.gitignore:10`), so it is not repository debris and does not belong on a
   cleanup list. `web/dist` is the served one.
 - No direct commits to main - branch → PR → user merge workflow
