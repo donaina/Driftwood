@@ -32,6 +32,11 @@ import (
 
 type harness struct {
 	router *httptest.Server
+	// server is the same Server the router dispatches to, for the handful of
+	// routes whose own guards cannot be reached over a real connection: the
+	// import route refuses anything that did not arrive from loopback, and every
+	// request this harness makes does.
+	server *Server
 	hits   *int64
 	store  *storage.Store
 	// hub is the live hub the server publishes to, so a test can subscribe to the
@@ -126,10 +131,11 @@ func newHarnessWith(t *testing.T, siteHandler http.Handler) *harness {
 	}
 
 	deliveries := &fakeDeliveryLog{}
-	front := httptest.NewServer(NewServer(store, hub, prx, mockCtrl, siteHandler, deliveries).Router())
+	srv := NewServer(store, hub, prx, mockCtrl, siteHandler, deliveries)
+	front := httptest.NewServer(srv.Router())
 	t.Cleanup(front.Close)
 
-	return &harness{router: front, hits: &hits, store: store, hub: hub, deliveries: deliveries}
+	return &harness{router: front, server: srv, hits: &hits, store: store, hub: hub, deliveries: deliveries}
 }
 
 func (h *harness) do(t *testing.T, method, path string, hdr map[string]string) *http.Response {

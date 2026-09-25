@@ -238,6 +238,76 @@ type Store struct {
 	   a baseline save persists, and doing it there would rebuild the snapshot once
 	   per proxied request. */
 	routingGen atomic.Uint64
+
+	/* What the file looked like the last time this process read or wrote it.
+
+	   Two processes on one store is the situation this exists for. `drift import`
+	   writes the same document the proxy writes; the proxy's next save serialises
+	   its own view; the import is gone, the file is still well-formed, and
+	   nothing reports it. Going through the running instance's API is the fix —
+	   see instance.go — and this is the backstop for the times that does not
+	   happen: an older build, a hand edit, an instance whose hint file the
+	   importer never saw.
+
+	   A warning rather than a merge. Which side wins is not decidable from the
+	   bytes: both documents are complete and neither records that the other
+	   exists, so a merge would silently choose, and silently choosing is the
+	   failure being fixed rather than a fix for it.
+
+	   Touched only from loadFromFile, which runs once before the store is shared,
+	   and from persistLocked, which every caller holds writeMx for. There is no
+	   concurrent access to guard. */
+	stamp    fileStamp
+	stampSet bool
+}
+
+// fileStamp is the pair that says whether a file is the one we last saw.
+//
+// Size as well as time because both are coarse in the ways that matter: a write
+// landing inside the filesystem's timestamp granularity is invisible to the time
+// alone, and every write here goes through a rename, so a same-size replacement
+// is a real possibility rather than a theoretical one.
+type fileStamp struct {
+	modTime time.Time
+	size    int64
+}
+
+func stampOf(path string) (fileStamp, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fileStamp{}, false
+	}
+	return fileStamp{modTime: fi.ModTime(), size: fi.Size()}, true
+}
+
+// noteForeignWriteLocked warns when the file has changed underneath this
+// process.
+//
+// It does not move the stamp. One foreign write warning once is a property of
+// rememberStampLocked running after the save that answers it — and a write that
+// fails leaves the file exactly as the other writer left it, so warning again
+// on the next attempt is the right answer rather than a repeat.
+//
+// The warning names the file, what happened, and what this save is about to do
+// to it. A message that only said "the store changed" would leave the operator
+// to work out whether their import had survived, which is the question they
+// have and the one this answers.
+func (s *Store) noteForeignWriteLocked() {
+	current, ok := stampOf(s.persistPath)
+	if !ok || !s.stampSet || current == s.stamp {
+		return
+	}
+	log.Printf("[Driftwood] %s changed on disk since this process last read or wrote it, so something else wrote it while this one was running — another Driftwood process, or an editor. This save replaces the file with this process's view, which does not include those changes. Anything added by the other writer is now lost. Run one instance at a time, or make the change through the running one.", s.persistPath)
+}
+
+// rememberStampLocked records the file as this process last saw it. The caller
+// must hold writeMx, or be the single-threaded load that runs before the store
+// is shared.
+func (s *Store) rememberStampLocked() {
+	if stamp, ok := stampOf(s.persistPath); ok {
+		s.stamp = stamp
+		s.stampSet = true
+	}
 }
 
 // markRoutingChangedLocked records that where requests go has changed. The
@@ -267,8 +337,7 @@ func (s *Store) RoutingGeneration() uint64 {
 // happen is the v1 behaviour, which was to discard this error with `_ =` and
 // start empty without mentioning it.
 func NewStore(targetURL, proxyPort string) (*Store, error) {
-	homeDir, _ := os.UserHomeDir()
-	persistDir := filepath.Join(homeDir, ".driftwood")
+	persistDir := PersistentDir()
 	_ = os.MkdirAll(persistDir, 0700)
 
 	now := time.Now()
@@ -1724,6 +1793,11 @@ func (s *Store) stateForPersistLocked() *persistedState {
 // persistLocked writes the current state. The caller must hold writeMx; it takes
 // mu itself for the snapshot, so a caller must not be holding mu already.
 func (s *Store) persistLocked() error {
+	// Before the snapshot, not after the write: the point is to report a file
+	// that is about to be replaced, and a warning that arrived once the
+	// replacement was done would be a report rather than a warning.
+	s.noteForeignWriteLocked()
+
 	s.mu.Lock()
 	data, err := json.MarshalIndent(s.stateForPersistLocked(), "", "  ")
 	s.mu.Unlock()
@@ -1734,6 +1808,7 @@ func (s *Store) persistLocked() error {
 	if err := atomicWriteFile(s.persistPath, data, 0600); err != nil {
 		return fmt.Errorf("write store: %w", err)
 	}
+	s.rememberStampLocked()
 	return nil
 }
 
@@ -1875,9 +1950,13 @@ func (s *Store) loadFromFile() error {
 		}
 	}
 
+	// The load path's half of the stamp. Set here rather than at the top of the
+	// function because the branches above can move the file aside, and a stamp
+	// taken before that would describe a file this store is no longer reading.
 	if converted {
 		return s.keepV1CopyThenRewrite(data)
 	}
+	s.rememberStampLocked()
 	return nil
 }
 
