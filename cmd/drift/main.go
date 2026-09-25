@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -120,6 +123,42 @@ func main() {
 	srv := server.NewServer(store, hub, prx, mockCtrl, siteHandler, deliverer)
 	addr := net.JoinHostPort(*host, cfg.ProxyPort)
 
+	/* The port is taken here rather than inside the goroutine below, and the
+	   difference is not stylistic: the hint file that tells `drift import` where
+	   to find this instance must not be written by an instance that failed to
+	   bind. Binding first makes the hint true by construction — it is written
+	   only once this process actually holds the port — instead of true in the
+	   ordinary case and misleading in the one where something else already had
+	   it. There is still a window between the bind and the first request being
+	   served, but nothing can be listening on a port without owning it, so the
+	   probe that reads this hint answers correctly throughout. */
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("Failed to listen on %s: %v", addr, err)
+	}
+
+	/* Recorded so the CLI can find a running instance and ask it to make the
+	   import, rather than writing the store file underneath one — see
+	   handleImport for what that used to cost. Best-effort: a failure here costs
+	   the CLI its fast path and nothing else, and the CLI warns on the slow path
+	   anyway, so it is a log line rather than a reason not to start. */
+	controlHost := *host
+	if ip := net.ParseIP(controlHost); ip == nil || !ip.IsLoopback() {
+		// The CLI runs on this machine, so a wildcard or public bind is still
+		// reached over loopback. Naming the bound address instead would hand the
+		// CLI an address it may not be able to route to — and one that leaves the
+		// machine, which is not what an import needs.
+		controlHost = "127.0.0.1"
+	}
+	controlURL := "http://" + net.JoinHostPort(controlHost, cfg.ProxyPort)
+	if err := storage.WriteInstance(storage.InstanceInfo{
+		ControlURL: controlURL,
+		PID:        os.Getpid(),
+		StartedAt:  time.Now(),
+	}); err != nil {
+		log.Printf("[Driftwood] Could not record where this instance is listening (%v). A `drift import` run while this is up will not find it and will write the store file directly, which this instance will overwrite on its next save.", err)
+	}
+
 	log.Printf("[Driftwood] Web Dashboard & Proxy running on http://%s", addr)
 	// Said out loud because the failure it prevents is silent: a dashboard bound
 	// to loopback is simply unreachable from another machine, and nothing else
@@ -203,11 +242,28 @@ func main() {
 		if err := deliverer.Close(drainCtx); err != nil {
 			log.Printf("Alert deliveries: %v", err)
 		}
+
+		/* Removed last, and only if it still names this process.
+
+		   Last because the hint is what sends an import to this instance rather
+		   than to the file, and it must keep being true for as long as anything
+		   here can serve it — a hint removed while the listener is still open
+		   would route a concurrent `drift import` to the file behind a live
+		   proxy, which is the bug this whole path exists to prevent.
+
+		   Only if it names this process, because the listener closed several
+		   steps ago and this one is still running: a replacement instance can
+		   have bound the port and recorded itself in the meantime, and deleting
+		   the file unconditionally would take away the address of the instance
+		   that is actually serving. ClearInstance checks before it removes, so
+		   what survives here is the other process's live hint rather than this
+		   one's dead one. */
+		storage.ClearInstance(os.Getpid())
 		serverStopCtx()
 	}()
 
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
 	}()
@@ -252,44 +308,6 @@ func envTruthy(name string) bool {
 	return false
 }
 
-// resolveImportProject decides which project an import files its contracts
-// under.
-//
-// Without -project it is the active project, which is what makes an unflagged
-// import behave exactly as it did when there was only one. With -project it is
-// the named one, and a name that does not exist is an error rather than a new
-// project: an import is the act of filing a client's declared contracts, and
-// silently creating the project a typo named would file them somewhere nothing
-// is looking. The error lists what does exist, because a refusal a user cannot
-// act on is only slightly better than the wrong answer.
-//
-// This is separated from handleImport so it can be tested at all —
-// handleImport reports by log.Fatalf, which exits.
-func resolveImportProject(store *storage.Store, requested string) (string, error) {
-	if requested == "" {
-		return store.ActiveProject(), nil
-	}
-	if !store.ProjectExists(requested) {
-		projects, _ := store.ListProjects()
-		known := make([]string, 0, len(projects))
-		for _, p := range projects {
-			// The id is what the flag takes, so it leads. The name is how a
-			// person knows the project, so it follows when it says more.
-			if p.Name != "" && p.Name != p.ID {
-				known = append(known, fmt.Sprintf("%s (%s)", p.ID, p.Name))
-				continue
-			}
-			known = append(known, p.ID)
-		}
-		if len(known) == 0 {
-			return "", fmt.Errorf("no such project: %q, and this install has no projects", requested)
-		}
-		return "", fmt.Errorf("no such project: %q; known projects: %s",
-			requested, strings.Join(known, ", "))
-	}
-	return requested, nil
-}
-
 func handleImport(args []string) {
 	importFlag := flag.NewFlagSet("import", flag.ExitOnError)
 	specPath := importFlag.String("spec", "", "Path or URL to OpenAPI spec (required)")
@@ -304,28 +322,65 @@ func handleImport(args []string) {
 		fmt.Println("            (default: whichever project is active)")
 		fmt.Println("  -help     Show this help")
 		fmt.Println()
+		fmt.Println("If a Driftwood instance is running, the contracts are imported through it.")
+		fmt.Println("Otherwise the store file is written directly, and the command says so.")
+		fmt.Println()
 		fmt.Println("Examples:")
 		fmt.Println("  drift import -spec ./openapi.json")
 		fmt.Println("  drift import -spec https://api.example.com/openapi.json -project acme")
 		os.Exit(1)
 	}
 
-	// Load OpenAPI spec
-	var spec *openapi.OpenAPISpec
-	var err error
-
-	if strings.HasPrefix(*specPath, "http://") || strings.HasPrefix(*specPath, "https://") {
-		log.Printf("[Driftwood] Loading OpenAPI spec from URL: %s", *specPath)
-		spec, err = openapi.LoadFromURL(*specPath)
-	} else {
-		log.Printf("[Driftwood] Loading OpenAPI spec from file: %s", *specPath)
-		spec, err = openapi.LoadFromFile(*specPath)
+	/* A relative -spec is resolved here, against the directory the operator is
+	   standing in. If the running instance were left to resolve it, it would
+	   resolve against its own working directory instead — a different answer to
+	   the same path, and a confusing one, since the file the operator can see is
+	   not the one that gets read. An absolute path is the same answer for both,
+	   so the conversion happens before the request is sent. */
+	source := *specPath
+	if !openapi.LooksLikeURL(source) {
+		abs, err := filepath.Abs(source)
+		if err != nil {
+			log.Fatalf("Failed to resolve spec path %q: %v", source, err)
+		}
+		source = abs
 	}
+
+	/* A running instance first, and by a wide margin.
+
+	   This command used to write ~/.driftwood/baselines.json behind the back of
+	   a proxy that held its own copy of the same document in memory: the next
+	   save in the dashboard serialised that copy over the top and the import was
+	   gone, with nothing said and every request still answering 200. Going
+	   through the instance puts the contracts in the state the instance is
+	   actually serving from, so there is no second writer and nothing to lose. */
+	if controlURL, ok := liveInstance(); ok {
+		importThroughInstance(controlURL, source, *projectFlag)
+		return
+	}
+
+	// Load OpenAPI spec. One loader, which decides for itself which half of the
+	// path-or-URL pair this source is — the same decision the running instance
+	// makes for the same string, so the two channels cannot read different things
+	// from one -spec.
+	if openapi.LooksLikeURL(source) {
+		log.Printf("[Driftwood] Loading OpenAPI spec from URL: %s", source)
+	} else {
+		log.Printf("[Driftwood] Loading OpenAPI spec from file: %s", source)
+	}
+	spec, err := openapi.LoadSpec(source)
 	if err != nil {
 		log.Fatalf("Failed to load OpenAPI spec: %v", err)
 	}
 
 	log.Printf("[Driftwood] OpenAPI spec loaded: %s v%s", spec.Info.Title, spec.Info.Version)
+
+	/* Said here rather than at the top because everything above can still fail
+	   without writing anything, and a warning about an overwrite followed by a
+	   fatal about a typo'd path is two things to read where there is one problem.
+	   This is the first point at which a store is definitely about to be opened
+	   and written. */
+	warnAboutDirectWrite()
 
 	// Initialize storage with dummy target (we just need it for baseline storage).
 	// A store that could not be read is reported and then written to anyway: this
@@ -337,7 +392,7 @@ func handleImport(args []string) {
 	}
 
 	// Import contracts.
-	projectID, err := resolveImportProject(store, *projectFlag)
+	projectID, err := storage.ResolveImportProject(store, *projectFlag)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -353,6 +408,131 @@ func handleImport(args []string) {
 	for _, c := range contracts {
 		log.Printf("  %s %s (operation: %s)", c.Method, c.Path, c.OperationID)
 	}
+}
+
+/* The channel that goes through a running instance.
+
+   Both calls are deliberately short-timeout and non-retrying. The instance is
+   on this machine — the hint file names loopback — so anything slower than a
+   couple of seconds means it is not there in any sense worth waiting for, and
+   the caller has a fallback for that. A long timeout would turn "no instance is
+   running" into a command that appears to hang. */
+
+// liveInstance reports where a running Driftwood is listening, if one is.
+//
+// The hint file says where an instance *was*. What makes this a fact is the
+// second half: asking that address to identify itself, on a route nothing but
+// this program serves. A stale hint — an instance killed without cleaning up,
+// or a crash — costs one refused connection and lands the caller on the file
+// path, which is the behaviour it had before any of this existed.
+func liveInstance() (string, bool) {
+	info, ok := storage.ReadInstance()
+	if !ok {
+		return "", false
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(info.ControlURL + proxy.ControlPrefix + "/api/instance")
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", false
+	}
+
+	var body struct {
+		App string `json:"app"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil || body.App != "driftwood" {
+		return "", false
+	}
+	return info.ControlURL, true
+}
+
+// importThroughInstance asks the running instance to make the import.
+//
+// Every failure here is fatal rather than a fall back to writing the file. The
+// caller has already established that an instance is running and owns the state;
+// quietly writing the file anyway is the exact act whose consequences this whole
+// path exists to avoid, and it would do it in the situation most likely to lose
+// data. An error the operator can read is the smaller harm.
+func importThroughInstance(controlURL, source, project string) {
+	log.Printf("[Driftwood] A running instance answered at %s; asking it to make the import.", controlURL)
+
+	payload, err := json.Marshal(struct {
+		Spec    string `json:"spec"`
+		Project string `json:"project"`
+	}{Spec: source, Project: project})
+	if err != nil {
+		log.Fatalf("Failed to build the import request: %v", err)
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Post(controlURL+proxy.ControlPrefix+"/api/import", "application/json", strings.NewReader(string(payload)))
+	if err != nil {
+		log.Fatalf("A Driftwood instance is running at %s but the import request failed: %v\nThe instance's own copy of the store is the only one being served; stop it and run this again to write the file directly.", controlURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		/* Reached by something that answered the handshake but has no import
+		   route. No build that exists today can do that — the two routes shipped
+		   together — so this is a guard against the layout changing rather than a
+		   case anyone is in. It is said separately because its remedy is "this
+		   process is not what it says it is", which is not something the other
+		   refusals should be read as. */
+		log.Fatalf("Something at %s identified itself as Driftwood but has no import route. It is not a build this command knows how to import into; stop it and run this import again to write the store file directly.", controlURL)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		log.Fatalf("The instance at %s refused the import: %s", controlURL, strings.TrimSpace(string(body)))
+	}
+
+	var result struct {
+		Project  string `json:"project"`
+		Imported []struct {
+			Method      string `json:"method"`
+			Path        string `json:"path"`
+			OperationID string `json:"operation_id"`
+		} `json:"imported"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Fatalf("The import was accepted but its reply could not be read: %v", err)
+	}
+
+	log.Printf("[Driftwood] OpenAPI contracts imported successfully into project %q.", result.Project)
+	for _, c := range result.Imported {
+		log.Printf("  %s %s (operation: %s)", c.Method, c.Path, c.OperationID)
+	}
+}
+
+// warnAboutDirectWrite says what this command is about to do, and what will
+// happen to it if the operator was wrong about nothing being up.
+//
+// It warns rather than refusing. No instance answering does not mean no
+// instance exists — one on another machine, one whose hint file was never
+// written because it was started by an older build — and a command that
+// refused in those cases would be broken for the people whose setup is fine.
+// The failure it is guarding against is silent, so saying it out loud is the
+// whole difference.
+func warnAboutDirectWrite() {
+	storePath := filepath.Join(storage.PersistentDir(), "baselines.json")
+
+	// The two cases are worded differently because they mean different things to
+	// the operator. A hint that nothing answers is evidence something ran here
+	// and died; no hint at all is the ordinary state of a machine where nothing
+	// has. Same decision either way, different reason, and the reason is what
+	// tells someone whether to go looking.
+	if info, hinted := storage.ReadInstance(); hinted {
+		log.Printf("[Driftwood] Nothing is answering at %s — the last instance to check in left that address behind — so this import writes %s directly.",
+			info.ControlURL, storePath)
+	} else {
+		log.Printf("[Driftwood] No running Driftwood instance was found, so this import writes %s directly.", storePath)
+	}
+
+	log.Printf("[Driftwood] If an instance IS running — on another machine, or started before the address above was recorded — its next save writes its own view of the store over that file, and everything imported here is lost. Stop it first, or start it and run this again.")
 }
 
 // demoBaselinePath is the only endpoint Driftwood seeds a contract for: the

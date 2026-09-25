@@ -117,6 +117,35 @@ type EndpointContract struct {
 	ResponseSchema *types.JSONSchemaNode
 }
 
+// LooksLikeURL reports whether a document source names a URL rather than a
+// path.
+//
+// The scheme prefix is the whole test, and it is the test the command line
+// already used. It is exported so that the command line can say which of the
+// two it is about to do without keeping a second copy of the rule — a second
+// copy is what would let the message and the loader disagree about a source
+// that is neither, which is exactly the case a person is reading the message
+// to understand.
+func LooksLikeURL(source string) bool {
+	return strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://")
+}
+
+// LoadSpec reads an OpenAPI document from a path or a URL, whichever the source
+// looks like.
+//
+// One entry point because there are two callers now — the import subcommand, and
+// the control route a running instance serves so that an import can go through
+// it — and the second caller must read the same bytes as the first. Two copies
+// of "which loader does this string want" is two places for a source to be
+// judged differently, and the symptom would be an import that works against a
+// file and fails against a URL only when it went through the API.
+func LoadSpec(source string) (*OpenAPISpec, error) {
+	if LooksLikeURL(source) {
+		return LoadFromURL(source)
+	}
+	return LoadFromFile(source)
+}
+
 func LoadFromFile(path string) (*OpenAPISpec, error) {
 	data, err := readFile(path)
 	if err != nil {

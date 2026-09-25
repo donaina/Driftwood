@@ -194,6 +194,10 @@ func (s *Server) Router() http.HandlerFunc {
 			s.handleTestWebhook(w, r)
 		case proxy.ControlPrefix + "/api/thresholds":
 			s.handleThresholds(w, r)
+		case proxy.ControlPrefix + "/api/instance":
+			s.handleInstance(w, r)
+		case proxy.ControlPrefix + "/api/import":
+			s.handleImportSpec(w, r)
 		default:
 			// An unmatched control-API path is a 404 in JSON, not the dashboard.
 			// Returning HTML to a client that mistyped an endpoint hides the
