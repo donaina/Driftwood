@@ -105,13 +105,6 @@ copied back into the product as though it were a description of it.
   artifact that does not exist, and a control whose only effect is a message about the future
   is the same claim as the paragraph the Version Comparison panel used to carry.
 
-  Still on screen as of 2026-09-25: `HistoryView.tsx:165` is the placeholder, and
-  `EndpointHistory.tsx:515-521` is the pair of buttons. The answer chosen is the second: the
-  buttons come off, because export is §5 and §5 is not built. That is on **#78
-  (`fix/real-version-comparison`), open and unmerged at the time of writing** — the same branch
-  that replaces the Version Comparison panel's *"This would require enhanced backend API"* excuse
-  with a real diff, which is the other soft spot in this view.
-
 **Features:**
 - Timeline view showing baseline versions and when changes occurred
 - Hover-over tooltips showing what changed in each version
@@ -437,7 +430,7 @@ These improvements can be implemented incrementally, with each as its own PR fol
 
 1. **Setup Wizard** - Shipped as a view, not a route. See §1.
 2. **Scenario Library** - Shipped as a catalogue. The mock-simulator integration (the "Load Scenario" loader) did not ship and is not a stale-branch fix; it needs a shell↔React bridge that does not exist. See §2.
-3. **Contract Evolution Timeline** - Shipped in the History view, except the PNG/SVG export. See §3.
+3. **Contract Evolution Timeline** - Shipped in the History view, including a real Version Comparison; the PNG/SVG export is not built and its buttons are off the screen. See §3.
 4. **Integration Guides** - Shipped. See §4.
 5. **Export & Reporting** - Not built; the remaining half of Phase 5, and it reuses §6's deliverer rather than growing a second outbound path. See §5.
 6. **Webhook Integrations** - **Shipped**: SSRF guard extraction, persisted per-project config, a real outbound POST with retry, delivery records, a synchronous test route, a routed Alert Delivery view, and HMAC signing for the generic kind. See §6 for what was deliberately left out.
