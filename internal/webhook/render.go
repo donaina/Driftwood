@@ -142,11 +142,23 @@ func slackBody(p Payload) map[string]interface{} {
 // Automate workflow webhook shape — Microsoft retired the Office 365 connector
 // that took the older MessageCard.
 //
-// The envelope is the one part of this file that has not been exercised against
-// a real tenant. A wrong envelope is a 400 at delivery time and nothing else,
-// which is why the test route exists: an operator finds out in seconds rather
-// than discovering it when the first contract breaks. Treat it as unverified
-// until a real workflow has accepted one.
+// Every attachment field is required by the connector's AdaptiveCardItemSchema,
+// and contentUrl is the one that bites: it is required and its value must be
+// null, so it has to be written out rather than omitted. Leaving it off is not
+// visible here — a nil in this map and a deleted key both encode to something
+// that looks right — and the workflow answers it with a 400 whose code is
+// TriggerInputSchemaMismatch and whose text is "Required properties are missing
+// from object: contentUrl." The test below pins the key for that reason.
+//
+// The card itself is checked against the published schema in review: both the
+// sample and the over-limit renderings validate against
+// definitions/AdaptiveCard in https://adaptivecards.microsoft.com/schemas/adaptive-card.json
+// at version 1.4, and the $schema emitted here is that schema's own id.
+//
+// What remains unverified is acceptance by a real tenant. Two of the three
+// ways this can fail are now closed by the schema and the published field list;
+// the third is a tenant answering, which is why the test route exists — an
+// operator finds out in seconds rather than when the first contract breaks.
 func teamsBody(p Payload) map[string]interface{} {
 	body := make([]map[string]interface{}, 0, maxDeltas+2)
 	body = append(body,
@@ -182,6 +194,8 @@ func teamsBody(p Payload) map[string]interface{} {
 		"type": "message",
 		"attachments": []map[string]interface{}{{
 			"contentType": "application/vnd.microsoft.card.adaptive",
+			// Required, and required to be null. See the note above.
+			"contentUrl": nil,
 			"content": map[string]interface{}{
 				"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
 				"type":    "AdaptiveCard",

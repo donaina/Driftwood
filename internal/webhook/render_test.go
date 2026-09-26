@@ -82,6 +82,79 @@ func TestRenderRefusesAnUnknownKind(t *testing.T) {
 	}
 }
 
+// TestTeamsEnvelopeCarriesEveryRequiredAttachmentField pins the one field whose
+// absence is invisible in this package and fatal at delivery.
+//
+// Microsoft's AdaptiveCardItemSchema requires three attachment fields, and
+// contentUrl is the awkward one: required, and required to be null. Omit it and
+// the workflow answers 400 TriggerInputSchemaMismatch — "Required properties are
+// missing from object: contentUrl." — which is the exact failure the teamsBody
+// comment used to warn about without anything checking for it.
+//
+// Nothing else here can catch it. The body is valid JSON either way, it is under
+// every vendor limit either way, and Go renders a nil and an absent key
+// identically to the eye. That is why the assertion decodes into RawMessage
+// rather than a struct: a struct field of *string cannot tell a missing key from
+// a null one, and that distinction is the entire point.
+func TestTeamsEnvelopeCarriesEveryRequiredAttachmentField(t *testing.T) {
+	body, _, err := Render(types.WebhookTeams, samplePayload())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var env struct {
+		Type        string                       `json:"type"`
+		Attachments []map[string]json.RawMessage `json:"attachments"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatalf("decoding the envelope: %v", err)
+	}
+
+	if env.Type != "message" {
+		t.Errorf("type = %q, want %q", env.Type, "message")
+	}
+	if len(env.Attachments) != 1 {
+		t.Fatalf("attachments = %d, want 1", len(env.Attachments))
+	}
+	att := env.Attachments[0]
+
+	for _, key := range []string{"contentType", "contentUrl", "content"} {
+		if _, ok := att[key]; !ok {
+			t.Errorf("the attachment carries no %q, and the workflow's schema requires it", key)
+		}
+	}
+	if got := string(att["contentUrl"]); got != "null" {
+		t.Errorf("contentUrl = %s, want null: the schema requires the field and requires it to be null", got)
+	}
+	if got := string(att["contentType"]); got != `"application/vnd.microsoft.card.adaptive"` {
+		t.Errorf("contentType = %s, want the adaptive card type", got)
+	}
+
+	// And the card inside it is a card. A well-formed envelope carrying an
+	// empty object is the same 400 under a different code.
+	var card struct {
+		Schema  string                   `json:"$schema"`
+		Type    string                   `json:"type"`
+		Version string                   `json:"version"`
+		Body    []map[string]interface{} `json:"body"`
+	}
+	if err := json.Unmarshal(att["content"], &card); err != nil {
+		t.Fatalf("decoding the card: %v", err)
+	}
+	if !strings.Contains(card.Schema, "adaptive-card.json") {
+		t.Errorf("$schema = %q, want the adaptive card schema", card.Schema)
+	}
+	if card.Type != "AdaptiveCard" {
+		t.Errorf("card type = %q, want AdaptiveCard", card.Type)
+	}
+	if card.Version == "" {
+		t.Error("the card declares no version")
+	}
+	if len(card.Body) == 0 {
+		t.Error("the card has an empty body")
+	}
+}
+
 // TestGenericIsTheCanonicalPayload pins the one kind that is not an envelope:
 // the generic body is the payload itself, so an operator wiring Driftwood into
 // their own systems gets the same fields the dashboard has.
