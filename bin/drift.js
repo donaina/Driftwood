@@ -4,11 +4,22 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-console.log('⚡ Starting Driftwood proxy...');
-
 const ext = process.platform === 'win32' ? '.exe' : '';
 const prebuiltBinPath = path.join(__dirname, `drift-bin${ext}`);
 const userArgs = process.argv.slice(2);
+
+/* `--version` asks what the binary is; it is not a request to start a proxy, and
+   the Go side answers it in exactly one line. This banner reached stdout first,
+   so the answer was two lines for anyone who installed through npm and one line
+   only for a binary run directly — which is the case the contract was written
+   for and the case that was never the one people use. `VERSION=$(drift --version)`
+   captured the banner into the version.
+
+   Both spellings, because Go's flag package accepts `-version` and `--version`
+   alike and only the second was checked here. */
+if (!userArgs.includes('--version') && !userArgs.includes('-version')) {
+  console.log('⚡ Starting Driftwood proxy...');
+}
 
 let child;
 let usedFallback = false;

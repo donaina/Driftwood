@@ -71,11 +71,38 @@ async function download(url, destPath) {
   });
 }
 
-async function downloadChecksums(version) {
-  const url = `https://github.com/${REPO}/releases/download/v${version}/SHA256SUMS.txt`;
+/* GitHub answers a release asset URL with a 302 to objects.githubusercontent.com,
+   so a fetch that accepts only 200 never reaches the file. That is what this did,
+   and because it sits inside the same try as the binary download, its throw took
+   the binary down with it: the checksum step failed, the catch ran, and every
+   install fell through to a local Go build. On a machine with Go that produced a
+   "dev" binary that was not the release; on a machine without one it installed
+   nothing. `download` above already followed the redirect — this is the same rule
+   applied to the other fetch.
+
+   `url` and `hops` are for the recursion and for the test, which drives this
+   against a stubbed transport rather than the network. */
+async function downloadChecksums(version, url, hops) {
+  const target = url || `https://github.com/${REPO}/releases/download/v${version}/SHA256SUMS.txt`;
+  const depth = hops || 0;
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
+    https.get(target, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        // The redirect body is not read, but the socket has to be freed.
+        res.resume();
+        if (!res.headers.location) {
+          reject(new Error('Checksums redirect carried no Location'));
+          return;
+        }
+        // A cap, so a redirect loop ends as an error rather than as a hang.
+        if (depth >= 5) {
+          reject(new Error('Checksums redirect loop'));
+          return;
+        }
+        return downloadChecksums(version, res.headers.location, depth + 1).then(resolve).catch(reject);
+      }
       let data = '';
+      res.setEncoding('utf8');
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         if (res.statusCode !== 200) {
@@ -198,14 +225,21 @@ function tryBuildFromSource() {
    on a machine where no binary was installed and no Go toolchain existed. The
    rejection handler is not decoration either: an async function called like this
    would otherwise report the failure as an unhandled rejection. */
-install()
-  .then((ok) => {
-    if (!ok) {
-      console.error('[driftwood] Installation finished without a runnable binary. Nothing was installed.');
+/* Guarded so the file can also be required, which is what lets a test call
+   downloadChecksums against a stubbed transport. npm runs this as a script, so
+   require.main is this module and the install still runs on install. */
+if (require.main === module) {
+  install()
+    .then((ok) => {
+      if (!ok) {
+        console.error('[driftwood] Installation finished without a runnable binary. Nothing was installed.');
+        process.exit(1);
+      }
+    })
+    .catch((err) => {
+      console.error(`[driftwood] Installation failed: ${err && err.message ? err.message : err}`);
       process.exit(1);
-    }
-  })
-  .catch((err) => {
-    console.error(`[driftwood] Installation failed: ${err && err.message ? err.message : err}`);
-    process.exit(1);
-  });
+    });
+}
+
+module.exports = { downloadChecksums };
