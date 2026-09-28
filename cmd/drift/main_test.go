@@ -271,3 +271,29 @@ func TestBuildProxyServesAnActiveProjectWithNoTarget(t *testing.T) {
 		t.Errorf("the targetless project was given %q, so the flag became a standing override", got)
 	}
 }
+
+// A binary that was not built by the release workflow must not claim to be the
+// release.
+//
+// `version` is set by the release workflow's `-ldflags "-X main.version=<tag>"`,
+// so under `go test` it is always the default — which makes this the only place
+// the rule can be stated. The failure it prevents is quiet and specific: give
+// the default a number and every `go build` from a checkout starts answering
+// `drift --version` with a release it is not, including the developer's own
+// working copy and any binary built by hand on the deploy box. Nothing else in
+// the product would contradict it.
+func TestAnUninjectedBuildDoesNotClaimToBeARelease(t *testing.T) {
+	if version != "dev" {
+		t.Errorf("the default version is %q — a build that no release workflow made must not name a release", version)
+	}
+
+	// The output is a contract too: `drift --version` is read by a person and by
+	// a script, so it stays one line and keeps the program's own name in front of
+	// the number.
+	if got, want := versionLine(), "drift dev"; got != want {
+		t.Errorf("versionLine() = %q, want %q", got, want)
+	}
+	if strings.ContainsAny(versionLine(), "\r\n") {
+		t.Errorf("versionLine() = %q, want a single line with no newline in it", versionLine())
+	}
+}

@@ -27,6 +27,23 @@ import (
 	"github.com/donaina/driftwood/web"
 )
 
+// version is the release this binary came from. The release workflow sets it
+// with -ldflags "-X main.version=<tag>"; a plain `go build` leaves the default
+// in place.
+//
+// The default says "dev" rather than naming a number, and that is the point: a
+// binary somebody built from a checkout is not the release, and a version flag
+// that answered "1.0.0" for every build would be a number with nothing behind
+// it. The release workflow is the only thing that makes this claim, which is
+// also why the test below pins the default rather than the value.
+var version = "dev"
+
+// versionLine is what `--version` prints. One line, so `drift --version` can be
+// read by a person and consumed by a script without either guessing.
+func versionLine() string {
+	return "drift " + version
+}
+
 func main() {
 	// Handle subcommands
 	if len(os.Args) > 1 && os.Args[1] == "import" {
@@ -42,7 +59,15 @@ func main() {
 	// somebody's application root with a marketing page is not a thing to do
 	// unasked.
 	serveSite := flag.Bool("site", false, "Also serve the marketing site at / and /try. Off by default: with it on, \"/\" is answered by the site and no longer reaches the proxied target")
+	showVersion := flag.Bool("version", false, "Print the version and exit")
 	flag.Parse()
+
+	// Before the banner and before anything is constructed: asking what a binary
+	// is should not start a proxy, bind a port or touch the store.
+	if *showVersion {
+		fmt.Println(versionLine())
+		return
+	}
 
 	// Which flags the user actually typed. A flag left at its default is not a
 	// decision, so it must not outrank a setting the dashboard saved — otherwise

@@ -11,7 +11,10 @@ on:
       # and attached binaries that are not what that tag points at. A dispatch
       # now has to name the tag it is releasing.
       tag_name:
-        description: 'Tag to release, which must already exist (e.g. v1.0.6)'
+        # The example is the current version on purpose: it is the tag a release
+        # actually uses, so the placeholder cannot drift into naming one that
+        # does not exist or that belongs to a different history.
+        description: 'Tag to release, which must already exist (e.g. v1.0.0)'
         required: true
         type: string
 
@@ -66,14 +69,26 @@ jobs:
       # reachable and absent, which a dry run cannot see because it never
       # resolves an asset URL.
       - name: Build cross-platform binaries
+        # The tag is stamped in so `drift --version` answers with the release the
+        # binary came from instead of the "dev" default. Without this the six
+        # binaries are indistinguishable from a checkout build, which is the one
+        # question a user asks of a downloaded binary.
+        #
+        # The expression is the release step's, deliberately: on a
+        # workflow_dispatch `github.ref_name` is the branch that was chosen, not
+        # the tag being released, so reading it directly would stamp `main` into
+        # a release.
+        env:
+          DRIFTWOOD_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
         run: |
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 go build -o dist/drift-linux-amd64 ./cmd/drift
-          GOOS=linux GOARCH=arm64 go build -o dist/drift-linux-arm64 ./cmd/drift
-          GOOS=darwin GOARCH=amd64 go build -o dist/drift-darwin-amd64 ./cmd/drift
-          GOOS=darwin GOARCH=arm64 go build -o dist/drift-darwin-arm64 ./cmd/drift
-          GOOS=windows GOARCH=amd64 go build -o dist/drift-windows-amd64.exe ./cmd/drift
-          GOOS=windows GOARCH=arm64 go build -o dist/drift-windows-arm64.exe ./cmd/drift
+          LDFLAGS="-X main.version=${DRIFTWOOD_VERSION}"
+          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/drift-linux-amd64 ./cmd/drift
+          GOOS=linux GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/drift-linux-arm64 ./cmd/drift
+          GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/drift-darwin-amd64 ./cmd/drift
+          GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/drift-darwin-arm64 ./cmd/drift
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/drift-windows-amd64.exe ./cmd/drift
+          GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/drift-windows-arm64.exe ./cmd/drift
 
       - name: Generate SHA256 checksums
         run: |
