@@ -41,29 +41,90 @@ function sha256File(filePath) {
   });
 }
 
-async function download(url, destPath) {
+/* GitHub answers a release asset URL with a 302 to objects.githubusercontent.com,
+   so this has to follow it. The redirect is settled on the request, before
+   anything is opened on disk: opening the write stream first, as this did, made
+   one call the owner of a file it was about to hand to somebody else.
+
+   Three failures came out of that, and they are worth naming because the install
+   reported success through all of them. The request that received the redirect
+   was never destroyed, so its 30-second timer stayed armed over destPath. If the
+   recursive download was still running when it fired, its reject failed the whole
+   download; if the download had already finished, the reject did nothing —
+   the promise it belonged to had resolved true — but the fs.unlink beside it ran
+   anyway, deleting the file the other call had just written. Either way the
+   response body was never resumed, the way downloadChecksums does below, so the
+   socket stayed open and the process could not exit. And both calls opened a 'w'
+   stream on the same path, each truncating whatever the other had written.
+
+   So the redirect is resolved on the request alone, and exactly one call — the
+   one holding the 200 — owns the stream, the timer and the cleanup. */
+function download(url, destPath, hops) {
+  const depth = hops || 0;
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(destPath);
+    // Set when this call hands off to the redirect target. Past that point this
+    // request owns nothing on disk, so its handlers must not clean up after the
+    // call that does.
+    let handedOff = false;
+
     const req = https.get(url, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
-        file.close();
-        return download(response.headers.location, destPath).then(resolve).catch(reject);
+        // The body is not read, but the socket has to be freed, and a request
+        // that is finished with should not sit on a live timer.
+        response.resume();
+        req.setTimeout(0);
+        if (!response.headers.location) {
+          reject(new Error('Download redirect carried no Location'));
+          return;
+        }
+        // A cap, so a redirect loop ends as an error rather than as a hang.
+        if (depth >= 5) {
+          reject(new Error('Download redirect loop'));
+          return;
+        }
+        handedOff = true;
+        return download(response.headers.location, destPath, depth + 1).then(resolve).catch(reject);
       }
+
       if (response.statusCode !== 200) {
-        file.close();
-        fs.unlink(destPath, () => {});
-        return reject(new Error(`HTTP status ${response.statusCode}`));
+        response.resume();
+        reject(new Error(`HTTP status ${response.statusCode}`));
+        return;
       }
+
+      // Only now, with a 200 in hand, is there anything to write.
+      const file = fs.createWriteStream(destPath);
+      // A write that fails — a full disk, a permissions problem — has to settle
+      // the promise. Without this the stream never emits 'finish', and an install
+      // that cannot write hangs until npm's own timeout instead of naming the
+      // step that failed.
+      file.on('error', (err) => {
+        fs.unlink(destPath, () => {});
+        reject(err);
+      });
       response.pipe(file);
       file.on('finish', () => {
+        // The body is written, so this request is finished with destPath — but
+        // its timer is not finished with it. An idle keep-alive socket still
+        // fires that callback in thirty seconds, and the handler below unlinks
+        // the file this one just completed. Clearing it here is the same rule
+        // the redirect branch follows: a request owns the file only while it is
+        // waiting on it.
+        req.setTimeout(0);
         file.close(() => resolve(true));
       });
     }).on('error', (err) => {
+      if (handedOff) {
+        return;
+      }
       fs.unlink(destPath, () => {});
       reject(err);
     });
-    // Timeout
+
     req.setTimeout(30000, () => {
+      if (handedOff) {
+        return;
+      }
       req.destroy();
       fs.unlink(destPath, () => {});
       reject(new Error('Download timeout'));
@@ -242,4 +303,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { downloadChecksums };
+module.exports = { download, downloadChecksums };
