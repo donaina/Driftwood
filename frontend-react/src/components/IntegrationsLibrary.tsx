@@ -4,9 +4,15 @@ import { Button, Panel, PanelTitle, ViewHeader } from './ui';
 /* Why this view no longer looks like five install commands.
 
    It used to be five cards, each headed by an install line for a package that
-   does not exist: `npm install -g @donaina/driftwood` on two of them,
+   did not exist: `npm install -g @donaina/driftwood` on two of them,
    `pip install driftwood-proxy` on two more and `gem install driftwood-proxy`
-   on the last. Nothing was ever published under any of those names. The code
+   on the last. Nothing was published under any of those names. That is stated
+   in the past tense deliberately, and only the first name has changed status —
+   `@donaina/driftwood` is on the npm registry now, and the paragraph further
+   down names it. The pip and gem names were invented and have no counterpart to
+   point at; there is no Driftwood package for any of these frameworks, and
+   there should not be, because the proxy needs nothing installed into the
+   application. The code
    under each was framework boilerplate containing no Driftwood code at all —
    the Express card's "Driftwood middleware" was a no-op whose own comment said
    so ("In a real implementation, this would send requests to Driftwood proxy /
@@ -137,18 +143,20 @@ const IntegrationsLibrary: React.FC = () => {
           to Driftwood and is never proxied; everything else goes to your API. Your API&rsquo;s port is
           the only thing <code className="font-mono">--target</code> needs to know.
         </p>
-        {/* Stated here rather than implied, because this is the page a reader
-            copies commands from and `npm install -g` would silently install
-            nothing today. It is the README's own warning, in the place it
-            matters most. */}
+        {/* This used to warn that `npm install -g` installed nothing, because
+            nothing was published. That warning is now the opposite of true, and
+            the commands above still read `./drift` — which is correct in a
+            checkout and confusing if you installed. Saying which surface you
+            are on is the whole of this paragraph. */}
         <p className="mt-2 text-sm text-text-muted">
-          <strong className="text-text-main">Not on the npm registry yet.</strong>{' '}
-          <code className="font-mono">@donaina/driftwood</code> has never been published, so{' '}
-          <code className="font-mono">./drift</code> above is the binary built by{' '}
-          <code className="font-mono">make build</code> — see the README&rsquo;s Quick Start.{' '}
-          <code className="font-mono">npx</code> and{' '}
-          <code className="font-mono">npm install -g</code> are the intended interface and not a
-          working one.
+          <strong className="text-text-main">Installed rather than built?</strong>{' '}
+          <code className="font-mono">npm install -g @donaina/driftwood</code> puts the same
+          binary on your <code className="font-mono">PATH</code>, named{' '}
+          <code className="font-mono">drift</code> — drop the{' '}
+          <code className="font-mono">./</code> from the commands above and they run as printed.
+          From a checkout, <code className="font-mono">make build</code> writes{' '}
+          <code className="font-mono">./drift</code> into the repository root instead. The
+          README&rsquo;s Quick Start covers both.
         </p>
         <p className="mt-2 text-sm text-text-muted">
           No API to hand? Driftwood serves a built-in contract simulator — the README&rsquo;s two-minute

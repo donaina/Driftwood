@@ -157,11 +157,20 @@ unstyled and inert with nothing in the log to explain why.
 
 ### 2. JavaScript & TypeScript
 
-> **Not on the npm registry yet.** `@donaina/driftwood` has never been published —
-> the publish workflow runs when a GitHub Release is created, and GitHub Actions on
-> this repository currently fails on a billing lock, so no release has ever been
-> cut. The commands below are the intended interface, not a working one. Build from
-> source above in the meantime.
+> **Published.** `@donaina/driftwood@1.0.1` is on the public registry, so the
+> commands below run as written.
+>
+> `npm install -g` does not ship a binary inside the tarball. The installer
+> (`bin/install.js`, run as `postinstall`) downloads the build for your platform
+> from the GitHub Release matching the package's own version — the tag is derived
+> from `package.json`, so a published version with no matching release has nothing
+> to fetch — and checks its SHA256 against that release's `SHA256SUMS.txt` before
+> marking it executable. If that download fails it falls back to a local
+> `go build`, which is why a machine with no Go toolchain and no network path to
+> GitHub installs nothing and says so rather than reporting success.
+>
+> Prebuilt binaries exist for macOS, Linux and Windows, on `amd64` and `arm64`.
+> Any other pairing takes the source path and needs Go 1.25+.
 
 #### Run directly via `npx`:
 
