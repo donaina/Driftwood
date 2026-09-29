@@ -102,3 +102,16 @@ temp/
 
 # npm pack output.
 *.tgz
+
+# Local secrets. A credential an operator drops into the working tree for a
+# one-off task goes here and nowhere else.
+#
+# The pattern is broad rather than a list of names on purpose. A repo root is not
+# a safe place to keep a token even when it is ignored — `git add -A` is the
+# obvious command, and a file missing from this list is one commit away from
+# whatever the remote's visibility happens to be at that moment. Visibility
+# changes; a commit does not. Naming one file protects only the name somebody
+# remembered to add, so the suffix is what is ignored.
+*.local.md
+*.local
+.local/
