@@ -4,12 +4,24 @@ import { LinkButton, Section, SectionHead } from '../components/ui';
 
 /* How to actually get it running.
 
-   The npm route is described and then immediately ruled out, because that is
-   the truth: the publish workflow runs on a GitHub Release, no release has been
-   cut, and `@donaina/driftwood` is not on the registry. A page that offered
-   `npx @donaina/driftwood` as the first command would be sending every reader
-   into a 404 on their first interaction with the product — which is a worse
-   first impression than an extra git clone. */
+   npm leads, and that is a change. This section used to open with a git clone
+   and then explain that the npm route was the intended interface rather than a
+   working one: `@donaina/driftwood` was unpublished, because the publish
+   workflow runs on a GitHub Release and none had been cut. That stopped being
+   true at 1.0.1. A page whose first command 404s is a worse first impression
+   than an extra git clone, which is why it read the way it did — but the same
+   reasoning now points the other way, and leaving it would send every reader
+   through a build they do not need.
+
+   The clone stays underneath rather than being dropped. It is the path for a
+   platform with no prebuilt binary, and it is what someone who wants to read
+   the source before running it will do anyway.
+
+   The installer's own detail is stated instead of implied, because it is the
+   part a reader cannot see from the command: the tarball carries no binary. */
+
+const NPM = `npm install -g @donaina/driftwood
+drift --port 8787 --target http://localhost:3000`;
 
 const CLONE = `git clone https://github.com/donaina/Driftwood.git
 cd Driftwood
@@ -39,8 +51,8 @@ export const RunIt: React.FC = () => (
   <Section id="run-it">
     <SectionHead
       eyebrow="Run it"
-      title="One command from a clone to a dashboard."
-      lead="There is no installer and no service to register. The dashboard is compiled into the binary, so a single file is the whole product — copy it anywhere and run it."
+      title="One command from a shell to a dashboard."
+      lead="The dashboard is compiled into the binary, so a single file is the whole product — install it, copy it anywhere, run it. There is no service to register and nothing to configure behind it."
     />
 
     <div className="mt-12 grid gap-6 lg:grid-cols-2">
@@ -51,48 +63,65 @@ export const RunIt: React.FC = () => (
           its own width and the page scrolls sideways at 375 while the code
           block's own overflow-x-auto never gets a chance to do its job. */}
       <div className="flex min-w-0 flex-col gap-4">
-        <Code label="shell">{CLONE}</Code>
+        <Code label="install">{NPM}</Code>
+        <p className="text-sm text-text-secondary">
+          The target does not have to exist. Driftwood serves a mock endpoint of
+          its own and intercepts it before any dial, so this runs with nothing
+          behind it — which is what makes a first contract, and a first breaking
+          change, something you can watch happen without an API to point at.
+        </p>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-4">
+        <Code label="or from a clone">{CLONE}</Code>
         <p className="text-sm text-text-secondary">
           <span className="font-mono text-xs text-text-muted">make build</span> installs
           the dashboard’s dependencies, builds it, and then builds the binary — in
           that order, because the binary embeds the dashboard at compile time.
         </p>
       </div>
-
-      <div className="flex min-w-0 flex-col gap-4">
-        <Code label="the same thing, by hand">{BY_HAND}</Code>
-        <p className="text-sm text-text-secondary">
-          A committed placeholder keeps the embed compiling on a fresh clone, so
-          this is the step that is easy to skip — the build still succeeds, and
-          the dashboard renders unstyled and inert. If that happens, the binary
-          says so at startup rather than leaving you to guess.
-        </p>
-      </div>
     </div>
 
-    {/* npm is the interface people will look for first, so it is addressed
-        rather than omitted. */}
+    {/* The install detail is addressed rather than omitted: it is the one part
+        of the command above a reader cannot verify by reading it, and it is the
+        part that decides whether the install works on their machine. */}
     <div className="mt-6 rounded-lg border border-border-color bg-surface-3 p-6">
-      <h3 className="text-sm font-semibold text-text-main">
-        Not on the npm registry yet
-      </h3>
+      <h3 className="text-sm font-semibold text-text-main">What the install actually does</h3>
       <div className="mt-3 grid gap-4 md:grid-cols-2">
         <p className="text-sm text-text-secondary">
-          <span className="font-mono text-xs text-text-main">@donaina/driftwood</span> has
-          never been published. The publish workflow runs when a GitHub Release is
-          created, and Actions on this repository currently fails on a billing
-          lock, so no release has been cut — which means the familiar{' '}
-          <span className="font-mono text-xs">npx</span> and{' '}
-          <span className="font-mono text-xs">npm install -g</span> commands are the
-          intended interface rather than a working one. Clone and build above in
-          the meantime.
+          The tarball carries no binary. Its{' '}
+          <span className="font-mono text-xs text-text-main">postinstall</span> downloads the
+          build for your platform from the GitHub Release matching the package’s own
+          version, checks its SHA256 against that release’s{' '}
+          <span className="font-mono text-xs text-text-main">SHA256SUMS.txt</span>, and only
+          then marks it executable. The checksum is the point: a download that was
+          truncated or substituted fails the install instead of reaching your shell.
         </p>
         <p className="text-sm text-text-secondary">
-          A Node module and an Express integration are written and in the
-          repository; they are waiting on the same release. Everything else on
-          this page works today, from a clone.
+          If the download fails it falls back to a local{' '}
+          <span className="font-mono text-xs">go build</span>, which needs Go 1.25 or
+          newer — so on a machine with neither, the install reports the step that
+          failed rather than exiting successfully having installed nothing. Prebuilt
+          binaries cover macOS, Linux and Windows on{' '}
+          <span className="font-mono text-xs">amd64</span> and{' '}
+          <span className="font-mono text-xs">arm64</span>; anything else takes the
+          clone path on the left.
         </p>
       </div>
+      <p className="mt-4 text-sm text-text-secondary">
+        The by-hand equivalent of{' '}
+        <span className="font-mono text-xs text-text-muted">make build</span>, if you
+        would rather run the steps yourself:
+      </p>
+      <div className="mt-3">
+        <Code label="the same thing, by hand">{BY_HAND}</Code>
+      </div>
+      <p className="mt-3 text-sm text-text-secondary">
+        A committed placeholder keeps the embed compiling on a fresh clone, so this
+        is the step that is easy to skip — the build still succeeds, and the
+        dashboard renders unstyled and inert. If that happens, the binary says so at
+        startup rather than leaving you to guess.
+      </p>
     </div>
 
     <div className="mt-8 flex flex-wrap items-center gap-3">

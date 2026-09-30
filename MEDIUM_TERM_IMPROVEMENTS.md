@@ -145,6 +145,14 @@ was unreachable for the opposite reason — the filter ids were the card ids to 
 is deleted rather than left as a branch no input can reach, as is the header's "Show All", which
 the filter row's own "All Frameworks" button already did one line below.
 
+**Corrected 2026-09-29.** One clause above has expired, and only one: `@donaina/driftwood` is on
+the npm registry now. The component does not carry that as an install line on a card — the point
+of a card is still that nothing is installed into the framework — it says it in the paragraph
+where a reader looks for it, and the paragraph's job changed from warning that `npm install -g`
+installs nothing to distinguishing installed from built, because the numbered steps read
+`./drift`, which is correct in a checkout and confusing if you installed instead. The pip and gem
+names were invented and stay invented; none of them has a counterpart to point at.
+
 Deviations from the proposal:
 
 - **"Try in Sandbox" — not built**, and correctly so: there is no sandbox to run anything in,

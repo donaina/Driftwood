@@ -93,15 +93,18 @@ const FAQS: Array<{ q: string; a: React.ReactNode }> = [
     q: 'How do I get it?',
     a: (
       <>
-        Clone the repository and run{' '}
-        <span className="font-mono text-xs">make build</span>. It is not on the
-        npm registry — the publish workflow runs on a GitHub Release and no
-        release has been cut — so npm and npx are the intended interface rather
-        than a working one. The{' '}
+        Install it from npm —{' '}
+        <span className="font-mono text-xs">npm install -g @donaina/driftwood</span>{' '}
+        — which fetches the prebuilt binary for your platform and checks it
+        against the release&rsquo;s published{' '}
+        <span className="font-mono text-xs">SHA256SUMS.txt</span> before running
+        it. Or clone the repository and run{' '}
+        <span className="font-mono text-xs">make build</span>, which is also the
+        path on a platform with no prebuilt binary. The{' '}
         <a href={GITHUB_URL} target="_blank" rel="noreferrer noopener">
           source
         </a>{' '}
-        is the whole distribution for now.
+        is all there either way.
       </>
     ),
   },

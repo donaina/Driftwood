@@ -317,16 +317,16 @@ export const TryItOut: React.FC = () => {
             and reload:
           </p>
           <pre className="mt-6 overflow-x-auto rounded-md border border-border-color bg-bg-card px-4 py-3.5 font-mono text-xs leading-relaxed text-text-main">
-{`git clone ${GITHUB_URL}.git
-cd Driftwood
-make build
-./drift --port 8787`}
+{`npm install -g @donaina/driftwood
+drift --port 8787`}
           </pre>
           <p className="mt-4 text-sm text-text-muted">
             Then serve this site behind the same origin, or open{' '}
             <span className="font-mono text-xs">http://127.0.0.1:8787/_driftwood/</span>{' '}
             for the dashboard itself, which has its own built-in simulator
-            controls.
+            controls. Building from a clone works too —{' '}
+            <span className="font-mono text-xs">make build</span> in a checkout
+            produces the same binary.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <LinkButton href="/" variant="secondary">
