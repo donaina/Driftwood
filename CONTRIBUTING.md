@@ -99,4 +99,4 @@ HOME=$(mktemp -d) ./drift --port 8787 --target http://localhost:3000
   `check-pack.js` asserts what `npm pack` would publish.
 - **`tests/`**: cross-package tests that read the shipped shell rather than a package's own code.
 
-Thank you for helping keep API contracts healthy! ⚡
+Thank you for helping keep API contracts healthy!
